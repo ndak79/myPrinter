@@ -395,9 +395,24 @@ body {
     border-color: rgba(102, 126, 234, 0.5);
 }
 
+/* ── Printer Selected Glow Animation (N) ──────────────────── */
+@keyframes borderGlow {
+    0%, 100% {
+        border-color: #667eea;
+        box-shadow: 0 0 0 1px rgba(102, 126, 234, 0.3),
+                    inset 0 0 20px rgba(102, 126, 234, 0.05);
+    }
+    50% {
+        border-color: #764ba2;
+        box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.25),
+                    inset 0 0 20px rgba(118, 75, 162, 0.08);
+    }
+}
+
 .printer-item.selected {
-    background: rgba(102, 126, 234, 0.2);
+    background: rgba(102, 126, 234, 0.15);
     border-color: #667eea;
+    animation: borderGlow 2.5s ease-in-out infinite;
 }
 
 /* ── Printer Status Dot (5) ────────────────────────────────── */
