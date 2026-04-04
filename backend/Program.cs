@@ -396,6 +396,24 @@ app.MapPost("/api/print/continue", (
     }
 });
 
+// Cancel a pending print job (A)
+app.MapDelete("/api/print/cancel", (
+    string jobId,
+    FileSessionService sessions) =>
+{
+    if (string.IsNullOrWhiteSpace(jobId))
+        return Results.BadRequest(new PrintResponse { Success = false, Message = "jobId is required" });
+
+    var job = sessions.GetJob(jobId);
+    if (job == null)
+        return Results.NotFound(new PrintResponse { Success = false, Message = "Job không tồn tại hoặc đã hoàn tất" });
+
+    sessions.RemoveJob(jobId);
+    Console.WriteLine($"[PRINT] Job cancelled: {jobId}");
+
+    return Results.Ok(new PrintResponse { Success = true, Message = "Đã hủy lệnh in" });
+});
+
 Console.WriteLine("🖨️  Printer App Backend running on http://localhost:8787");
 Console.WriteLine("📄 Endpoints:");
 Console.WriteLine("   GET  /api/printers");
@@ -403,5 +421,6 @@ Console.WriteLine("   POST /api/upload");
 Console.WriteLine("   POST /api/convert");
 Console.WriteLine("   POST /api/print");
 Console.WriteLine("   POST /api/print/continue");
+Console.WriteLine("   DEL  /api/print/cancel");
 
 app.Run("http://localhost:8787");
