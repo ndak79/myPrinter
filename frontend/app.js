@@ -754,7 +754,19 @@ const HistoryModule = {
 // ═══════════════════════════════════════════════════════════════════
 const PrintModule = {
     init() {
-        document.getElementById('print-btn').addEventListener('click', () => this._startPrint());
+        const btn = document.getElementById('print-btn');
+        btn.addEventListener('click', (e) => {
+            // Ripple effect (L)
+            const ripple = document.createElement('span');
+            ripple.className = 'ripple';
+            const rect = btn.getBoundingClientRect();
+            ripple.style.left = (e.clientX - rect.left) + 'px';
+            ripple.style.top  = (e.clientY - rect.top)  + 'px';
+            btn.appendChild(ripple);
+            ripple.addEventListener('animationend', () => ripple.remove());
+
+            this._startPrint();
+        });
         document.getElementById('continue-btn')?.addEventListener('click', async () => {
             await this._continuePrint();
             document.getElementById('flip-modal').classList.add('hidden');

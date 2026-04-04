@@ -483,6 +483,35 @@ body {
     margin-top: 2rem;
 }
 
+/* ── Print Button Ripple (L) ───────────────────────────────── */
+@keyframes rippleAnim {
+    from {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+    to {
+        transform: scale(4);
+        opacity: 0;
+    }
+}
+
+#print-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.35);
+    width: 60px;
+    height: 60px;
+    margin-top: -30px;
+    margin-left: -30px;
+    animation: rippleAnim 600ms ease-out forwards;
+    pointer-events: none;
+}
+
 .btn-primary {
     background: var(--primary-gradient);
     color: white;
