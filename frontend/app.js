@@ -666,8 +666,11 @@ const ZoomModal = {
         const canvas = document.createElement('canvas');
         const vp     = page.getViewport({ scale: 1.2 });
         canvas.width  = vp.width; canvas.height = vp.height;
-        canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;';
+        canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;transition:transform 0.25s ease;';
         page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
+
+        // Apply current rotation (U)
+        this._applyCanvasRotation(canvas, AppState.pageRotations.get(n));
 
         div.appendChild(header); div.appendChild(badge); div.appendChild(canvas);
 
@@ -694,7 +697,21 @@ const ZoomModal = {
                 badge.textContent = isSingle ? '1 MAT' : '2 MAT';
                 badge.style.opacity = isSel ? '1' : '0.3';
             }
+            // Update rotation (U)
+            const canvas = el.querySelector('canvas');
+            if (canvas) this._applyCanvasRotation(canvas, AppState.pageRotations.get(n));
         });
+    },
+
+    _applyCanvasRotation(canvas, rotation) {
+        const map = {
+            CW90:          'rotate(90deg)',
+            CCW90:         'rotate(-90deg)',
+            Rotate180:     'rotate(180deg)',
+            FlipHorizontal:'scaleX(-1)',
+            FlipVertical:  'scaleY(-1)',
+        };
+        canvas.style.transform = map[rotation] || '';
     },
 };
 
@@ -776,6 +793,8 @@ const ContextMenu = {
                 delete thumb.dataset.rotation;
             }
         }
+        // Update zoom modal canvas if open (U)
+        ZoomModal._updateModalStyles();
     },
 };
 
