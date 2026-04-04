@@ -218,6 +218,23 @@ body {
     box-shadow: var(--shadow-lg);
 }
 
+/* ── Card Entrance Animation (K) ──────────────────────────── */
+@keyframes cardEntrance {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card-animate {
+    animation: cardEntrance 400ms ease-out forwards;
+    opacity: 0;
+}
+
 .card-header h2 {
     font-size: 1.25rem;
     font-weight: 600;
