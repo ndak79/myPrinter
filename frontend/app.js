@@ -693,6 +693,60 @@ const CopiesModule = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// HistoryModule — Recent print jobs (localStorage, last 10)
+// ═══════════════════════════════════════════════════════════════════
+const HistoryModule = {
+    _KEY: 'myprinter_history',
+    _MAX: 10,
+
+    _load() {
+        try { return JSON.parse(localStorage.getItem(this._KEY) || '[]'); }
+        catch { return []; }
+    },
+
+    _save(items) {
+        localStorage.setItem(this._KEY, JSON.stringify(items));
+    },
+
+    init() {
+        this._render();
+        document.getElementById('history-clear-btn')?.addEventListener('click', () => {
+            this._save([]);
+            this._render();
+            showToast('Đã xóa lịch sử', 'info');
+        });
+        document.getElementById('history-toggle-btn')?.addEventListener('click', () => {
+            document.getElementById('history-panel')?.classList.toggle('hidden');
+        });
+    },
+
+    add(entry) {
+        const items = this._load();
+        items.unshift({ ...entry, time: new Date().toLocaleString('vi-VN') });
+        this._save(items.slice(0, this._MAX));
+        this._render();
+    },
+
+    _render() {
+        const container = document.getElementById('history-list');
+        if (!container) return;
+        const items = this._load();
+        if (items.length === 0) {
+            container.innerHTML = '<div class="history-empty">Chưa có lịch sử in</div>';
+            return;
+        }
+        const modeLabel = { normal: '2 mặt', booklet: 'Sách A5', simplex: '1 mặt' };
+        container.innerHTML = items.map(item => `
+            <div class="history-item">
+                <div class="history-file">📄 ${item.file}</div>
+                <div class="history-meta">🖨️ ${item.printer} · ${item.pages} trang · ${modeLabel[item.mode] || item.mode} · ${item.copies} bản</div>
+                <div class="history-time">${item.time}</div>
+            </div>
+        `).join('');
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // PresetsModule — Save/load print configuration presets
 // ═══════════════════════════════════════════════════════════════════
 const PresetsModule = {
@@ -848,6 +902,15 @@ const PrintModule = {
                 btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
                 btn.style.opacity = '1';
                 showToast('In thành công!', 'success');
+                
+                HistoryModule.add({
+                    file:    AppState.uploadedFile.name,
+                    printer: AppState.selectedPrinter.name,
+                    pages:   AppState.selectedPages.size,
+                    mode:    document.querySelector('input[name="print-mode"]:checked')?.value || 'normal',
+                    copies:  CopiesModule.copies,
+                });
+
                 setTimeout(() => {
                     btn.disabled = false;
                     btn.textContent = originalText;
@@ -908,4 +971,5 @@ document.addEventListener('DOMContentLoaded', () => {
     PrintModule.init();
     CopiesModule.init();
     PresetsModule.init();
+    HistoryModule.init();
 });

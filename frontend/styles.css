@@ -1057,6 +1057,23 @@ body {
   font-size: 13px; color: var(--text-secondary); cursor: pointer;
 }
 
+/* ── Print History ───────────────────────────────────── */
+.history-section { margin-top: 16px; }
+.history-header { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.history-panel {
+  background: var(--bg-secondary); border-radius: 12px;
+  border: 1px solid var(--border-color); padding: 12px;
+  max-height: 260px; overflow-y: auto;
+}
+.history-panel::-webkit-scrollbar { width: 4px; }
+.history-panel::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+.history-item { padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.history-item:last-child { border-bottom: none; }
+.history-file { font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 3px; }
+.history-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
+.history-time { font-size: 11px; color: var(--text-muted); }
+.history-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 16px; }
+
 /* ── Presets ─────────────────────────────────────────── */
 .presets-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color); }
 .presets-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
