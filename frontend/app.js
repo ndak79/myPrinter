@@ -761,6 +761,45 @@ const HistoryModule = {
         showToast('Đã xóa mục lịch sử', 'info');
     },
 
+    _reprint(index) {
+        const items = this._load();
+        const item  = items[index];
+        if (!item) return;
+
+        // Restore printer selection
+        if (item.printerData) {
+            AppState.selectedPrinter = item.printerData;
+            document.querySelectorAll('.printer-item').forEach(el => {
+                const p = JSON.parse(el.dataset.printer || '{}');
+                el.classList.toggle('selected', p.name === item.printerData.name);
+            });
+        }
+
+        // Restore mode
+        if (item.mode) {
+            const modeInput = document.querySelector(`input[name="print-mode"][value="${item.mode}"]`);
+            if (modeInput) modeInput.click();
+        }
+
+        // Restore copies
+        if (item.copies) {
+            CopiesModule._copies = item.copies;
+            CopiesModule._update();
+        }
+
+        // Restore page range
+        if (item.pageRange && AppState.totalPageCount > 0) {
+            const input = document.getElementById('page-range-input');
+            if (input) {
+                input.value = item.pageRange;
+                input.dispatchEvent(new Event('input'));
+            }
+        }
+
+        showToast(`Đã khôi phục cài đặt in "${item.file}"`, 'info');
+        PrintModule.updateButton();
+    },
+
     _render() {
         const container = document.getElementById('history-list');
         if (!container) return;
@@ -885,11 +924,15 @@ const PrintModule = {
                 showToast('In thành công!', 'success');
                 
                 HistoryModule.add({
-                    file:    AppState.uploadedFile.name,
-                    printer: AppState.selectedPrinter.name,
-                    pages:   AppState.selectedPages.size,
-                    mode:    document.querySelector('input[name="print-mode"]:checked')?.value || 'normal',
-                    copies:  CopiesModule.copies,
+                    file:        AppState.uploadedFile.name,
+                    fileId:      AppState.uploadedFile.id,
+                    printer:     AppState.selectedPrinter.name,
+                    printerData: AppState.selectedPrinter,
+                    pages:       AppState.selectedPages.size,
+                    pageRange,
+                    mode:        document.querySelector('input[name="print-mode"]:checked')?.value || 'normal',
+                    copies:      CopiesModule.copies,
+                    collate:     CopiesModule.collate,
                 });
 
                 setTimeout(() => {
