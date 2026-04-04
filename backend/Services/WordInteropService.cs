@@ -406,34 +406,17 @@ public class WordInteropService
     {
         try
         {
-            // Use "print" verb which shows the default app's print dialog
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            // Strategy 1: Use SumatraPDF if available — it supports -print-to <printerName>
+            var sumatraPath = FindSumatraPdf();
+            if (sumatraPath != null)
             {
-                FileName = filePath,
-                Verb = "print",
-                UseShellExecute = true,
-                CreateNoWindow = true
-            };
-
-            Console.WriteLine($"[TryShellPrint] Starting with 'print' verb...");
-            using var process = System.Diagnostics.Process.Start(startInfo);
-            if (process == null)
-            {
-                Console.WriteLine($"[TryShellPrint] Failed to start process");
-                return false;
+                Console.WriteLine($"[TryShellPrint] Found SumatraPDF at: {sumatraPath}");
+                return PrintWithSumatra(sumatraPath, filePath, printerName);
             }
 
-            Console.WriteLine($"[TryShellPrint] Process started. ID: {process.Id}");
-            
-            // Wait for the print process to complete or timeout
-            bool completed = process.WaitForExit(60000);
-            if (!completed)
-            {
-                Console.WriteLine($"[TryShellPrint] Process did not complete within timeout");
-                try { process.Kill(); } catch { }
-            }
-
-            return true;
+            // Strategy 2: Temporarily set default printer, shell print, then restore
+            Console.WriteLine($"[TryShellPrint] SumatraPDF not found. Using default-printer swap strategy.");
+            return PrintBySwappingDefaultPrinter(filePath, printerName);
         }
         catch (Exception ex)
         {
@@ -442,40 +425,172 @@ public class WordInteropService
         }
     }
 
-    private void TryPowerShellPrint(string filePath, string printerName)
+    private string? FindSumatraPdf()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                         "SumatraPDF", "SumatraPDF.exe"),
+            @"C:\Program Files\SumatraPDF\SumatraPDF.exe",
+            @"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
+        };
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private bool PrintWithSumatra(string sumatraPath, string pdfPath, string printerName)
     {
         try
         {
-            // Use PowerShell to print
-            var psCommand = $"Start-Process -FilePath \"{filePath}\" -Verb Print -Wait";
-            
+            var args = $"-print-to \"{printerName}\" \"{pdfPath}\"";
+            Console.WriteLine($"[PrintWithSumatra] Args: {args}");
+
+            var psi = new System.Diagnostics.ProcessStartInfo(sumatraPath, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow  = true,
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            if (proc == null)
+            {
+                Console.WriteLine("[PrintWithSumatra] Failed to start SumatraPDF process.");
+                return false;
+            }
+            bool completed = proc.WaitForExit(60_000);
+            Console.WriteLine($"[PrintWithSumatra] Exit code: {proc.ExitCode}, completed in time: {completed}");
+            return completed && proc.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PrintWithSumatra ERROR] {ex.Message}");
+            return false;
+        }
+    }
+
+    private bool PrintBySwappingDefaultPrinter(string filePath, string printerName)
+    {
+        var originalDefault = GetDefaultPrinterName();
+        Console.WriteLine($"[PrintBySwappingDefaultPrinter] Original default printer: {originalDefault ?? "(none)"}");
+
+        try
+        {
+            if (!SetDefaultPrinter(printerName))
+            {
+                Console.WriteLine($"[PrintBySwappingDefaultPrinter] WARNING: SetDefaultPrinter failed for: {printerName}. Printing anyway (may go to wrong printer).");
+            }
+            else
+            {
+                Console.WriteLine($"[PrintBySwappingDefaultPrinter] Set default printer to: {printerName}");
+            }
+
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "powershell.exe",
-                Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
+                FileName       = filePath,
+                Verb           = "print",
+                UseShellExecute = true,
+                CreateNoWindow  = true
             };
 
-            Console.WriteLine($"[TryPowerShellPrint] Executing PowerShell print command...");
+            using var process = System.Diagnostics.Process.Start(startInfo);
+            if (process == null)
+            {
+                Console.WriteLine("[PrintBySwappingDefaultPrinter] Failed to start print process.");
+                return false;
+            }
+
+            Console.WriteLine($"[PrintBySwappingDefaultPrinter] Print process started. ID: {process.Id}");
+            bool completed = process.WaitForExit(60_000);
+            if (!completed)
+            {
+                Console.WriteLine("[PrintBySwappingDefaultPrinter] Process timed out.");
+                try { process.Kill(); } catch { }
+            }
+            return true;
+        }
+        finally
+        {
+            // Always restore original default printer
+            if (originalDefault != null)
+            {
+                SetDefaultPrinter(originalDefault);
+                Console.WriteLine($"[PrintBySwappingDefaultPrinter] Restored default printer to: {originalDefault}");
+            }
+        }
+    }
+
+    private string? GetDefaultPrinterName()
+    {
+        try
+        {
+            return new System.Drawing.Printing.PrinterSettings().PrinterName;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GetDefaultPrinterName] Error: {ex.Message}");
+            return null;
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("winspool.drv",
+        CharSet = System.Runtime.InteropServices.CharSet.Auto,
+        SetLastError = true)]
+    private static extern bool SetDefaultPrinter(string Name);
+
+    private void TryPowerShellPrint(string filePath, string printerName)
+    {
+        // Use C# P/Invoke to set default printer (reliable, avoids PowerShell quoting issues)
+        var originalDefault = GetDefaultPrinterName();
+        Console.WriteLine($"[TryPowerShellPrint] Original default: {originalDefault ?? "(none)"}");
+
+        try
+        {
+            if (!SetDefaultPrinter(printerName))
+            {
+                Console.WriteLine($"[TryPowerShellPrint] WARNING: SetDefaultPrinter failed for: {printerName}");
+            }
+            else
+            {
+                Console.WriteLine($"[TryPowerShellPrint] Set default printer to: {printerName}");
+            }
+
+            var escapedPath = filePath.Replace("'", "''");
+            var psCommand = $"Start-Process -FilePath '{escapedPath}' -Verb Print -Wait";
+
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName               = "powershell.exe",
+                Arguments              = $"-NoProfile -ExecutionPolicy Bypass -Command \"{psCommand}\"",
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true
+            };
+
+            Console.WriteLine($"[TryPowerShellPrint] Printing via PowerShell on: {printerName}");
             using var process = System.Diagnostics.Process.Start(startInfo);
             if (process != null)
             {
-                process.WaitForExit(60000);
+                process.WaitForExit(60_000);
                 var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                
-                if (!string.IsNullOrEmpty(output))
-                    Console.WriteLine($"[TryPowerShellPrint] Output: {output}");
-                if (!string.IsNullOrEmpty(error))
-                    Console.WriteLine($"[TryPowerShellPrint] Error: {error}");
+                var error  = process.StandardError.ReadToEnd();
+                if (!string.IsNullOrEmpty(output)) Console.WriteLine($"[TryPowerShellPrint] Output: {output}");
+                if (!string.IsNullOrEmpty(error))  Console.WriteLine($"[TryPowerShellPrint] Error: {error}");
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[TryPowerShellPrint ERROR] {ex.Message}");
+        }
+        finally
+        {
+            if (originalDefault != null)
+            {
+                SetDefaultPrinter(originalDefault);
+                Console.WriteLine($"[TryPowerShellPrint] Restored default printer to: {originalDefault}");
+            }
+            else
+            {
+                Console.WriteLine("[TryPowerShellPrint] WARNING: Could not restore default printer (original was unknown).");
+            }
         }
     }
 

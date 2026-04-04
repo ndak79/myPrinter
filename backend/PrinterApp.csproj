@@ -11,6 +11,7 @@
     <PackageReference Include="Microsoft.Office.Interop.Word" Version="15.0.4797.1004" />
     <PackageReference Include="PDFsharp" Version="6.2.3" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="System.Management" Version="10.0.0" />
   </ItemGroup>
 
