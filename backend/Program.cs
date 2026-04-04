@@ -299,7 +299,8 @@ app.MapPost("/api/print", (
                 filePath,
                 request.PrinterName,
                 printer.IsDuplex,
-                request.PageRange
+                request.PageRange,
+                request.SingleSidedPages
             );
         }
 

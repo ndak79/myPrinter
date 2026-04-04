@@ -186,7 +186,7 @@ public class PrintAlgorithmService
     }
 
 
-    public PrintJobState CreateBookletJob(string pdfPath, string printerName, bool isDuplexPrinter, string? pageRange = null)
+    public PrintJobState CreateBookletJob(string pdfPath, string printerName, bool isDuplexPrinter, string? pageRange = null, int[]? singleSidedPages = null)
     {
         // If page range is specified, create a temp PDF with only those pages first
         string sourcePdfPath = pdfPath;
@@ -212,7 +212,7 @@ public class PrintAlgorithmService
         CreateBookletPdf(sourcePdfPath, bookletPdfPath, orderedPages, paddedCount);
 
         // Now treat it as normal duplex (no page range needed since booklet PDF is already filtered)
-        return CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter);
+        return CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: singleSidedPages);
     }
 
     public PrintJobState CreateSimplexJob(
