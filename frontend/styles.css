@@ -63,10 +63,13 @@ body {
 }
 
 /* Left Sidebar for Page Preview */
+/* ── Frosted Glass Sidebar (Q) ─────────────────────────────── */
 .sidebar {
     width: 280px;
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
     position: sticky;
@@ -828,6 +831,13 @@ body {
     background-image:
         radial-gradient(at 20% 30%, rgba(102, 126, 234, 0.08) 0, transparent 50%),
         radial-gradient(at 80% 70%, rgba(118, 75, 162, 0.08) 0, transparent 50%);
+}
+
+[data-theme="light"] .sidebar {
+    background: rgba(241, 245, 249, 0.80);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 /* Theme Toggle Button */
