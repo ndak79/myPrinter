@@ -1336,63 +1336,112 @@ input[name="print-mode"]:checked + .mode-card .mode-icon {
 .context-menu {
     position: fixed;
     z-index: 2000;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--bg-secondary) 85%, transparent);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(102, 126, 234, 0.2);
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    min-width: 200px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    min-width: 220px;
     overflow: hidden;
-    animation: contextMenuIn 0.15s ease-out;
+    animation: contextMenuIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    transform-origin: top left;
 }
 
 @keyframes contextMenuIn {
     from {
         opacity: 0;
-        transform: scale(0.95);
+        transform: scale(0.95) translateY(5px);
     }
 
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: scale(1) translateY(0);
     }
 }
 
 .context-menu-header {
-    padding: 0.75rem 1rem;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    border-bottom: 1px solid var(--border-color);
-    background: rgba(102, 126, 234, 0.1);
+    padding: 0.8rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    background: linear-gradient(90deg, rgba(102, 126, 234, 0.15), transparent);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
 }
 
 .context-menu-item {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    padding: 0.65rem 1rem;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--text-secondary);
+    position: relative;
+    border-left: 3px solid transparent;
 }
 
 .context-menu-item:hover {
-    background: rgba(102, 126, 234, 0.15);
+    background: rgba(102, 126, 234, 0.1);
+    color: var(--text-primary);
+    border-left: 3px solid #667eea;
+}
+
+.context-menu-item:active {
+    transform: translateX(2px);
 }
 
 .context-menu-icon {
-    font-size: 1rem;
+    font-size: 1.1rem;
+    transition: transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+}
+
+.context-menu-item:hover .context-menu-icon {
+    transform: scale(1.15);
+    color: #667eea;
 }
 
 .context-menu-check {
     margin-left: auto;
     color: #667eea;
     font-weight: bold;
+    animation: checkmarkIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes checkmarkIn {
+    from { transform: scale(0); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
 }
 
 .context-menu-separator {
     height: 1px;
-    background: var(--border-color);
-    margin: 0.5rem 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    margin: 0.4rem 0;
+    border: none;
+}
+
+.context-menu-header-sub {
+    padding: 0.5rem 1rem 0.2rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+[data-theme="light"] .context-menu {
+    border: 1px solid rgba(102, 126, 234, 0.3);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+[data-theme="light"] .context-menu-separator {
+    background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.1), transparent);
 }
 
 /* Single-sided badge - centered, modern purple */
