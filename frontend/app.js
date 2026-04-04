@@ -370,6 +370,7 @@ const PreviewModule = {
             grid.setAttribute('aria-label', 'Danh sách trang');
             grid.setAttribute('aria-multiselectable', 'true');
             this._observer?.disconnect();
+            HoverPreviewModule.clearCache();
             this._observer = new IntersectionObserver(entries => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting && !entry.target.dataset.rendered) {
@@ -413,6 +414,7 @@ const PreviewModule = {
         });
         div.addEventListener('dblclick', () => ZoomModal.open(pageNum));
         div.addEventListener('contextmenu', e => { e.preventDefault(); ContextMenu.show(e, pageNum); });
+        HoverPreviewModule.attach(div, pageNum);
         return div;
     },
 
@@ -1452,6 +1454,96 @@ const ConfirmPrintModal = {
             </div>
         `;
     },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// HoverPreviewModule — Hover popup with larger page preview (J)
+// ═══════════════════════════════════════════════════════════════════
+const HoverPreviewModule = {
+    SHOW_DELAY:    150, // ms before showing
+    PREVIEW_W:     280,
+    PREVIEW_H:     360,
+    _timer:        null,
+    _activeThumb:  null,
+    _cache:        new Map(), // pageNum → offscreen canvas
+
+    _preview()  { return document.getElementById('hover-preview'); },
+    _pCanvas()  { return document.getElementById('hover-preview-canvas'); },
+
+    attach(thumb, pageNum) {
+        thumb.addEventListener('mouseenter', () => {
+            clearTimeout(this._timer);
+            this._timer = setTimeout(() => this._show(thumb, pageNum), this.SHOW_DELAY);
+        });
+        thumb.addEventListener('mouseleave', () => {
+            clearTimeout(this._timer);
+            this._hide();
+        });
+        // Keyboard
+        thumb.addEventListener('focus', () => this._show(thumb, pageNum));
+        thumb.addEventListener('blur',  () => this._hide());
+    },
+
+    async _show(thumb, pageNum) {
+        if (!AppState.currentPdfDoc) return;
+        const preview = this._preview();
+        const pCanvas = this._pCanvas();
+        if (!preview || !pCanvas) return;
+
+        // Render or use cached
+        if (!this._cache.has(pageNum)) {
+            try {
+                const page     = await AppState.currentPdfDoc.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.0 });
+                const scale    = Math.min(this.PREVIEW_W / viewport.width, this.PREVIEW_H / viewport.height);
+                const vp2      = page.getViewport({ scale });
+                const off      = document.createElement('canvas');
+                off.width      = vp2.width;
+                off.height     = vp2.height;
+                await page.render({ canvasContext: off.getContext('2d'), viewport: vp2 }).promise;
+                this._cache.set(pageNum, off);
+            } catch { return; }
+        }
+
+        const cached = this._cache.get(pageNum);
+        pCanvas.width  = cached.width;
+        pCanvas.height = cached.height;
+        pCanvas.getContext('2d').drawImage(cached, 0, 0);
+
+        // Position
+        const rect = thumb.getBoundingClientRect();
+        this._position(preview, rect);
+
+        preview.hidden = false;
+        this._activeThumb = thumb;
+        requestAnimationFrame(() => preview.classList.add('visible'));
+    },
+
+    _hide() {
+        const preview = this._preview();
+        if (!preview) return;
+        preview.classList.remove('visible');
+        this._activeThumb = null;
+        // Hide after transition
+        setTimeout(() => { if (!preview.classList.contains('visible')) preview.hidden = true; }, 130);
+    },
+
+    _position(preview, anchorRect) {
+        const W = this.PREVIEW_W + 20; // approx width + gap
+        const H = this.PREVIEW_H + 20;
+        let left = anchorRect.right + 12;
+        let top  = anchorRect.top + (anchorRect.height / 2) - (H / 2);
+
+        // Flip left if would overflow right
+        if (left + W > window.innerWidth) left = anchorRect.left - W - 4;
+        // Clamp vertically
+        top = Math.max(8, Math.min(top, window.innerHeight - H - 8));
+
+        preview.style.left = Math.round(left) + 'px';
+        preview.style.top  = Math.round(top)  + 'px';
+    },
+
+    clearCache() { this._cache.clear(); },
 };
 
 // ═══════════════════════════════════════════════════════════════════

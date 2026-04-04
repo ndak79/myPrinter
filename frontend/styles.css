@@ -1864,3 +1864,31 @@ kbd {
 [data-theme="light"] .orientation-badge {
     background: rgba(30, 41, 59, 0.65);
 }
+
+/* ── Hover Preview Popup (J) ───────────────────────────────── */
+#hover-preview {
+    position: fixed;
+    z-index: 8000;
+    width: 280px;
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0;
+    transform: scale(0.96);
+    transition: opacity 120ms ease, transform 120ms ease;
+}
+
+#hover-preview.visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+#hover-preview canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+}
