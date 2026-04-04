@@ -1,0 +1,25 @@
+# .NET Build Output
+backend/bin/
+backend/obj/
+
+# Log files
+backend/*.log
+backend/debug_output.txt
+
+# Test files (temporary)
+test*.pdf
+test*.py
+reproduce_*.py
+TestPdf.cs
+
+# Office / personal documents
+*.docx
+LVTSv23.pdf
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vs/
+*.user

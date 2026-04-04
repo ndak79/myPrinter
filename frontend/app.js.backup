@@ -1,0 +1,604 @@
+const API_BASE = 'http://localhost:8787/api';
+
+// State
+let selectedPrinter = null;
+let uploadedFile = null;
+let currentJob = null;
+let currentPdfDoc = null;
+let selectedPages = new Set();
+let totalPageCount = 0;
+let currentZoomPage = 1;
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadPrinters();
+    setupFileUpload();
+    setupPrintButton();
+    setupPageSelection();
+    setupZoomModal();
+});
+
+// Load printers
+async function loadPrinters() {
+    try {
+        const response = await fetch(`${API_BASE}/printers`);
+        const printers = await response.json();
+
+        const printerList = document.getElementById('printer-list');
+
+        if (printers.length === 0) {
+            printerList.innerHTML = '<div class="loading">Không tìm thấy máy in nào</div>';
+            return;
+        }
+
+        printerList.innerHTML = printers.map(printer => `
+            <div class="printer-item" data-printer='${JSON.stringify(printer)}'>
+                <div class="printer-info">
+                    <span class="printer-icon">🖨️</span>
+                    <div class="printer-details">
+                        <h3>${printer.name}</h3>
+                        <div class="printer-status">
+                            ${printer.isDefault ? '<span class="badge badge-info">Mặc định</span>' : ''}
+                            ${printer.isDuplex ? '<span class="badge badge-success">Hỗ trợ 2 mặt</span>' : '<span class="badge badge-warning">Chỉ 1 mặt</span>'}
+                            ${getStatusBadge(printer.status)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // Add click handlers
+        document.querySelectorAll('.printer-item').forEach(item => {
+            item.addEventListener('click', () => {
+                document.querySelectorAll('.printer-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                selectedPrinter = JSON.parse(item.dataset.printer);
+                updatePrintButton();
+            });
+        });
+
+        // Auto-select default printer
+        const defaultPrinter = printers.find(p => p.isDefault);
+        if (defaultPrinter) {
+            const defaultItem = Array.from(document.querySelectorAll('.printer-item'))
+                .find(item => JSON.parse(item.dataset.printer).name === defaultPrinter.name);
+            defaultItem?.click();
+        }
+    } catch (error) {
+        showToast('Lỗi khi tải danh sách máy in: ' + error.message);
+    }
+}
+
+function getStatusBadge(status) {
+    const statusMap = {
+        3: '<span class="badge badge-success">Sẵn sàng</span>',
+        4: '<span class="badge badge-warning">Đang in</span>',
+        7: '<span class="badge badge-danger">Offline</span>'
+    };
+    return statusMap[status] || '';
+}
+
+// File Upload
+function setupFileUpload() {
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    const fileInfo = document.getElementById('file-info');
+    const removeBtn = document.getElementById('remove-file');
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('drag-over');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('drag-over');
+    });
+
+    uploadArea.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            await uploadFile(files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+        if (e.target.files.length > 0) {
+            await uploadFile(e.target.files[0]);
+        }
+    });
+
+    removeBtn.addEventListener('click', () => {
+        uploadedFile = null;
+        currentPdfDoc = null;
+        selectedPages.clear();
+        totalPageCount = 0;
+        fileInput.value = '';
+        uploadArea.classList.remove('hidden');
+        fileInfo.classList.add('hidden');
+
+        // Hide sidebar if exists
+        const sidebar = document.getElementById('preview-sidebar');
+        if (sidebar) sidebar.style.display = 'none';
+
+        // Remove inline preview if exists
+        const inlinePreview = document.getElementById('inline-preview-section');
+        if (inlinePreview) inlinePreview.remove();
+
+        updatePrintButton();
+    });
+}
+
+async function uploadFile(file) {
+    const allowedTypes = ['.doc', '.docx', '.pdf'];
+    const extension = '.' + file.name.split('.').pop().toLowerCase();
+
+    if (!allowedTypes.includes(extension)) {
+        showToast('Loại file không được hỗ trợ');
+        return;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        document.getElementById('file-status').textContent = 'Đang tải lên...';
+
+        const response = await fetch(`${API_BASE}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            showToast('Lỗi: ' + result.message);
+            return;
+        }
+
+        uploadedFile = {
+            id: result.fileId,
+            name: result.originalFileName,
+            needsConversion: !['.pdf'].includes(extension)
+        };
+
+        // Convert to PDF if needed
+        if (uploadedFile.needsConversion) {
+            document.getElementById('file-status').textContent = 'Đang chuyển đổi sang PDF...';
+
+            await fetch(`${API_BASE}/convert?fileId=${uploadedFile.id}`, {
+                method: 'POST'
+            });
+        }
+
+        // Show file info
+        document.getElementById('file-name').textContent = uploadedFile.name;
+        document.getElementById('file-status').textContent = 'Đã sẵn sàng';
+        document.getElementById('upload-area').classList.add('hidden');
+        document.getElementById('file-info').classList.remove('hidden');
+
+        // Render PDF previews
+        if (extension === '.pdf' || uploadedFile.needsConversion) {
+            await renderPdfPreviews(uploadedFile.id);
+        }
+
+        updatePrintButton();
+        showToast('Tải file thành công!');
+    } catch (error) {
+        showToast('Lỗi khi tải file: ' + error.message);
+    }
+}
+
+// PDF Preview - Works with both old and new HTML
+async function renderPdfPreviews(fileId) {
+    try {
+        // Check if sidebar exists (new HTML)
+        const sidebar = document.getElementById('preview-sidebar');
+        let previewGrid;
+
+        if (sidebar) {
+            // NEW HTML: Use sidebar
+            sidebar.style.display = 'flex';
+            previewGrid = document.getElementById('sidebar-preview-grid');
+        } else {
+            // OLD HTML: Create inline preview section
+            console.warn('Sidebar not found - creating inline preview');
+
+            const existingPreview = document.getElementById('inline-preview-section');
+            if (existingPreview) {
+                previewGrid = document.getElementById('inline-preview-grid');
+            } else {
+                // Create new preview section
+                const fileCard = document.querySelector('#file-info').closest('.card');
+                const previewSection = document.createElement('div');
+                previewSection.id = 'inline-preview-section';
+                previewSection.style.cssText = 'margin-top: 1.5rem; padding: 1.5rem; background: rgba(30,41,59,0.6); border: 1px solid rgba(148,163,184,0.2); border-radius: 12px;';
+
+                const previewTitle = document.createElement('h3');
+                previewTitle.textContent = '📄 Page Preview & Selection';
+                previewTitle.style.cssText = 'margin-bottom: 1rem; font-size: 1.125rem;';
+
+                const previewInfo = document.createElement('div');
+                previewInfo.style.cssText = 'margin-bottom: 1rem; font-size: 0.875rem; color: #94a3b8;';
+                previewInfo.innerHTML = '<span id="inline-page-count">0 trang</span> • <span id="inline-selected">Đã chọn: Tất cả</span>';
+
+                previewGrid = document.createElement('div');
+                previewGrid.id = 'inline-preview-grid';
+                previewGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.75rem; max-height: 400px; overflow-y: auto; padding: 0.5rem;';
+
+                previewSection.appendChild(previewTitle);
+                previewSection.appendChild(previewInfo);
+                previewSection.appendChild(previewGrid);
+                fileCard.appendChild(previewSection);
+            }
+        }
+
+        previewGrid.innerHTML = '<div class="loading">Đang tải preview...</div>';
+
+        // Load PDF
+        const pdfBlob = await fetch(`${API_BASE}/file/${fileId}`).then(r => r.blob());
+        const pdfDataUrl = URL.createObjectURL(pdfBlob);
+
+        const loadingTask = pdfjsLib.getDocument(pdfDataUrl);
+        currentPdfDoc = await loadingTask.promise;
+
+        totalPageCount = currentPdfDoc.numPages;
+        selectedPages.clear();
+
+        // Update displays
+        const sidebarPageCount = document.getElementById('sidebar-page-count');
+        const inlinePageCount = document.getElementById('inline-page-count');
+        if (sidebarPageCount) sidebarPageCount.textContent = `${totalPageCount} trang`;
+        if (inlinePageCount) inlinePageCount.textContent = `${totalPageCount} trang`;
+
+        updateSelectedPagesDisplay();
+
+        previewGrid.innerHTML = '';
+
+        // Render thumbnails
+        for (let pageNum = 1; pageNum <= totalPageCount; pageNum++) {
+            const page = await currentPdfDoc.getPage(pageNum);
+
+            const thumbnailDiv = document.createElement('div');
+            thumbnailDiv.className = 'page-thumbnail selected';
+            thumbnailDiv.dataset.pageNumber = pageNum;
+            thumbnailDiv.style.cssText = 'position: relative; cursor: pointer; border: 2px solid #667eea; border-radius: 8px; background: rgba(100,116,139,0.1); transition: all 0.2s;';
+
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+
+            const viewport = page.getViewport({ scale: sidebar ? 0.5 : 0.4 });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.cssText = 'width: 100% !important; height: auto !important; display: block; border-radius: 6px;';
+
+            await page.render({
+                canvasContext: context,
+                viewport: viewport
+            }).promise;
+
+            const pageLabel = document.createElement('div');
+            pageLabel.style.cssText = 'position: absolute; bottom: 4px; right: 4px; background: rgba(0,0,0,0.8); color: white; padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;';
+            pageLabel.textContent = pageNum;
+
+            thumbnailDiv.appendChild(canvas);
+            thumbnailDiv.appendChild(pageLabel);
+
+            // Click handlers
+            thumbnailDiv.addEventListener('dblclick', () => {
+                if (document.getElementById('page-zoom-modal')) {
+                    openZoomModal(pageNum);
+                }
+            });
+
+            thumbnailDiv.addEventListener('click', (e) => {
+                if (e.detail === 1) {
+                    setTimeout(() => {
+                        if (e.detail === 1) togglePageSelection(pageNum);
+                    }, 200);
+                }
+            });
+
+            previewGrid.appendChild(thumbnailDiv);
+        }
+
+        showToast(`Đã tải ${totalPageCount} trang`);
+    } catch (error) {
+        console.error('Error rendering PDF previews:', error);
+        showToast('Lỗi khi tải preview PDF: ' + error.message);
+    }
+}
+
+// Page Selection
+function setupPageSelection() {
+    const pageRangeInput = document.getElementById('sidebar-page-range') || document.getElementById('page-range-input');
+
+    if (!pageRangeInput) return;
+
+    pageRangeInput.addEventListener('input', (e) => {
+        const rangeText = e.target.value.trim();
+
+        if (!rangeText) {
+            selectedPages.clear();
+            updateThumbnailsSelection();
+            updateSelectedPagesDisplay();
+            return;
+        }
+
+        selectedPages.clear();
+        const parts = rangeText.split(',');
+
+        for (const part of parts) {
+            const trimmed = part.trim();
+            if (trimmed.includes('-')) {
+                const [start, end] = trimmed.split('-').map(s => parseInt(s.trim()));
+                if (!isNaN(start) && !isNaN(end)) {
+                    for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
+                        if (i >= 1 && i <= totalPageCount) {
+                            selectedPages.add(i);
+                        }
+                    }
+                }
+            } else {
+                const pageNum = parseInt(trimmed);
+                if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPageCount) {
+                    selectedPages.add(pageNum);
+                }
+            }
+        }
+
+        updateThumbnailsSelection();
+        updateSelectedPagesDisplay();
+    });
+}
+
+function togglePageSelection(pageNum) {
+    if (selectedPages.has(pageNum)) {
+        selectedPages.delete(pageNum);
+    } else {
+        selectedPages.add(pageNum);
+    }
+
+    updateThumbnailsSelection();
+    updateSelectedPagesDisplay();
+}
+
+function updateThumbnailsSelection() {
+    const thumbnails = document.querySelectorAll('.page-thumbnail');
+    thumbnails.forEach(thumb => {
+        const pageNum = parseInt(thumb.dataset.pageNumber);
+        if (selectedPages.size === 0 || selectedPages.has(pageNum)) {
+            thumb.classList.add('selected');
+            thumb.style.borderColor = '#667eea';
+        } else {
+            thumb.classList.remove('selected');
+            thumb.style.borderColor = 'rgba(148,163,184,0.2)';
+        }
+    });
+}
+
+function updateSelectedPagesDisplay() {
+    const sidebarDisplay = document.getElementById('sidebar-selected-pages');
+    const inlineDisplay = document.getElementById('inline-selected');
+
+    const text = selectedPages.size === 0 ? 'Tất cả' : `${selectedPages.size} trang`;
+
+    if (sidebarDisplay) sidebarDisplay.textContent = text;
+    if (inlineDisplay) inlineDisplay.textContent = selectedPages.size === 0 ? 'Đã chọn: Tất cả' : `Đã chọn: ${text}`;
+}
+
+// Zoom Modal
+function setupZoomModal() {
+    const zoomModal = document.getElementById('page-zoom-modal');
+    if (!zoomModal) return;
+
+    document.getElementById('zoom-modal-close')?.addEventListener('click', closeZoomModal);
+    document.getElementById('zoom-modal-overlay')?.addEventListener('click', closeZoomModal);
+    document.getElementById('zoom-prev')?.addEventListener('click', () => {
+        if (currentZoomPage > 1) renderZoomedPage(currentZoomPage - 1);
+    });
+    document.getElementById('zoom-next')?.addEventListener('click', () => {
+        if (currentZoomPage < totalPageCount) renderZoomedPage(currentZoomPage + 1);
+    });
+
+    document.getElementById('zoom-canvas')?.addEventListener('click', () => {
+        togglePageSelection(currentZoomPage);
+        updateThumbnailsSelection();
+    });
+}
+
+function openZoomModal(pageNum) {
+    const modal = document.getElementById('page-zoom-modal');
+    if (!modal) return;
+
+    modal.classList.remove('hidden');
+    renderZoomedPage(pageNum);
+}
+
+function closeZoomModal() {
+    const modal = document.getElementById('page-zoom-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function renderZoomedPage(pageNum) {
+    try {
+        const page = await currentPdfDoc.getPage(pageNum);
+        const canvas = document.getElementById('zoom-canvas');
+        const context = canvas.getContext('2d');
+
+        const viewport = page.getViewport({ scale: 1.5 });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({
+            canvasContext: context,
+            viewport: viewport
+        }).promise;
+
+        document.getElementById('zoom-page-title').textContent = `Trang ${pageNum}`;
+        document.getElementById('zoom-page-info').textContent = `${pageNum} / ${totalPageCount}`;
+
+        document.getElementById('zoom-prev').disabled = pageNum === 1;
+        document.getElementById('zoom-next').disabled = pageNum === totalPageCount;
+
+        currentZoomPage = pageNum;
+    } catch (error) {
+        console.error('Error rendering zoomed page:', error);
+    }
+}
+
+// Print
+function setupPrintButton() {
+    const printBtn = document.getElementById('print-btn');
+    printBtn.addEventListener('click', startPrint);
+}
+
+function updatePrintButton() {
+    const printBtn = document.getElementById('print-btn');
+    printBtn.disabled = !selectedPrinter || !uploadedFile;
+}
+
+async function startPrint() {
+    if (!selectedPrinter) {
+        showToast('Vui lòng chọn máy in');
+        return;
+    }
+
+    if (!uploadedFile) {
+        showToast('Vui lòng tải lên file cần in');
+        return;
+    }
+
+    const mode = document.querySelector('input[name="print-mode"]:checked').value;
+
+    // Get selected page range
+    let pageRange = null;
+    if (selectedPages.size > 0 && selectedPages.size < totalPageCount) {
+        const pages = Array.from(selectedPages).sort((a, b) => a - b);
+        pageRange = pages.join(',');
+    }
+
+    const printRequest = {
+        fileId: uploadedFile.id,
+        printerName: selectedPrinter.name,
+        mode: mode === 'normal' ? 0 : 1,
+        pageRange: pageRange
+    };
+
+    try {
+        showToast('Đang gửi lệnh in...');
+
+        const response = await fetch(`${API_BASE}/print`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(printRequest)
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            showToast('Lỗi: ' + result.message);
+            return;
+        }
+
+        if (result.jobState && result.jobState.waitingForFlip) {
+            currentJob = result.jobState;
+            showFlipInstructions(result.jobState.instruction);
+            showToast('Đã in mặt lẻ! Vui lòng làm theo hướng dẫn.');
+        } else {
+            showToast('In thành công!');
+        }
+    } catch (error) {
+        showToast('Lỗi khi in: ' + error.message);
+    }
+}
+
+// Manual Duplex Instructions
+function showFlipInstructions(instruction) {
+    const modal = document.getElementById('flip-modal');
+    const instructionText = document.getElementById('instruction-text');
+    const instructionVisual = document.getElementById('instruction-visual');
+
+    instructionText.textContent = "Xoay giấy 180 độ (giữ nguyên mặt, xoay trên mặt phẳng)";
+
+    const svg = generateFlipAnimation();
+    instructionVisual.innerHTML = svg;
+
+    modal.classList.remove('hidden');
+
+    document.getElementById('continue-btn').onclick = async () => {
+        await continuePrint();
+        modal.classList.add('hidden');
+    };
+}
+
+function generateFlipAnimation() {
+    return `
+        <svg width="300" height="200" viewBox="0 0 300 200" style="margin: 0 auto;">
+            <defs>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#667eea" />
+                </marker>
+            </defs>
+            
+            <rect x="100" y="50" width="100" height="140" 
+                  fill="white" 
+                  stroke="#667eea" 
+                  stroke-width="2" 
+                  rx="2" />
+            
+            <text x="150" y="80" font-size="20" text-anchor="middle" fill="#cbd5e1">ABC</text>
+            
+            <path d="M 230 100 A 50 50 0 1 1 230 140" 
+                  stroke="#667eea" 
+                  stroke-width="4" 
+                  fill="none" 
+                  marker-end="url(#arrowhead)"
+                  transform="translate(-80, -20)"/>
+                  
+            <text x="150" y="180" font-size="16" text-anchor="middle" fill="#667eea" font-weight="bold">
+                ↻ Xoay 180°
+            </text>
+        </svg>
+    `;
+}
+
+async function continuePrint() {
+    try {
+        showToast('Đang in mặt chẵn...');
+
+        const response = await fetch(`${API_BASE}/print/continue?jobId=${currentJob.jobId}`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('In hoàn tất!');
+            currentJob = null;
+        } else {
+            showToast('Lỗi: ' + result.message);
+        }
+    } catch (error) {
+        showToast('Lỗi khi tiếp tục in: ' + error.message);
+    }
+}
+
+// Toast
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toast-message');
+
+    toastMessage.textContent = message;
+    toast.classList.remove('hidden');
+
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, 3000);
+}
