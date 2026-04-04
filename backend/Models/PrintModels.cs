@@ -34,6 +34,12 @@ namespace PrinterApp.Models
         public int Copies { get; set; } = 1;
         public bool Collate { get; set; } = true;
         public WatermarkOptions? Watermark { get; set; } // null = no watermark
+        /// <summary>
+        /// Optional explicit page order. If provided, pages are printed in this order
+        /// rather than the natural document order. Each value is a 1-based page number.
+        /// Example: [3, 1, 2] prints page 3 first, then 1, then 2.
+        /// </summary>
+        public int[]? PageOrder { get; set; }
     }
 
     public class WatermarkOptions

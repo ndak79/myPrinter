@@ -26,7 +26,8 @@ public class PrintAlgorithmService
     bool isDuplexPrinter,
     string? pageRange = null,
     int[]? singleSidedPages = null,
-    WatermarkOptions? watermark = null)
+    WatermarkOptions? watermark = null,
+    int[]? pageOrder = null)
     {
         // Apply watermark if requested
         if (watermark != null)
@@ -53,20 +54,27 @@ public class PrintAlgorithmService
             // ==========================
             Console.WriteLine("[CreateNormalDuplexJob] Auto duplex printer detected.");
 
+            int[] selectedPages;
             if (!string.IsNullOrWhiteSpace(pageRange))
             {
-                var selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
+                selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
                 if (selectedPages.Length == 0)
                     throw new InvalidOperationException($"Page range '{pageRange}' khong hop le hoac khong co trang nao.");
+            }
+            else
+            {
+                selectedPages = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
+            }
 
-                if (selectedPages.Length < pdfInfo.PageCount)
-                {
-                    Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex with pageRange: {pageRange}. Creating subset PDF.");
-                    var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
-                    _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
-                    jobState.TempPdfPath = subsetPath;
-                    Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex subset created: {subsetPath}");
-                }
+            // Apply custom page order if provided (I)
+            selectedPages = ApplyPageOrder(selectedPages, pageOrder);
+
+            if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
+            {
+                Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex creating subset for pages: {string.Join(",", selectedPages)}");
+                var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
+                jobState.TempPdfPath = subsetPath;
             }
 
             jobState.WaitingForFlip = false;
@@ -82,7 +90,7 @@ public class PrintAlgorithmService
         int[] effectiveSingleSidedPages = singleSidedPages ?? Array.Empty<int>();
         int[] pagesToPrint;
 
-        // 1) XỬ LÝ PAGE RANGE + TẠO SUBSET NẾU CẦN
+        // 1) XỬ LÝ PAGE RANGE + PAGE ORDER + TẠO SUBSET NẾU CẦN
         if (!string.IsNullOrWhiteSpace(pageRange))
         {
             // Parse range → danh sách trang gốc (ví dụ 3,4,5)
@@ -92,54 +100,50 @@ public class PrintAlgorithmService
             {
                 throw new InvalidOperationException($"[CreateNormalDuplexJob] Page range '{pageRange}' không hợp lệ hoặc không có trang nào.");
             }
-
-            // Nếu range không cover toàn bộ tài liệu → tạo subset PDF
-            if (pagesToPrint.Length < pdfInfo.PageCount)
-            {
-                Console.WriteLine($"[CreateNormalDuplexJob] Page range active: {string.Join(",", pagesToPrint)}. Creating subset PDF.");
-                var subsetPath = Path.Combine(Path.GetTempPath(), $"subset_{Guid.NewGuid()}.pdf");
-
-                // Tạo subset: chỉ chứa các trang được chọn (theo thứ tự pagesToPrint)
-                _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint);
-                workingPdfPath = subsetPath;
-
-                // Cập nhật lại info theo subset
-                pdfInfo = _wordService.GetPdfInfo(workingPdfPath);
-
-                // REMAP Single-Sided Pages:
-                //  - Trang gốc: pagesToPrint[] (ví dụ [3,4,5])
-                //  - Subset: 1..N, tương ứng với pagesToPrint[i]
-                //  ⇒ SingleSidedPages mới phải là index trong subset.
-                if (effectiveSingleSidedPages.Length > 0)
-                {
-                    var originalSingleSidedSet = new HashSet<int>(effectiveSingleSidedPages);
-                    var newSingleSidedList = new List<int>();
-
-                    for (int i = 0; i < pagesToPrint.Length; i++)
-                    {
-                        int originalPageNum = pagesToPrint[i];
-                        if (originalSingleSidedSet.Contains(originalPageNum))
-                        {
-                            newSingleSidedList.Add(i + 1); // map sang index 1-based trong subset
-                        }
-                    }
-
-                    effectiveSingleSidedPages = newSingleSidedList.ToArray();
-                    Console.WriteLine($"[CreateNormalDuplexJob] Remapped single-sided pages (subset): [{string.Join(",", effectiveSingleSidedPages)}]");
-                }
-
-                // Sau khi đã tạo subset, pagesToPrint tương ứng 1..N trong subset
-                pagesToPrint = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
-            }
-            else
-            {
-                // Range cover toàn bộ → cứ coi như 1..N cho workingPdfPath gốc
-                pagesToPrint = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
-            }
         }
         else
         {
             // Không có pageRange → in toàn bộ
+            pagesToPrint = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
+        }
+
+        // Apply custom page order if provided (I)
+        pagesToPrint = ApplyPageOrder(pagesToPrint, pageOrder);
+
+        // Create subset if pages need reordering or filtering
+        var naturalOrder = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
+        if (!pagesToPrint.SequenceEqual(naturalOrder))
+        {
+            Console.WriteLine($"[CreateNormalDuplexJob] Creating subset PDF for pages: {string.Join(",", pagesToPrint)}");
+            var subsetPath = Path.Combine(Path.GetTempPath(), $"subset_{Guid.NewGuid()}.pdf");
+
+            _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint);
+            workingPdfPath = subsetPath;
+
+            pdfInfo = _wordService.GetPdfInfo(workingPdfPath);
+
+            // REMAP Single-Sided Pages:
+            //  - Trang gốc: pagesToPrint[] (ví dụ [3,4,5])
+            //  - Subset: 1..N, tương ứng với pagesToPrint[i]
+            //  ⇒ SingleSidedPages mới phải là index trong subset.
+            if (effectiveSingleSidedPages.Length > 0)
+            {
+                var originalSingleSidedSet = new HashSet<int>(effectiveSingleSidedPages);
+                var newSingleSidedList = new List<int>();
+
+                for (int i = 0; i < pagesToPrint.Length; i++)
+                {
+                    int originalPageNum = pagesToPrint[i];
+                    if (originalSingleSidedSet.Contains(originalPageNum))
+                    {
+                        newSingleSidedList.Add(i + 1); // map sang index 1-based trong subset
+                    }
+                }
+
+                effectiveSingleSidedPages = newSingleSidedList.ToArray();
+                Console.WriteLine($"[CreateNormalDuplexJob] Remapped single-sided pages (subset): [{string.Join(",", effectiveSingleSidedPages)}]");
+            }
+
             pagesToPrint = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
         }
 
@@ -194,16 +198,27 @@ public class PrintAlgorithmService
     }
 
 
-    public PrintJobState CreateBookletJob(string pdfPath, string printerName, bool isDuplexPrinter, string? pageRange = null, int[]? singleSidedPages = null)
+    public PrintJobState CreateBookletJob(string pdfPath, string printerName, bool isDuplexPrinter, string? pageRange = null, int[]? singleSidedPages = null, int[]? pageOrder = null)
     {
         // If page range is specified, create a temp PDF with only those pages first
         string sourcePdfPath = pdfPath;
+        var pdfInfo = _wordService.GetPdfInfo(pdfPath);
+        int[] selectedPages;
+
         if (!string.IsNullOrWhiteSpace(pageRange))
         {
-            var pdfInfo = _wordService.GetPdfInfo(pdfPath);
-            var selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
-            
-            // Create temp PDF with selected pages only
+            selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
+        }
+        else
+        {
+            selectedPages = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
+        }
+
+        // Apply custom page order if provided (I)
+        selectedPages = ApplyPageOrder(selectedPages, pageOrder);
+
+        if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
+        {
             var tempSelectedPdf = Path.Combine(Path.GetTempPath(), $"selected_{Guid.NewGuid()}.pdf");
             _wordService.CreatePdfSubset(pdfPath, tempSelectedPdf, selectedPages);
             sourcePdfPath = tempSelectedPdf;
@@ -227,7 +242,8 @@ public class PrintAlgorithmService
         string pdfPath,
         string printerName,
         string? pageRange = null,
-        WatermarkOptions? watermark = null)
+        WatermarkOptions? watermark = null,
+        int[]? pageOrder = null)
     {
         Console.WriteLine("[CreateSimplexJob] Single-sided print.");
 
@@ -241,19 +257,27 @@ public class PrintAlgorithmService
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
         string workingPdfPath = pdfPath;
 
+        int[] selectedPages;
         if (!string.IsNullOrWhiteSpace(pageRange))
         {
-            var selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
+            selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
             if (selectedPages.Length == 0)
                 throw new InvalidOperationException($"Page range '{pageRange}' is invalid.");
+        }
+        else
+        {
+            selectedPages = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
+        }
 
-            if (selectedPages.Length < pdfInfo.PageCount)
-            {
-                var subsetPath = Path.Combine(Path.GetTempPath(), $"simplex_subset_{Guid.NewGuid()}.pdf");
-                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
-                workingPdfPath = subsetPath;
-                Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");
-            }
+        // Apply custom page order if provided (I)
+        selectedPages = ApplyPageOrder(selectedPages, pageOrder);
+
+        if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
+        {
+            var subsetPath = Path.Combine(Path.GetTempPath(), $"simplex_subset_{Guid.NewGuid()}.pdf");
+            _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
+            workingPdfPath = subsetPath;
+            Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");
         }
 
         return new PrintJobState
@@ -442,6 +466,24 @@ public class PrintAlgorithmService
         }
 
         return pages.OrderBy(p => p).ToArray();
+    }
+
+    /// <summary>
+    /// Reorder selected pages according to a custom page order (I — drag-to-reorder).
+    /// Pages in pageOrder that exist in selectedPages are placed first (in order),
+    /// then any remaining selected pages not in pageOrder are appended at the end.
+    /// </summary>
+    internal static int[] ApplyPageOrder(int[] selectedPages, int[]? pageOrder)
+    {
+        if (pageOrder == null || pageOrder.Length == 0)
+            return selectedPages;
+
+        var selectedSet = new HashSet<int>(selectedPages);
+        var reordered = pageOrder.Where(p => selectedSet.Contains(p)).ToList();
+        // Add any selected pages not in pageOrder at the end (safety)
+        foreach (var p in selectedPages.Where(p => !reordered.Contains(p)))
+            reordered.Add(p);
+        return reordered.ToArray();
     }
 
     private string GenerateFlipInstructionText(FlipDirection direction, int pageCount)
