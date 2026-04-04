@@ -603,6 +603,44 @@ const ContextMenu = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// CopiesModule — Copies counter + collate toggle
+// ═══════════════════════════════════════════════════════════════════
+const CopiesModule = {
+    _copies: 1,
+    _collate: true,
+
+    get copies() { return this._copies; },
+    get collate() { return this._collate; },
+
+    init() {
+        const dec = document.getElementById('copies-dec');
+        const inc = document.getElementById('copies-inc');
+        const chk = document.getElementById('collate-check');
+        if (!dec || !inc) return;
+
+        dec.addEventListener('click', () => {
+            if (this._copies > 1) { this._copies--; this._update(); }
+        });
+        inc.addEventListener('click', () => {
+            if (this._copies < 99) { this._copies++; this._update(); }
+        });
+        chk?.addEventListener('change', (e) => {
+            this._collate = e.target.checked;
+        });
+    },
+
+    _update() {
+        const el = document.getElementById('copies-display');
+        if (el) el.textContent = this._copies;
+        // Show collate option only when copies > 1
+        const collateLabel = document.getElementById('collate-label');
+        if (collateLabel) collateLabel.style.display = this._copies > 1 ? 'flex' : 'none';
+    },
+
+    reset() { this._copies = 1; this._collate = true; this._update(); },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // PrintModule — Print command, flip instructions, continue print
 // ═══════════════════════════════════════════════════════════════════
 const PrintModule = {
@@ -637,6 +675,8 @@ const PrintModule = {
             mode:             mode === 'normal' ? 0 : 1,
             pageRange,
             singleSidedPages: AppState.singleSidedPages.size > 0 ? Array.from(AppState.singleSidedPages) : null,
+            copies:           CopiesModule.copies,
+            collate:          CopiesModule.collate,
         };
 
         try {
@@ -698,4 +738,5 @@ document.addEventListener('DOMContentLoaded', () => {
     ZoomModal.init();
     ContextMenu.init();
     PrintModule.init();
+    CopiesModule.init();
 });

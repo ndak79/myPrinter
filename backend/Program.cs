@@ -291,8 +291,26 @@ app.MapPost("/api/print", (
         }
 
         // Execute first phase
-        Console.WriteLine($"[PRINT] Executing print job, manual duplex: {jobState.IsManualDuplex}...");
-        printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
+        int copies = Math.Max(1, request.Copies);
+        Console.WriteLine($"[PRINT] Executing print job, manual duplex: {jobState.IsManualDuplex}, copies: {copies}");
+
+        if (!jobState.IsManualDuplex)
+        {
+            // Auto duplex / simplex: print N copies directly
+            for (int copy = 0; copy < copies; copy++)
+            {
+                Console.WriteLine($"[PRINT] Printing copy {copy + 1}/{copies}");
+                printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
+                if (copies > 1 && copy < copies - 1)
+                    System.Threading.Thread.Sleep(2000);
+            }
+        }
+        else
+        {
+            // Manual duplex: phase1 only here, store copies count
+            printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
+            jobState.Copies = copies;
+        }
 
         // Store job state for potential continuation
         sessions.AddJob(jobState.JobId, jobState);

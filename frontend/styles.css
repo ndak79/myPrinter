@@ -1026,3 +1026,33 @@ body {
 #deselect-all-btn:hover {
     box-shadow: 0 4px 12px rgba(100, 116, 139, 0.4);
 }
+
+/* ── Copies Control ──────────────────────────────────── */
+.copies-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+.copies-label { color: var(--text-secondary); font-size: 14px; }
+.copies-control { display: flex; align-items: center; gap: 8px; }
+.copies-btn {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--bg-card); border: 1px solid var(--border-color);
+  color: var(--text-primary); font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s;
+}
+.copies-btn:hover { border-color: #667eea; }
+.copies-val {
+  font-size: 15px; font-weight: 600;
+  min-width: 24px; text-align: center; color: var(--text-primary);
+}
+.collate-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-secondary); cursor: pointer;
+}

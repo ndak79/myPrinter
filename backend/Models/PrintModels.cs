@@ -29,6 +29,8 @@ namespace PrinterApp.Models
         public PrintMode Mode { get; set; }
         public string? PageRange { get; set; } // e.g. "1-3,5,7-9" or null for all pages
         public int[]? SingleSidedPages { get; set; } // Pages that should be printed single-sided
+        public int Copies { get; set; } = 1;
+        public bool Collate { get; set; } = true;
     }
 
     public enum PrintMode
@@ -71,6 +73,7 @@ namespace PrinterApp.Models
         public string TempPdfPath { get; set; } = "";
 
         public string PrinterName { get; set; } = "";
+        public int Copies { get; set; } = 1;
 
         /// <summary>
         /// Kế hoạch manual duplex đầy đủ (mapping sheet / front / back / phase1 / phase2).
