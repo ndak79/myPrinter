@@ -336,7 +336,12 @@ const PreviewModule = {
         if (!sidebar || !grid) return;
 
         sidebar.style.display = 'flex';
-        grid.innerHTML = '<div class="loading">Dang tai preview...</div>';
+        grid.innerHTML = `
+            <div class="skeleton skeleton-thumb"></div>
+            <div class="skeleton skeleton-thumb"></div>
+            <div class="skeleton skeleton-thumb"></div>
+            <div class="skeleton skeleton-thumb"></div>
+        `;
 
         try {
             const blob     = await fetch(`${API_BASE}/file/${fileId}`).then(r => r.blob());
