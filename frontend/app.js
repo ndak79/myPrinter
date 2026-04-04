@@ -186,7 +186,8 @@ const PrinterModule = {
             
             this.startPolling();
         } catch (err) {
-            showToast('Loi khi tai danh sach may in: ' + err.message, 'error');
+            const card = document.getElementById('printer-list')?.closest('.card');
+            showCardError(card, `Lỗi tải danh sách máy in: ${err.message}`, () => PrinterModule.init());
         }
     },
 
@@ -255,6 +256,8 @@ const UploadModule = {
             showToast('Loai file khong duoc ho tro', 'error');
             return;
         }
+        const uploadCard = document.getElementById('upload-area')?.closest('.card');
+        if (uploadCard) clearCardError(uploadCard);
         try {
             const formData = new FormData();
             formData.append('file', file);
@@ -310,6 +313,8 @@ const UploadModule = {
             StepIndicatorModule.update();
             SRModule.announce(`Đã tải file ${AppState.uploadedFile.name}, ${AppState.totalPageCount} trang`);
         } catch (err) {
+            const card = document.getElementById('upload-area')?.closest('.card');
+            showCardError(card, `Lỗi khi tải file: ${err.message}`, () => document.getElementById('file-input')?.click());
             showToast('Loi khi tai file: ' + err.message, 'error');
         }
     },
@@ -997,6 +1002,8 @@ const PrintModule = {
             }
         } catch (err) {
             showToast('Loi khi in: ' + err.message, 'error');
+            const actionSec = document.querySelector('.action-section') || document.getElementById('print-btn')?.closest('.card');
+            showCardError(actionSec, `Lệnh in thất bại: ${err.message}`, () => document.getElementById('print-btn')?.click());
             btn.disabled = false;
             btn.textContent = originalText;
             btn.style.opacity = '';
@@ -1206,6 +1213,35 @@ const StepIndicatorModule = {
         }
     },
 };
+
+// ─── Inline error helper (D) ─────────────────────────────────────
+function showCardError(cardEl, message, retryFn) {
+    if (!cardEl) return;
+    cardEl.classList.add('error');
+    // Remove previous error if any
+    cardEl.querySelector('.card-error-message')?.remove();
+    const errEl = document.createElement('div');
+    errEl.className = 'card-error-message';
+    errEl.innerHTML = `
+        <span class="error-icon">⚠️</span>
+        <span class="error-text">${message}</span>
+        ${retryFn ? '<button class="card-error-retry">Thử lại</button>' : ''}
+    `;
+    if (retryFn) {
+        errEl.querySelector('.card-error-retry').addEventListener('click', () => {
+            clearCardError(cardEl);
+            retryFn();
+        });
+    }
+    const body = cardEl.querySelector('.card-body') || cardEl;
+    body.appendChild(errEl);
+}
+
+function clearCardError(cardEl) {
+    if (!cardEl) return;
+    cardEl.classList.remove('error');
+    cardEl.querySelector('.card-error-message')?.remove();
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
