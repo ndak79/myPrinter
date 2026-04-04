@@ -753,6 +753,14 @@ const HistoryModule = {
         this._render();
     },
 
+    removeItem(index) {
+        const items = this._load();
+        items.splice(index, 1);
+        this._save(items);
+        this._render();
+        showToast('Đã xóa mục lịch sử', 'info');
+    },
+
     _render() {
         const container = document.getElementById('history-list');
         if (!container) return;
@@ -762,13 +770,33 @@ const HistoryModule = {
             return;
         }
         const modeLabel = { normal: '2 mặt', booklet: 'Sách A5', simplex: '1 mặt' };
-        container.innerHTML = items.map(item => `
+        container.innerHTML = items.map((item, idx) => `
             <div class="history-item">
+                <div class="history-item-actions">
+                    <button class="history-action-btn history-reprint-btn" data-idx="${idx}" title="In lại">🔁</button>
+                    <button class="history-action-btn" data-delete="${idx}" title="Xóa">✕</button>
+                </div>
                 <div class="history-file">📄 ${item.file}</div>
                 <div class="history-meta">🖨️ ${item.printer} · ${item.pages} trang · ${modeLabel[item.mode] || item.mode} · ${item.copies} bản</div>
                 <div class="history-time">${item.time}</div>
             </div>
         `).join('');
+
+        // Attach delete handlers
+        container.querySelectorAll('[data-delete]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.removeItem(parseInt(btn.dataset.delete));
+            });
+        });
+
+        // Attach reprint handlers (Task E)
+        container.querySelectorAll('.history-reprint-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._reprint(parseInt(btn.dataset.idx));
+            });
+        });
     },
 };
 

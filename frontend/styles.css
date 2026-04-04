@@ -1263,8 +1263,62 @@ input[name="print-mode"]:checked + .mode-card .mode-icon {
 }
 .history-panel::-webkit-scrollbar { width: 4px; }
 .history-panel::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
-.history-item { padding: 10px 0; border-bottom: 1px solid var(--border-color); }
-.history-item:last-child { border-bottom: none; }
+
+/* ── Per-item History Delete (4) ───────────────────────────── */
+.history-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: rgba(100, 116, 139, 0.1);
+    border: 1px solid var(--border-color);
+    transition: background 0.15s;
+}
+
+.history-item:hover {
+    background: rgba(100, 116, 139, 0.15);
+}
+
+.history-item-actions {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.history-item:hover .history-item-actions {
+    opacity: 1;
+}
+
+.history-action-btn {
+    background: rgba(100, 116, 139, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.2rem 0.45rem;
+    transition: all 0.15s;
+    line-height: 1.4;
+}
+
+.history-action-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.history-reprint-btn:hover {
+    background: rgba(102, 126, 234, 0.15);
+    border-color: rgba(102, 126, 234, 0.4);
+    color: #667eea;
+}
+
 .history-file { font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 3px; }
 .history-meta { font-size: 12px; color: var(--text-secondary); margin-bottom: 2px; }
 .history-time { font-size: 11px; color: var(--text-muted); }
