@@ -123,7 +123,7 @@ const PrinterModule = {
             }
 
             list.innerHTML = printers.map(p => `
-                <div class="printer-item" data-printer='${JSON.stringify(p)}'>
+                <div class="printer-item" data-printer='${JSON.stringify(p)}' data-name="${p.name.replace(/"/g, '&quot;')}">
                     <div class="printer-info">
                         <span class="printer-icon">🖨️</span>
                         <div class="printer-details">
@@ -155,9 +155,36 @@ const PrinterModule = {
                     .find(el => JSON.parse(el.dataset.printer).name === def.name);
                 defItem?.click();
             }
+            
+            this.startPolling();
         } catch (err) {
             showToast('Loi khi tai danh sach may in: ' + err.message, 'error');
         }
+    },
+
+    startPolling() {
+        setInterval(async () => {
+            try {
+                const res = await fetch(`${API_BASE}/printers`);
+                if (!res.ok) return;
+                const printers = await res.json();
+                printers.forEach(p => {
+                    const safeName = p.name.replace(/"/g, '&quot;');
+                    const card = document.querySelector(`.printer-item[data-name="${safeName}"]`);
+                    if (!card) return;
+                    const badge = card.querySelector('.printer-status');
+                    if (badge) {
+                        badge.innerHTML = `
+                            ${p.isDefault ? '<span class="badge badge-info">Mac dinh</span>' : ''}
+                            ${p.isDuplex
+                                ? '<span class="badge badge-success">Ho tro 2 mat</span>'
+                                : '<span class="badge badge-warning">Chi 1 mat</span>'}
+                            ${this._statusBadge(p.status)}
+                        `;
+                    }
+                });
+            } catch { /* silently ignore poll failures */ }
+        }, 30_000);
     },
 
     _statusBadge(status) {
@@ -774,6 +801,12 @@ const PrintModule = {
         if (!AppState.uploadedFile)    { showToast('Vui long tai len file can in', 'error'); return; }
         if (AppState.selectedPages.size === 0) { showToast('Vui long chon it nhat 1 trang de in', 'error'); return; }
 
+        const btn = document.getElementById('print-btn');
+        const originalText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳ Đang gửi lệnh in...';
+        btn.style.opacity = '0.8';
+
         const mode  = document.querySelector('input[name="print-mode"]:checked').value;
         const total = AppState.totalPageCount;
         const sel   = AppState.selectedPages;
@@ -795,16 +828,39 @@ const PrintModule = {
             showToast('Dang gui lenh in...', 'info');
             const res    = await fetch(`${API_BASE}/print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const result = await res.json();
-            if (!result.success) { showToast('Loi: ' + result.message, 'error'); return; }
+            if (!result.success) { 
+                showToast('Loi: ' + result.message, 'error'); 
+                btn.disabled = false;
+                btn.textContent = originalText;
+                btn.style.opacity = '';
+                return; 
+            }
             if (result.jobState?.waitingForFlip) {
                 AppState.currentJob = result.jobState;
                 this._showFlipModal(result.jobState.instruction);
                 showToast('Da in mat le! Vui long lam theo huong dan.', 'info');
+                btn.disabled = false;
+                btn.textContent = originalText;
+                btn.style.opacity = '';
             } else {
-                showToast('In thanh cong!', 'success');
+                // SUCCESS: flash button green
+                btn.textContent = '✓ Đã gửi lệnh in!';
+                btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+                btn.style.opacity = '1';
+                showToast('In thành công!', 'success');
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.style.opacity = '';
+                    PrintModule.updateButton();
+                }, 2000);
             }
         } catch (err) {
             showToast('Loi khi in: ' + err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = originalText;
+            btn.style.opacity = '';
         }
     },
 
