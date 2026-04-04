@@ -214,11 +214,14 @@ const PrinterModule = {
     },
 
     _statusBadge(status) {
-        return {
-            3: '<span class="badge badge-success">San sang</span>',
-            4: '<span class="badge badge-warning">Dang in</span>',
-            7: '<span class="badge badge-danger">Offline</span>',
-        }[status] ?? '';
+        const map = {
+            3: { cls: 'online',  label: 'Sẵn sàng' },
+            4: { cls: 'busy',    label: 'Đang in' },
+            7: { cls: 'offline', label: 'Offline' },
+        };
+        const s = map[status];
+        if (!s) return '<span class="printer-status-dot unknown"></span>';
+        return `<span class="printer-status-dot ${s.cls}"></span><span class="badge badge-${s.cls === 'online' ? 'success' : s.cls === 'busy' ? 'warning' : 'danger'}">${s.label}</span>`;
     },
 };
 
