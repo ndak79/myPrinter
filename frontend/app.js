@@ -930,6 +930,10 @@ const PrintModule = {
         if (!AppState.uploadedFile)    { showToast('Vui long tai len file can in', 'error'); return; }
         if (AppState.selectedPages.size === 0) { showToast('Vui long chon it nhat 1 trang de in', 'error'); return; }
 
+        // Show confirmation dialog (7)
+        const confirmed = await ConfirmPrintModal.show();
+        if (!confirmed) return;
+
         const btn = document.getElementById('print-btn');
         const originalText = btn.textContent;
         btn.disabled = true;
@@ -1246,6 +1250,105 @@ function clearCardError(cardEl) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// ConfirmPrintModal — Summary before sending print job (7)
+// ═══════════════════════════════════════════════════════════════════
+const ConfirmPrintModal = {
+    _resolve: null,
+
+    init() {
+        document.getElementById('confirm-modal-close')?.addEventListener('click',  () => this._close(false));
+        document.getElementById('confirm-modal-overlay')?.addEventListener('click', () => this._close(false));
+        document.getElementById('confirm-print-cancel-btn')?.addEventListener('click', () => this._close(false));
+        document.getElementById('confirm-print-ok-btn')?.addEventListener('click',    () => this._close(true));
+
+        document.addEventListener('keydown', e => {
+            const modal = document.getElementById('confirm-print-modal');
+            if (modal?.classList.contains('hidden')) return;
+            if (e.key === 'Escape') this._close(false);
+            if (e.key === 'Enter')  { e.preventDefault(); this._close(true); }
+        });
+    },
+
+    // Returns a Promise<boolean>: true if user confirmed, false if cancelled
+    show() {
+        return new Promise(resolve => {
+            this._resolve = resolve;
+            this._populate();
+            document.getElementById('confirm-print-modal')?.classList.remove('hidden');
+            document.getElementById('confirm-print-ok-btn')?.focus();
+        });
+    },
+
+    _close(confirmed) {
+        document.getElementById('confirm-print-modal')?.classList.add('hidden');
+        if (this._resolve) { this._resolve(confirmed); this._resolve = null; }
+    },
+
+    _populate() {
+        const container = document.getElementById('confirm-print-summary');
+        if (!container) return;
+
+        const mode    = document.querySelector('input[name="print-mode"]:checked')?.value || 'normal';
+        const pages   = AppState.selectedPages.size;
+        const copies  = CopiesModule?.copies || 1;
+        const printer = AppState.selectedPrinter;
+        const modeLabel = { normal: 'In 2 Mặt Thường', booklet: 'Sách A5 (Booklet)', simplex: 'In 1 Mặt' };
+
+        let sheets;
+        if (mode === 'simplex') {
+            sheets = pages * copies;
+        } else if (mode === 'booklet') {
+            sheets = Math.ceil(pages / 4) * copies;
+        } else {
+            const singleSided = AppState.singleSidedPages.size;
+            sheets = (Math.ceil((pages - singleSided) / 2) + singleSided) * copies;
+        }
+
+        const totalSec = sheets * 15;
+        const timeStr  = totalSec < 60 ? '< 1 phút'
+            : `~${Math.ceil(totalSec / 60)} phút`;
+
+        const sel = Array.from(AppState.selectedPages).sort((a,b)=>a-b);
+        const rangeStr = sel.length === AppState.totalPageCount
+            ? 'Tất cả'
+            : sel.join(', ').replace(/,\s/g, ', ');
+
+        container.innerHTML = `
+            <div class="confirm-row">
+                <span class="confirm-row-icon">📄</span>
+                <span class="confirm-row-label">File:</span>
+                <span class="confirm-row-value">${AppState.uploadedFile?.name || '—'}</span>
+            </div>
+            <div class="confirm-row">
+                <span class="confirm-row-icon">🖨️</span>
+                <span class="confirm-row-label">Máy in:</span>
+                <span class="confirm-row-value">${printer?.name || '—'}</span>
+            </div>
+            <div class="confirm-row">
+                <span class="confirm-row-icon">📋</span>
+                <span class="confirm-row-label">Chế độ:</span>
+                <span class="confirm-row-value">${modeLabel[mode] || mode}</span>
+            </div>
+            <div class="confirm-row">
+                <span class="confirm-row-icon">📖</span>
+                <span class="confirm-row-label">Trang:</span>
+                <span class="confirm-row-value">${pages} trang (${rangeStr})</span>
+            </div>
+            <div class="confirm-row highlight">
+                <span class="confirm-row-icon">🗒️</span>
+                <span class="confirm-row-label">Số tờ:</span>
+                <span class="confirm-row-value">${sheets} tờ × ${copies} bản</span>
+            </div>
+            <div class="confirm-row">
+                <span class="confirm-row-icon">⏱️</span>
+                <span class="confirm-row-label">Thời gian:</span>
+                <span class="confirm-row-value">${timeStr}</span>
+            </div>
+        `;
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
 // ═══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -1259,6 +1362,7 @@ document.addEventListener('DOMContentLoaded', () => {
     CopiesModule.init();
     HistoryModule.init();
     KeyboardModule.init();
+    ConfirmPrintModal.init();
     SummaryModule.update();
     StepIndicatorModule.update();
 });

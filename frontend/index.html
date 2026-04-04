@@ -308,6 +308,24 @@
     <div id="toast-container" class="toast-container"></div>
     <div id="sr-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
 
+    <!-- Print Confirmation Modal (7) -->
+    <div id="confirm-print-modal" class="modal hidden">
+        <div class="modal-overlay" id="confirm-modal-overlay"></div>
+        <div class="modal-content modal-confirm">
+            <div class="modal-header">
+                <h2>🖨️ Xác Nhận Lệnh In</h2>
+                <button class="modal-close" id="confirm-modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="confirm-print-summary" class="confirm-print-summary"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirm-print-cancel-btn" class="btn-outline">Huỷ</button>
+                <button id="confirm-print-ok-btn" class="btn-primary">✓ Xác Nhận In</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 
