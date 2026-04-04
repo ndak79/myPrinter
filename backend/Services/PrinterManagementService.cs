@@ -48,12 +48,21 @@ public class PrinterManagementService
                 var status = MapPrinterStatus(statusValue, workOffline);
                 bool isDuplex = HasDuplexCapability(name, capabilities);
 
+                // Color heuristic: WMI capability 4 = color (note: code 4 also means duplex short-edge in some drivers,
+                // so we combine with name heuristic)
+                bool supportsColor = (capabilities != null && capabilities.Contains((UInt16)4)) ||
+                                     name.ToLowerInvariant().Contains("color") ||
+                                     name.ToLowerInvariant().Contains("colour") ||
+                                     System.Text.RegularExpressions.Regex.IsMatch(name, @"[Cc]\d{3,4}");
+
                 printers.Add(new PrinterInfo
                 {
                     Name = name,
                     IsDefault = isDefault,
                     Status = status,
-                    IsDuplex = isDuplex
+                    IsDuplex = isDuplex,
+                    SupportsColor = supportsColor,
+                    PortName = portName ?? "",
                 });
             }
 
@@ -96,35 +105,29 @@ public class PrinterManagementService
 
     private bool HasDuplexCapability(string name, UInt16[]? capabilities)
     {
-        var loweredName = name.ToLowerInvariant();
-        Console.WriteLine($"Checking duplex capability for printer: {name}");
+        Console.WriteLine($"[HasDuplexCapability] Checking: {name}");
 
-        // IMPORTANT: Check known single-sided printers FIRST antes de confiar en capabilities
-        // Capabilities array puede tener valores que no significan duplex real
-        if (loweredName.Contains("hp laser 107") ||
-            loweredName.Contains("hp laser 108") ||
-            loweredName.Contains("lbp2900") ||
-            loweredName.Contains("lbp 2900"))
+        if (capabilities == null || capabilities.Length == 0)
         {
-            Console.WriteLine($"  Duplex: FALSE - Known single-sided printer (name: {name})");
+            Console.WriteLine("  No capabilities data — assuming single-sided");
             return false;
         }
 
-        if (capabilities == null)
-        {
-            Console.WriteLine("  Duplex: false (no capabilities)");
-            return false;
-        }
+        Console.WriteLine($"  Capabilities: [{string.Join(", ", capabilities)}]");
 
-        // Log capabilities for debugging
-        Console.WriteLine($"  Capabilities array: [{string.Join(", ", capabilities)}]");
-
-        // Capability values:
-        // 3 = Can print duplex vertically  
-        // 4 = Can print duplex horizontally
+        // WMI capability codes: 3 = duplex long edge, 4 = duplex short edge
         bool hasDuplex = capabilities.Contains((UInt16)3) || capabilities.Contains((UInt16)4);
-        Console.WriteLine($"  Duplex: {hasDuplex} (from capabilities)");
 
+        // Known exceptions: printers that report duplex capability but are actually single-sided
+        var knownSingleSided = new[] { "lbp2900", "lbp 2900", "hp laser 107", "hp laser 108" };
+        var lowName = name.ToLowerInvariant();
+        if (hasDuplex && knownSingleSided.Any(s => lowName.Contains(s)))
+        {
+            Console.WriteLine($"  Override: known single-sided model despite capabilities — {name}");
+            return false;
+        }
+
+        Console.WriteLine($"  Duplex: {hasDuplex}");
         return hasDuplex;
     }
 

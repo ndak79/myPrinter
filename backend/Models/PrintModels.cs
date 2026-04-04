@@ -10,6 +10,8 @@ namespace PrinterApp.Models
         public bool IsDefault { get; set; }
         public bool IsDuplex { get; set; }
         public PrinterStatus Status { get; set; }
+        public bool SupportsColor { get; set; }   // NEW: color printing capability
+        public string PortName { get; set; } = ""; // NEW: physical port name (for debugging)
     }
 
     public enum PrinterStatus
