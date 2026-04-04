@@ -1110,3 +1110,17 @@ body {
   background: linear-gradient(90deg, #667eea, #764ba2);
   border-radius: 3px; transition: width 0.2s ease;
 }
+
+/* ── Print Summary & Keyboard Hints ──────────────────── */
+.print-summary {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  border-radius: 10px; padding: 8px 14px; margin-bottom: 12px;
+  font-size: 13px; color: var(--text-secondary);
+}
+.print-summary span { white-space: nowrap; }
+.kbd-hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center; }
+kbd {
+  display: inline-block; background: var(--bg-secondary); border: 1px solid var(--border-color);
+  border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: monospace;
+}

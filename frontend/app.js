@@ -848,6 +848,7 @@ const PrintModule = {
     updateButton() {
         const btn = document.getElementById('print-btn');
         btn.disabled = !AppState.selectedPrinter || !AppState.uploadedFile || AppState.selectedPages.size === 0;
+        SummaryModule.update();
     },
 
     async _startPrint() {
@@ -959,6 +960,90 @@ const PrintModule = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// KeyboardModule — Global keyboard shortcuts
+// ═══════════════════════════════════════════════════════════════════
+const KeyboardModule = {
+    init() {
+        document.addEventListener('keydown', (e) => {
+            // Skip if typing in an input
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.ctrlKey && e.key === 'p') {
+                e.preventDefault();
+                const btn = document.getElementById('print-btn');
+                if (btn && !btn.disabled) btn.click();
+            }
+
+            if (e.ctrlKey && e.key === 'o') {
+                e.preventDefault();
+                document.getElementById('file-input')?.click();
+            }
+
+            if (e.key === 'Escape') {
+                document.getElementById('page-zoom-modal')?.classList.add('hidden');
+                document.getElementById('flip-modal')?.classList.add('hidden');
+                ContextMenu.hide();
+            }
+
+            if (e.key === 'a' && !e.ctrlKey) {
+                AppState.selectAllPages();
+                PreviewModule.updateThumbnails();
+                PageSelectModule.updateDisplay();
+                PrintModule.updateButton();
+            }
+        });
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// SummaryModule — Calculate and display print summary
+// ═══════════════════════════════════════════════════════════════════
+const SummaryModule = {
+    update() {
+        const el = document.getElementById('print-summary');
+        if (!el) return;
+
+        const pages   = AppState.selectedPages.size;
+        const copies  = CopiesModule?.copies || 1;
+        const mode    = document.querySelector('input[name="print-mode"]:checked')?.value || 'normal';
+        const printer = AppState.selectedPrinter;
+
+        if (!AppState.uploadedFile || pages === 0) { el.classList.add('hidden'); return; }
+
+        // Estimate sheets
+        let sheets;
+        if (mode === 'simplex') {
+            sheets = pages * copies;
+        } else if (mode === 'booklet') {
+            sheets = Math.ceil(pages / 4) * copies;
+        } else {
+            // normal duplex
+            const singleSided = AppState.singleSidedPages.size;
+            const doubleSided = pages - singleSided;
+            sheets = Math.ceil(doubleSided / 2) + singleSided;
+            sheets *= copies;
+        }
+
+        // Estimate time: ~4s per sheet
+        const totalSec = sheets * 4;
+        const timeStr = totalSec < 60
+            ? `~${totalSec}s`
+            : `~${Math.ceil(totalSec / 60)} phút`;
+
+        el.classList.remove('hidden');
+        el.innerHTML = `
+            <span>📄 ${pages} trang</span>
+            <span>·</span>
+            <span>🗒️ ${sheets} tờ</span>
+            <span>·</span>
+            <span>⏱ ${timeStr}</span>
+            ${copies > 1 ? `<span>· ${copies} bản</span>` : ''}
+            ${printer ? `<span>· 🖨️ ${printer.name}</span>` : ''}
+        `;
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
 // ═══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -972,4 +1057,6 @@ document.addEventListener('DOMContentLoaded', () => {
     CopiesModule.init();
     PresetsModule.init();
     HistoryModule.init();
+    KeyboardModule.init();
+    SummaryModule.update();
 });
