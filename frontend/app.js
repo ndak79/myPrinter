@@ -170,6 +170,7 @@ const PrinterModule = {
                     item.classList.add('selected');
                     AppState.selectedPrinter = JSON.parse(item.dataset.printer);
                     PrintModule.updateButton();
+                    StepIndicatorModule.update();
                 });
             });
 
@@ -300,6 +301,7 @@ const UploadModule = {
             document.getElementById('page-range-section')?.classList.remove('hidden');
             PrintModule.updateButton();
             showToast('Tai file thanh cong!', 'success');
+            StepIndicatorModule.update();
         } catch (err) {
             showToast('Loi khi tai file: ' + err.message, 'error');
         }
@@ -316,6 +318,7 @@ const UploadModule = {
         const pi = document.getElementById('page-range-input');
         if (pi) pi.value = '';
         PrintModule.updateButton();
+        StepIndicatorModule.update();
     },
 };
 
@@ -1077,6 +1080,50 @@ const SummaryModule = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// StepIndicatorModule — Progress indicator across 5 workflow steps (2)
+// ═══════════════════════════════════════════════════════════════════
+const StepIndicatorModule = {
+    update() {
+        const step1done = !!AppState.selectedPrinter;
+        const step2done = !!AppState.uploadedFile;
+        const step3done = AppState.totalPageCount > 0;
+        const step4done = step3done; // always available once file loaded
+        const step5done = false; // never "done" — it's the action
+
+        // Determine current active step
+        let activeStep;
+        if (!step1done) activeStep = 1;
+        else if (!step2done) activeStep = 2;
+        else if (!step3done) activeStep = 3;
+        else activeStep = 5;
+
+        const doneSteps = [
+            step1done,
+            step2done,
+            step3done,
+            step4done,
+            step5done,
+        ];
+
+        for (let i = 1; i <= 5; i++) {
+            const item = document.getElementById(`step-ind-${i}`);
+            if (!item) continue;
+            const isDone   = doneSteps[i - 1] && i < activeStep;
+            const isActive = i === activeStep;
+            item.classList.toggle('done',   isDone && !isActive);
+            item.classList.toggle('active', isActive);
+        }
+
+        // Update connecting lines
+        for (let i = 1; i <= 4; i++) {
+            const line = document.getElementById(`step-line-${i}`);
+            if (!line) continue;
+            line.classList.toggle('done', doneSteps[i - 1] && activeStep > i);
+        }
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
 // ═══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -1091,4 +1138,5 @@ document.addEventListener('DOMContentLoaded', () => {
     HistoryModule.init();
     KeyboardModule.init();
     SummaryModule.update();
+    StepIndicatorModule.update();
 });
