@@ -477,6 +477,37 @@ body {
     color: var(--text-secondary);
 }
 
+/* ── Mode Card Animation (P) ───────────────────────────────── */
+@keyframes modeSelect {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.04); }
+    100% { transform: scale(1); }
+}
+
+@keyframes iconPulse {
+    0%   { transform: scale(1) rotate(0deg); }
+    30%  { transform: scale(1.2) rotate(-10deg); }
+    60%  { transform: scale(0.95) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+}
+
+input[name="print-mode"]:checked + .mode-card {
+    animation: modeSelect 250ms ease-out;
+}
+
+input[name="print-mode"]:checked + .mode-card .mode-icon {
+    animation: iconPulse 350ms ease-out;
+}
+
+.mode-option:not(:has(input:checked)) .mode-card {
+    opacity: 0.75;
+    transition: opacity 200ms ease;
+}
+
+.mode-option:has(input:checked) .mode-card {
+    opacity: 1;
+}
+
 /* Action Section */
 .action-section {
     text-align: center;
