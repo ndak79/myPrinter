@@ -25,3 +25,6 @@ Thumbs.db
 # IDE
 .vs/
 *.user
+
+# Git worktrees
+.worktrees/
