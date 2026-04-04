@@ -428,6 +428,13 @@ const PreviewModule = {
             await page.render({ canvasContext: ctx, viewport }).promise;
             thumb.insertBefore(canvas, thumb.firstChild);
             thumb.dataset.rendered = '1';
+
+            // Add orientation badge (1)
+            const isLandscape = viewport.width > viewport.height;
+            const badge = document.createElement('div');
+            badge.className = `orientation-badge${isLandscape ? ' landscape' : ''}`;
+            badge.textContent = isLandscape ? '▭ Ngang' : '▯ Dọc';
+            thumb.appendChild(badge);
         } catch (err) {
             console.error(`Error rendering page ${pageNum}:`, err);
         }

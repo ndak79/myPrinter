@@ -1839,3 +1839,28 @@ kbd {
 #print-btn.cancellable:hover {
     background: linear-gradient(135deg, #dc2626, #991b1b) !important;
 }
+
+/* ── Orientation Badge on Thumbnails (1) ───────────────────── */
+.orientation-badge {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    background: rgba(0, 0, 0, 0.65);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 9px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 3px;
+    line-height: 1.3;
+    pointer-events: none;
+    letter-spacing: 0.02em;
+    z-index: 2;
+}
+
+.orientation-badge.landscape {
+    background: rgba(102, 126, 234, 0.75);
+}
+
+[data-theme="light"] .orientation-badge {
+    background: rgba(30, 41, 59, 0.65);
+}
