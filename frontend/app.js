@@ -1027,20 +1027,87 @@ const PrintModule = {
     },
 
     _showFlipModal(instruction) {
-        document.getElementById('instruction-text').textContent =
-            'Lay giay ra va dat thang lai vao khay (mat da in huong xuong). KHONG can xoay giay.';
+        // Animated SVG (3)
         document.getElementById('instruction-visual').innerHTML = `
-            <svg width="300" height="200" viewBox="0 0 300 200" style="margin:0 auto;">
-                <defs><marker id="ah2" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-                    <polygon points="0 0,10 3.5,0 7" fill="#10b981"/></marker></defs>
-                <rect x="100" y="60" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
-                <rect x="103" y="63" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
-                <text x="150" y="100" font-size="16" text-anchor="middle" fill="#94a3b8">Giay da in</text>
-                <path d="M 150 145 L 150 175" stroke="#10b981" stroke-width="4" fill="none" marker-end="url(#ah2)"/>
-                <rect x="80" y="180" width="140" height="15" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
-                <text x="150" y="192" font-size="10" text-anchor="middle" fill="#667eea">Khay giay</text>
-                <text x="150" y="35" font-size="14" text-anchor="middle" fill="#10b981" font-weight="bold">↓ Dat thang lai (khong xoay)</text>
-            </svg>`;
+            <svg width="260" height="180" viewBox="0 0 260 180">
+                <defs>
+                    <marker id="arrow-flip" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                        <polygon points="0 0,10 3.5,0 7" fill="#10b981"/>
+                    </marker>
+                </defs>
+                <!-- Paper group with animation -->
+                <g class="flip-paper-anim">
+                    <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
+                    <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
+                    <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">Giấy đã in</text>
+                    <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">mặt 1 ✓</text>
+                </g>
+                <!-- Arrow down -->
+                <path d="M 130 125 L 130 155" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
+                <!-- Tray -->
+                <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
+                <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">Khay giấy</text>
+                <!-- Label top -->
+                <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">Lấy ra → Lật → Đặt lại</text>
+            </svg>
+        `;
+
+        document.getElementById('instruction-text').textContent =
+            instruction || 'Lấy giấy ra và đặt thẳng lại vào khay (mặt đã in hướng xuống). KHÔNG cần xoay giấy.';
+
+        // Reset checklist
+        ['flip-check-1', 'flip-check-2', 'flip-check-3'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.checked = false;
+        });
+        const continueBtn = document.getElementById('continue-btn');
+        if (continueBtn) continueBtn.classList.remove('all-checked');
+
+        // Checklist → enable button when all checked
+        const checkboxes = document.querySelectorAll('.flip-checkbox');
+        const updateContinueBtn = () => {
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            continueBtn?.classList.toggle('all-checked', allChecked);
+        };
+        checkboxes.forEach(cb => {
+            cb.removeEventListener('change', updateContinueBtn);
+            cb.addEventListener('change', updateContinueBtn);
+        });
+
+        // Optional timer
+        let _timerInterval = null;
+        const timerEnable = document.getElementById('flip-timer-enable');
+        const timerBar    = document.getElementById('flip-timer-bar');
+        const timerFill   = document.getElementById('flip-timer-fill');
+
+        if (timerEnable) {
+            timerEnable.checked = false;
+            timerEnable.onchange = () => {
+                if (timerEnable.checked) {
+                    timerBar?.classList.remove('hidden');
+                    let remaining = 30;
+                    if (timerFill) {
+                        timerFill.style.transition = 'none';
+                        timerFill.style.width = '100%';
+                        setTimeout(() => {
+                            timerFill.style.transition = 'width 30s linear';
+                            timerFill.style.width = '0%';
+                        }, 50);
+                    }
+                    _timerInterval = setInterval(() => {
+                        remaining--;
+                        if (remaining <= 0) {
+                            clearInterval(_timerInterval);
+                            document.getElementById('continue-btn')?.click();
+                        }
+                    }, 1000);
+                } else {
+                    clearInterval(_timerInterval);
+                    timerBar?.classList.add('hidden');
+                }
+            };
+        }
+
         document.getElementById('flip-modal').classList.remove('hidden');
     },
 };

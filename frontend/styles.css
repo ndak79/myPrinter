@@ -1726,3 +1726,107 @@ kbd {
     border-top: 1px solid var(--border-color);
     margin-top: 1rem;
 }
+
+/* ── Improved Flip Modal (3) ───────────────────────────────── */
+.modal-flip {
+    max-width: 500px;
+    width: 90vw;
+}
+
+.flip-diagram {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.flip-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    margin: 1rem 0;
+}
+
+.flip-check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.625rem 0.875rem;
+    background: rgba(100, 116, 139, 0.08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.9rem;
+    border: 1px solid transparent;
+}
+
+.flip-check-item:has(.flip-checkbox:checked) {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.flip-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: #10b981;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.flip-check-label { flex: 1; color: var(--text-primary); }
+
+.flip-check-item:has(.flip-checkbox:checked) .flip-check-label {
+    color: #10b981;
+}
+
+.flip-continue-btn {
+    opacity: 0.7;
+    transition: opacity 0.3s;
+}
+
+.flip-continue-btn.all-checked {
+    opacity: 1;
+}
+
+.flip-timer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    margin-top: 0.75rem;
+}
+
+.flip-timer-bar {
+    height: 4px;
+    background: rgba(100, 116, 139, 0.2);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.flip-timer-fill {
+    height: 100%;
+    background: #667eea;
+    width: 100%;
+    transform-origin: left;
+    transition: none;
+}
+
+@keyframes flipTimerCountdown {
+    from { width: 100%; }
+    to   { width: 0%; }
+}
+
+/* Animated flip SVG */
+@keyframes paperFlip {
+    0%   { transform: rotateY(0deg) translateY(0); }
+    40%  { transform: rotateY(90deg) translateY(-10px); }
+    60%  { transform: rotateY(90deg) translateY(-10px); }
+    100% { transform: rotateY(0deg) translateY(0); }
+}
+
+.flip-paper-anim {
+    animation: paperFlip 2s ease-in-out infinite;
+    transform-origin: center;
+}
