@@ -265,4 +265,14 @@ namespace PrinterApp.Models
             Console.WriteLine("=================================================");
         }
     }
+
+    /// <summary>
+    /// Đại diện cho 1 file đã upload + thời điểm tạo (dùng cho TTL cleanup).
+    /// </summary>
+    public sealed class FileSession
+    {
+        public string FileId    { get; init; } = "";
+        public string FilePath  { get; set; }  = "";
+        public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    }
 }
