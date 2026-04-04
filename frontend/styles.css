@@ -1830,3 +1830,12 @@ kbd {
     animation: paperFlip 2s ease-in-out infinite;
     transform-origin: center;
 }
+
+/* ── Cancel Print Button (A) ───────────────────────────────── */
+#print-btn.cancellable {
+    background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+}
+
+#print-btn.cancellable:hover {
+    background: linear-gradient(135deg, #dc2626, #991b1b) !important;
+}

@@ -902,6 +902,26 @@ const PrintModule = {
     init() {
         const btn = document.getElementById('print-btn');
         btn.addEventListener('click', (e) => {
+            // Cancel mode (A): if job is waiting for flip, cancel it
+            if (btn.dataset.mode === 'cancellable' && AppState.currentJob?.jobId) {
+                (async () => {
+                    try {
+                        await fetch(`${API_BASE}/print/cancel?jobId=${AppState.currentJob.jobId}`, { method: 'DELETE' });
+                        showToast('Đã hủy lệnh in', 'info');
+                        SRModule.announce('Đã hủy lệnh in');
+                    } catch {
+                        showToast('Không thể hủy lệnh in', 'error');
+                    }
+                    AppState.currentJob = null;
+                    btn.dataset.mode = '';
+                    btn.classList.remove('cancellable');
+                    btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
+                    document.getElementById('flip-modal')?.classList.add('hidden');
+                    PrintModule.updateButton();
+                })();
+                return;
+            }
+
             // Ripple effect (L)
             const ripple = document.createElement('span');
             ripple.className = 'ripple';
@@ -972,10 +992,13 @@ const PrintModule = {
             if (result.jobState?.waitingForFlip) {
                 AppState.currentJob = result.jobState;
                 this._showFlipModal(result.jobState.instruction);
-                showToast('Da in mat le! Vui long lam theo huong dan.', 'info');
+                // Show cancel button (A)
+                btn.dataset.mode = 'cancellable';
+                btn.classList.add('cancellable');
+                btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
                 btn.disabled = false;
-                btn.textContent = originalText;
-                btn.style.opacity = '';
+                btn.style.opacity = '1';
+                showToast('Da in mat le! Vui long lam theo huong dan.', 'info');
             } else {
                 // SUCCESS: flash button green
                 btn.textContent = '✓ Đã gửi lệnh in!';
@@ -1019,7 +1042,16 @@ const PrintModule = {
             showToast('Dang in mat chan...', 'info');
             const res    = await fetch(`${API_BASE}/print/continue?jobId=${AppState.currentJob.jobId}`, { method: 'POST' });
             const result = await res.json();
-            if (result.success) { showToast('In hoan tat!', 'success'); AppState.currentJob = null; }
+            if (result.success) {
+                showToast('In hoan tat!', 'success');
+                AppState.currentJob = null;
+                // Reset cancel button (A)
+                const btn = document.getElementById('print-btn');
+                btn.dataset.mode = '';
+                btn.classList.remove('cancellable');
+                btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
+                PrintModule.updateButton();
+            }
             else showToast('Loi: ' + result.message, 'error');
         } catch (err) {
             showToast('Loi khi tiep tuc in: ' + err.message, 'error');
