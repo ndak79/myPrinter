@@ -171,6 +171,7 @@ const PrinterModule = {
                     AppState.selectedPrinter = JSON.parse(item.dataset.printer);
                     PrintModule.updateButton();
                     StepIndicatorModule.update();
+                    SRModule.announce(`Đã chọn máy in: ${AppState.selectedPrinter.name}`);
                 });
             });
 
@@ -302,6 +303,7 @@ const UploadModule = {
             PrintModule.updateButton();
             showToast('Tai file thanh cong!', 'success');
             StepIndicatorModule.update();
+            SRModule.announce(`Đã tải file ${AppState.uploadedFile.name}, ${AppState.totalPageCount} trang`);
         } catch (err) {
             showToast('Loi khi tai file: ' + err.message, 'error');
         }
@@ -502,6 +504,7 @@ const PageSelectModule = {
         const el2  = document.getElementById('inline-selected');
         if (el1) el1.textContent = text;
         if (el2) el2.textContent = all ? 'Da chon: Tat ca' : `Da chon: ${text}`;
+        SRModule.announce(all ? 'Đã chọn tất cả trang' : `Đã chọn ${AppState.selectedPages.size} trang`);
     },
 
     _parseRange(text) {
@@ -937,6 +940,7 @@ const PrintModule = {
 
         try {
             showToast('Dang gui lenh in...', 'info');
+            SRModule.announce('Đang gửi lệnh in...');
             const res    = await fetch(`${API_BASE}/print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             const result = await res.json();
             if (!result.success) { 
@@ -959,6 +963,7 @@ const PrintModule = {
                 btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
                 btn.style.opacity = '1';
                 showToast('In thành công!', 'success');
+                SRModule.announce('In thành công!');
                 
                 HistoryModule.add({
                     file:        AppState.uploadedFile.name,
@@ -1127,6 +1132,24 @@ const SummaryModule = {
             ${copies > 1 ? `<span>· ${copies} bản</span>` : ''}
             ${printer ? `<span>· 🖨️ ${printer.name}</span>` : ''}
         `;
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// SRModule — Screen reader announcements via aria-live (C)
+// ═══════════════════════════════════════════════════════════════════
+const SRModule = {
+    _timer: null,
+    announce(msg) {
+        const el = document.getElementById('sr-status');
+        if (!el) return;
+        el.textContent = '';
+        clearTimeout(this._timer);
+        // Brief delay to ensure screen reader picks up the change
+        this._timer = setTimeout(() => {
+            el.textContent = msg;
+            this._timer = setTimeout(() => { el.textContent = ''; }, 1500);
+        }, 50);
     },
 };
 
