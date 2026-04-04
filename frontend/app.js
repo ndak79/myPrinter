@@ -429,17 +429,33 @@ const PageSelectModule = {
         const input = document.getElementById('page-range-input');
         if (!input) return;
 
+        let _rangeDebounce = null;
+
         input.addEventListener('focus', () => { AppState.isUserTypingPageRange = true; });
         input.addEventListener('blur',  () => { AppState.isUserTypingPageRange = false; this.updateDisplay(); });
         input.addEventListener('input', e => {
             AppState.isUserTypingPageRange = true;
-            const text = e.target.value.trim();
-            AppState.selectedPages = text ? this._parseRange(text) : (() => { AppState.selectAllPages(); return AppState.selectedPages; })();
-            if (!text) AppState.selectAllPages();
-            else AppState.selectedPages = this._parseRange(text);
-            PreviewModule.updateThumbnails();
-            this._updateTexts();
-            PrintModule.updateButton();
+            clearTimeout(_rangeDebounce);
+            _rangeDebounce = setTimeout(() => {
+                const text = e.target.value.trim();
+                if (!text) {
+                    AppState.selectAllPages();
+                    input.style.borderColor = '';
+                } else {
+                    const parsed = this._parseRange(text);
+                    if (parsed.size === 0 && text.length > 0) {
+                        // Invalid range — show red border, don't change selection
+                        input.style.borderColor = 'rgba(239, 68, 68, 0.6)';
+                    } else {
+                        AppState.selectedPages = parsed;
+                        input.style.borderColor = '';
+                    }
+                }
+                PreviewModule.updateThumbnails();
+                this._updateTexts();
+                PrintModule.updateButton();
+                StepIndicatorModule.update();
+            }, 200);
         });
     },
 
