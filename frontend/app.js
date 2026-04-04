@@ -22,6 +22,7 @@ const AppState = {
     singleSidedPages:     new Set(),
     totalPageCount:       0,
     isUserTypingPageRange: false,
+    pageOrder:            [], // 1-based page numbers in display/print order; empty = natural order
 
     reset() {
         this.uploadedFile         = null;
@@ -31,6 +32,7 @@ const AppState = {
         this.singleSidedPages     = new Set();
         this.totalPageCount       = 0;
         this.isUserTypingPageRange = false;
+        this.pageOrder            = [];
     },
 
     selectAllPages() {
@@ -359,6 +361,7 @@ const PreviewModule = {
             const loadTask = pdfjsLib.getDocument(url);
             AppState.currentPdfDoc  = await loadTask.promise;
             AppState.totalPageCount = AppState.currentPdfDoc.numPages;
+            AppState.pageOrder = Array.from({ length: AppState.totalPageCount }, (_, i) => i + 1);
             AppState.selectAllPages();
 
             const countEl = document.getElementById('sidebar-page-count');
@@ -984,6 +987,8 @@ const PrintModule = {
             singleSidedPages: AppState.singleSidedPages.size > 0 ? Array.from(AppState.singleSidedPages) : null,
             copies:           CopiesModule.copies,
             collate:          CopiesModule.collate,
+            // Drag-reorder (I)
+            pageOrder:        AppState.pageOrder.length > 0 ? AppState.pageOrder : null,
         };
 
         try {
@@ -1547,6 +1552,133 @@ const HoverPreviewModule = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// DragReorderModule — Pointer-event drag to reorder page thumbnails (I)
+// ═══════════════════════════════════════════════════════════════════
+const DragReorderModule = {
+    _ghost:       null,
+    _dragging:    null,
+    _placeholder: null,
+    _startY:      0,
+    _dragPageNum: null,
+
+    init() {
+        const grid = document.getElementById('sidebar-preview-grid');
+        if (!grid) return;
+        grid.addEventListener('pointerdown', e => this._onDown(e));
+    },
+
+    _onDown(e) {
+        const thumb = e.target.closest('.page-thumbnail');
+        if (!thumb) return;
+        // Only left button
+        if (e.button !== 0) return;
+
+        this._dragging    = thumb;
+        this._dragPageNum = parseInt(thumb.dataset.pageNumber);
+        this._startY      = e.clientY;
+
+        // Create ghost
+        const rect  = thumb.getBoundingClientRect();
+        this._ghost = thumb.cloneNode(true);
+        this._ghost.className = 'drag-ghost';
+        this._ghost.style.cssText = `
+            width: ${rect.width}px;
+            height: ${rect.height}px;
+            left: ${rect.left}px;
+            top:  ${rect.top}px;
+        `;
+        document.body.appendChild(this._ghost);
+
+        thumb.classList.add('dragging');
+
+        document.addEventListener('pointermove', this._onMove = e => this._move(e));
+        document.addEventListener('pointerup',   this._onUp   = e => this._drop(e));
+        e.preventDefault();
+    },
+
+    _move(e) {
+        if (!this._ghost) return;
+        const dy = e.clientY - this._startY;
+        const rect = this._dragging.getBoundingClientRect();
+        this._ghost.style.top = (rect.top + dy) + 'px';
+
+        // Find drop target
+        const grid   = document.getElementById('sidebar-preview-grid');
+        const thumbs = Array.from(grid.querySelectorAll('.page-thumbnail:not(.dragging)'));
+        const y      = e.clientY;
+
+        // Remove old placeholder
+        this._placeholder?.remove();
+        this._placeholder = null;
+
+        // Find insertion point
+        let insertBefore = null;
+        for (const t of thumbs) {
+            const r = t.getBoundingClientRect();
+            if (y < r.top + r.height / 2) { insertBefore = t; break; }
+        }
+
+        this._placeholder = document.createElement('div');
+        this._placeholder.className = 'drop-placeholder';
+        if (insertBefore) {
+            grid.insertBefore(this._placeholder, insertBefore);
+        } else {
+            grid.appendChild(this._placeholder);
+        }
+    },
+
+    _drop(e) {
+        document.removeEventListener('pointermove', this._onMove);
+        document.removeEventListener('pointerup',   this._onUp);
+
+        if (this._ghost)       { this._ghost.remove();       this._ghost = null; }
+        if (this._dragging)    this._dragging.classList.remove('dragging');
+
+        if (this._placeholder) {
+            // Reorder AppState.pageOrder
+            const grid    = document.getElementById('sidebar-preview-grid');
+
+            // Compute new order from DOM after inserting dragging before placeholder
+            const newOrder = [];
+            let placed = false;
+            for (const t of grid.childNodes) {
+                if (t === this._placeholder) {
+                    if (!placed) { newOrder.push(this._dragPageNum); placed = true; }
+                } else if (t.classList?.contains('page-thumbnail') && t !== this._dragging) {
+                    newOrder.push(parseInt(t.dataset.pageNumber));
+                }
+            }
+            if (!placed) newOrder.push(this._dragPageNum);
+
+            AppState.pageOrder = newOrder;
+
+            // Re-render grid in new order
+            this._placeholder.remove();
+            this._placeholder = null;
+            this._reRenderGrid(newOrder);
+
+            showToast('Đã đổi thứ tự trang', 'info');
+        }
+
+        this._dragging    = null;
+        this._dragPageNum = null;
+        this._placeholder = null;
+    },
+
+    _reRenderGrid(order) {
+        const grid   = document.getElementById('sidebar-preview-grid');
+        const thumbs = Array.from(grid.querySelectorAll('.page-thumbnail'));
+        const byPage = new Map(thumbs.map(t => [parseInt(t.dataset.pageNumber), t]));
+        // Reorder DOM
+        order.forEach(pageNum => {
+            const t = byPage.get(pageNum);
+            if (t) grid.appendChild(t);
+        });
+        PreviewModule.updateThumbnails();
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
 // ═══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
@@ -1560,6 +1692,7 @@ document.addEventListener('DOMContentLoaded', () => {
     CopiesModule.init();
     HistoryModule.init();
     KeyboardModule.init();
+    DragReorderModule.init();
     ConfirmPrintModal.init();
     SummaryModule.update();
     StepIndicatorModule.update();

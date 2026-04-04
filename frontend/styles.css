@@ -1892,3 +1892,32 @@ kbd {
     width: 100%;
     height: auto;
 }
+
+/* ── Drag-to-Reorder (I) ────────────────────────────────────── */
+.page-thumbnail.dragging {
+    opacity: 0.4;
+    transform: scale(0.96);
+}
+
+.drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 9998;
+    opacity: 0.85;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    border-radius: 8px;
+    border: 2px solid #667eea;
+    background: var(--bg-card);
+    transition: none;
+    transform: rotate(2deg);
+}
+
+.drop-placeholder {
+    width: 100%;
+    min-height: 60px;
+    border: 2px dashed #667eea;
+    border-radius: 8px;
+    background: rgba(102, 126, 234, 0.08);
+    pointer-events: none;
+    margin: 2px 0;
+}
