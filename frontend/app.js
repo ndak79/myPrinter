@@ -233,6 +233,7 @@ const UploadModule = {
             const wrap = document.getElementById('upload-progress-wrap');
             const bar  = document.getElementById('upload-progress-bar');
             if (wrap) wrap.classList.remove('hidden');
+            if (bar) bar.classList.add('uploading');
 
             const result = await new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
@@ -254,6 +255,7 @@ const UploadModule = {
             });
 
             if (wrap) wrap.classList.add('hidden');
+            if (bar) bar.classList.remove('uploading');
             if (bar) bar.style.width = '0%';
 
             if (!result.success) { showToast('Loi: ' + result.message, 'error'); return; }

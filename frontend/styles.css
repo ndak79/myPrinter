@@ -1132,6 +1132,34 @@ body {
   border-radius: 3px; transition: width 0.2s ease;
 }
 
+/* ── Progress Bar Shimmer (M) ──────────────────────────────── */
+@keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
+}
+
+.upload-progress-bar {
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-progress-bar.uploading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 20%,
+        rgba(255, 255, 255, 0.25) 50%,
+        transparent 80%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite linear;
+}
+
 /* ── Print Summary & Keyboard Hints ──────────────────── */
 .print-summary {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
