@@ -1133,11 +1133,13 @@ const SummaryModule = {
             sheets *= copies;
         }
 
-        // Estimate time: ~4s per sheet
-        const totalSec = sheets * 4;
+        // Estimate time: ~15s per sheet (realistic for manual duplex + processing)
+        const totalSec = sheets * 15;
         const timeStr = totalSec < 60
-            ? `~${totalSec}s`
-            : `~${Math.ceil(totalSec / 60)} phút`;
+            ? `< 1 phút`
+            : totalSec < 3600
+                ? `~${Math.ceil(totalSec / 60)} phút`
+                : `~${Math.floor(totalSec / 3600)}h ${Math.ceil((totalSec % 3600) / 60)}m`;
 
         el.classList.remove('hidden');
         el.innerHTML = `
