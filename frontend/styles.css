@@ -157,7 +157,7 @@ body {
 }
 
 .main-content {
-    max-width: 900px;
+    max-width: 1560px;
     margin: 0 auto;
 }
 
@@ -1074,31 +1074,6 @@ body {
 .history-time { font-size: 11px; color: var(--text-muted); }
 .history-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 16px; }
 
-/* ── Presets ─────────────────────────────────────────── */
-.presets-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color); }
-.presets-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.presets-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.presets-list { display: flex; flex-wrap: wrap; gap: 8px; min-height: 32px; }
-.preset-chip {
-  display: flex; align-items: center; gap: 6px;
-  background: var(--bg-secondary); border: 1px solid var(--border-color);
-  border-radius: 20px; padding: 5px 10px; font-size: 12px;
-  transition: border-color 0.15s;
-}
-.preset-chip:hover { border-color: #667eea; }
-.preset-name { color: var(--text-secondary); }
-.preset-apply-btn, .preset-del-btn {
-  background: none; border: none; cursor: pointer; padding: 0 2px; font-size: 11px; line-height: 1;
-}
-.preset-apply-btn { color: #10b981; }
-.preset-del-btn { color: #ef4444; }
-.preset-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
-.btn-outline {
-  background: none; border: 1px solid var(--border-color); border-radius: 8px;
-  padding: 5px 12px; font-size: 12px; color: var(--text-secondary); cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-.btn-outline:hover { border-color: #667eea; color: var(--text-primary); }
 
 /* ── Upload Progress ─────────────────────────────────── */
 .upload-progress-wrap {
@@ -1124,8 +1099,3 @@ kbd {
   display: inline-block; background: var(--bg-secondary); border: 1px solid var(--border-color);
   border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: monospace;
 }
-.watermark-row { margin-top: 10px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; }
-.watermark-toggle-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); cursor: pointer; }
-.watermark-options { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-.watermark-input { width: 100%; padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px; box-sizing: border-box; }
-.watermark-opacity-row { display: flex; align-items: center; gap: 8px; }

@@ -746,92 +746,6 @@ const HistoryModule = {
     },
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// PresetsModule — Save/load print configuration presets
-// ═══════════════════════════════════════════════════════════════════
-const PresetsModule = {
-    _KEY: 'myprinter_presets',
-
-    _load() {
-        try { return JSON.parse(localStorage.getItem(this._KEY) || '[]'); }
-        catch { return []; }
-    },
-
-    _save(presets) {
-        localStorage.setItem(this._KEY, JSON.stringify(presets));
-    },
-
-    init() {
-        this._render();
-        document.getElementById('preset-save-btn')?.addEventListener('click', () => this._saveCurrentAsPreset());
-    },
-
-    _saveCurrentAsPreset() {
-        const name = prompt('Tên preset:');
-        if (!name?.trim()) return;
-        const preset = {
-            id: Date.now().toString(),
-            name: name.trim(),
-            mode: document.querySelector('input[name="print-mode"]:checked')?.value || 'normal',
-            copies: CopiesModule.copies,
-            pageRange: document.getElementById('page-range-input')?.value || '',
-        };
-        const presets = this._load();
-        presets.push(preset);
-        this._save(presets);
-        this._render();
-        showToast(`Đã lưu preset "${preset.name}"`, 'success');
-    },
-
-    _applyPreset(preset) {
-        const radio = document.querySelector(`input[name="print-mode"][value="${preset.mode}"]`);
-        if (radio) radio.checked = true;
-
-        CopiesModule._copies = preset.copies || 1;
-        CopiesModule._update();
-
-        const rangeInput = document.getElementById('page-range-input');
-        if (rangeInput && preset.pageRange) {
-            rangeInput.value = preset.pageRange;
-            rangeInput.dispatchEvent(new Event('input'));
-        }
-        showToast(`Đã áp dụng preset "${preset.name}"`, 'success');
-    },
-
-    _deletePreset(id) {
-        const presets = this._load().filter(p => p.id !== id);
-        this._save(presets);
-        this._render();
-        showToast('Đã xóa preset', 'info');
-    },
-
-    _render() {
-        const container = document.getElementById('presets-list');
-        if (!container) return;
-        const presets = this._load();
-        if (presets.length === 0) {
-            container.innerHTML = '<span class="preset-empty">Chưa có preset nào</span>';
-            return;
-        }
-        container.innerHTML = presets.map(p => `
-            <div class="preset-chip" data-id="${p.id}">
-                <span class="preset-name">${p.name}</span>
-                <button class="preset-apply-btn" data-id="${p.id}" title="Áp dụng">✓</button>
-                <button class="preset-del-btn" data-id="${p.id}" title="Xóa">✕</button>
-            </div>
-        `).join('');
-
-        container.querySelectorAll('.preset-apply-btn').forEach(btn =>
-            btn.addEventListener('click', () => {
-                const preset = this._load().find(p => p.id === btn.dataset.id);
-                if (preset) this._applyPreset(preset);
-            })
-        );
-        container.querySelectorAll('.preset-del-btn').forEach(btn =>
-            btn.addEventListener('click', () => this._deletePreset(btn.dataset.id))
-        );
-    },
-};
 
 // ═══════════════════════════════════════════════════════════════════
 // PrintModule — Print command, flip instructions, continue print
@@ -877,16 +791,6 @@ const PrintModule = {
             singleSidedPages: AppState.singleSidedPages.size > 0 ? Array.from(AppState.singleSidedPages) : null,
             copies:           CopiesModule.copies,
             collate:          CopiesModule.collate,
-            watermark: (() => {
-                const enabled = document.getElementById('watermark-enable')?.checked;
-                if (!enabled) return null;
-                return {
-                    text:    document.getElementById('watermark-text')?.value || 'DRAFT',
-                    fontSize: 48,
-                    opacity: parseInt(document.getElementById('watermark-opacity')?.value || '30', 10),
-                    color:   '#94a3b8',
-                };
-            })(),
         };
 
         try {
@@ -1065,20 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ContextMenu.init();
     PrintModule.init();
     CopiesModule.init();
-    PresetsModule.init();
     HistoryModule.init();
     KeyboardModule.init();
     SummaryModule.update();
-
-    // Watermark toggle
-    const wmEnable = document.getElementById('watermark-enable');
-    const wmOptions = document.getElementById('watermark-options');
-    const wmOpacity = document.getElementById('watermark-opacity');
-    const wmOpacityVal = document.getElementById('watermark-opacity-val');
-    wmEnable?.addEventListener('change', () => {
-        wmOptions?.classList.toggle('hidden', !wmEnable.checked);
-    });
-    wmOpacity?.addEventListener('input', () => {
-        if (wmOpacityVal) wmOpacityVal.textContent = wmOpacity.value + '%';
-    });
 });
