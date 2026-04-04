@@ -43,9 +43,24 @@ public class PrintAlgorithmService
             // ==========================
             //  AUTO DUPLEX (MÁY IN 2 MẶT)
             // ==========================
-            // PageRange (nếu có) sẽ được xử lý ở chỗ gọi PrintPdf (ExecutePrintJob),
-            // hiện tại luồng cũ đang để pageRange=null => in toàn bộ.
-            Console.WriteLine("[CreateNormalDuplexJob] Auto duplex printer detected. Using original PDF.");
+            Console.WriteLine("[CreateNormalDuplexJob] Auto duplex printer detected.");
+
+            if (!string.IsNullOrWhiteSpace(pageRange))
+            {
+                var selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
+                if (selectedPages.Length == 0)
+                    throw new InvalidOperationException($"Page range '{pageRange}' khong hop le hoac khong co trang nao.");
+
+                if (selectedPages.Length < pdfInfo.PageCount)
+                {
+                    Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex with pageRange: {pageRange}. Creating subset PDF.");
+                    var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
+                    _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
+                    jobState.TempPdfPath = subsetPath;
+                    Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex subset created: {subsetPath}");
+                }
+            }
+
             jobState.WaitingForFlip = false;
             return jobState;
         }
