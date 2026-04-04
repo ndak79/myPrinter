@@ -23,6 +23,7 @@ const AppState = {
     totalPageCount:       0,
     isUserTypingPageRange: false,
     pageOrder:            [], // 1-based page numbers in display/print order; empty = natural order
+    pageRotations:        new Map(), // Map<pageNum, RotationDirection string>
 
     reset() {
         this.uploadedFile         = null;
@@ -33,6 +34,7 @@ const AppState = {
         this.totalPageCount       = 0;
         this.isUserTypingPageRange = false;
         this.pageOrder            = [];
+        this.pageRotations        = new Map();
     },
 
     selectAllPages() {
@@ -454,6 +456,9 @@ const PreviewModule = {
             thumb.style.borderColor = sel ? (single ? '#3b82f6' : '#22c55e') : 'rgba(148,163,184,0.2)';
             thumb.title = `Trang ${n} - In ${single ? '1' : '2'} mat`;
             thumb.setAttribute('aria-selected', sel ? 'true' : 'false');
+            // Restore rotation attribute (U)
+            const rot = AppState.pageRotations.get(n);
+            if (rot) { thumb.dataset.rotation = rot; } else { delete thumb.dataset.rotation; }
         });
     },
 };
@@ -741,9 +746,36 @@ const ContextMenu = {
                 if (n !== null) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.delete(n); showToast(`Trang ${n} se in 2 mat`, 'info'); } break;
             case 'single-sided':
                 if (n !== null) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.add(n); showToast(`Trang ${n} se in 1 mat`, 'info'); } break;
+            case 'rotate-cw90':     this._applyRotation(n, 'CW90'); break;
+            case 'rotate-ccw90':    this._applyRotation(n, 'CCW90'); break;
+            case 'rotate-fliph':    this._applyRotation(n, 'FlipHorizontal'); break;
+            case 'rotate-flipv':    this._applyRotation(n, 'FlipVertical'); break;
+            case 'rotate-180':      this._applyRotation(n, 'Rotate180'); break;
+            case 'rotate-reset':    this._applyRotation(n, null); break;
         }
         PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
         ZoomModal._updateModalStyles(); this.hide();
+    },
+
+    _applyRotation(pageNum, rotation) {
+        if (pageNum === null) return;
+        if (rotation === null) {
+            AppState.pageRotations.delete(pageNum);
+            showToast(`Trang ${pageNum}: đã reset xoay`, 'info');
+        } else {
+            AppState.pageRotations.set(pageNum, rotation);
+            const labels = { CW90: 'Xoay phải 90°', CCW90: 'Xoay trái 90°', Rotate180: 'Xoay 180°', FlipHorizontal: 'Lật ngang', FlipVertical: 'Lật dọc' };
+            showToast(`Trang ${pageNum}: ${labels[rotation] || rotation}`, 'info');
+        }
+        // Update data-rotation attribute on thumbnail
+        const thumb = document.querySelector(`.page-thumbnail[data-page-number="${pageNum}"]`);
+        if (thumb) {
+            if (rotation) {
+                thumb.dataset.rotation = rotation;
+            } else {
+                delete thumb.dataset.rotation;
+            }
+        }
     },
 };
 
@@ -989,6 +1021,10 @@ const PrintModule = {
             collate:          CopiesModule.collate,
             // Drag-reorder (I)
             pageOrder:        AppState.pageOrder.length > 0 ? AppState.pageOrder : null,
+            // Per-page rotation (U)
+            pageRotations:    AppState.pageRotations.size > 0
+                ? Array.from(AppState.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
+                : null,
         };
 
         try {

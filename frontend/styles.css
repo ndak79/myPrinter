@@ -1921,3 +1921,32 @@ kbd {
     pointer-events: none;
     margin: 2px 0;
 }
+
+/* ── Per-page Rotation (U) ─────────────────────────────────────── */
+.context-menu-header-sub {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    padding: 0.25rem 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+}
+
+.page-thumbnail[data-rotation="CW90"] canvas {
+    transform: rotate(90deg);
+    transform-origin: center;
+}
+.page-thumbnail[data-rotation="CCW90"] canvas {
+    transform: rotate(-90deg);
+    transform-origin: center;
+}
+.page-thumbnail[data-rotation="Rotate180"] canvas {
+    transform: rotate(180deg);
+    transform-origin: center;
+}
+.page-thumbnail[data-rotation="FlipHorizontal"] canvas {
+    transform: scaleX(-1);
+}
+.page-thumbnail[data-rotation="FlipVertical"] canvas {
+    transform: scaleY(-1);
+}
