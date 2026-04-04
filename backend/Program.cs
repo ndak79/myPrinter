@@ -25,14 +25,11 @@ builder.Services.Configure<FormOptions>(options =>
 builder.Services.AddSingleton<PrinterManagementService>();
 builder.Services.AddSingleton<WordInteropService>();
 builder.Services.AddSingleton<PrintAlgorithmService>();
+builder.Services.AddSingleton<FileSessionService>();
 
 var app = builder.Build();
 
 app.UseCors("LocalWebApp");
-
-// In-memory storage for uploaded files and jobs
-var uploadedFiles = new Dictionary<string, string>();
-var printJobs = new Dictionary<string, PrintJobState>();
 
 // API Endpoints
 
@@ -49,7 +46,7 @@ app.MapGet("/api/printers", (PrinterManagementService printerService) =>
     }
 });
 
-app.MapPost("/api/upload", async (HttpRequest request, IWebHostEnvironment env) =>
+app.MapPost("/api/upload", async (HttpRequest request, IWebHostEnvironment env, FileSessionService sessions) =>
 {
     try
     {
@@ -101,7 +98,7 @@ app.MapPost("/api/upload", async (HttpRequest request, IWebHostEnvironment env) 
             });
         }
 
-        uploadedFiles[fileId] = tempPath;
+        sessions.AddFile(fileId, tempPath);
 
         Console.WriteLine($"[UPLOAD] Upload complete. FileId: {fileId}");
 
@@ -119,16 +116,16 @@ app.MapPost("/api/upload", async (HttpRequest request, IWebHostEnvironment env) 
     }
 });
 
-app.MapGet("/api/file/{fileId}", (string fileId) =>
+app.MapGet("/api/file/{fileId}", (string fileId, FileSessionService sessions) =>
 {
     try
     {
         Console.WriteLine($"[FILE] Request for fileId: {fileId}");
-        Console.WriteLine($"[FILE] Total files in cache: {uploadedFiles.Count}");
         
-        if (!uploadedFiles.TryGetValue(fileId, out var filePath))
+        var filePath = sessions.GetFilePath(fileId);
+        if (filePath == null)
         {
-            Console.WriteLine($"[FILE ERROR] FileId not found in cache");
+            Console.WriteLine($"[FILE ERROR] FileId not found in session: {fileId}");
             return Results.NotFound("File not found");
         }
 
@@ -155,14 +152,13 @@ app.MapGet("/api/file/{fileId}", (string fileId) =>
 
 app.MapPost("/api/convert", (
     string fileId,
-    WordInteropService wordService) =>
+    WordInteropService wordService,
+    FileSessionService sessions) =>
 {
     try
     {
-        if (!uploadedFiles.TryGetValue(fileId, out var filePath))
-        {
-            return Results.NotFound("File not found");
-        }
+        var filePath = sessions.GetFilePath(fileId);
+        if (filePath == null) return Results.NotFound("File not found");
 
         var extension = Path.GetExtension(filePath).ToLower();
         var pdfPath = Path.ChangeExtension(filePath, ".pdf");
@@ -182,7 +178,7 @@ app.MapPost("/api/convert", (
         }
 
         // Update the file path to PDF
-        uploadedFiles[fileId] = pdfPath;
+        sessions.UpdateFilePath(fileId, pdfPath);
 
         return Results.Ok(new { success = true, pdfPath });
     }
@@ -196,16 +192,17 @@ app.MapPost("/api/print", (
     PrintRequest request,
     PrinterManagementService printerService,
     WordInteropService wordService,
-    PrintAlgorithmService printAlgorithm) =>
+    PrintAlgorithmService printAlgorithm,
+    FileSessionService sessions) =>
 {
     try
     {
         Console.WriteLine($"[PRINT] Received print request for fileId: {request.FileId}, printer: {request.PrinterName}, mode: {request.Mode}");
         
-        if (!uploadedFiles.TryGetValue(request.FileId, out var filePath))
+        var filePath = sessions.GetFilePath(request.FileId);
+        if (filePath == null)
         {
             Console.WriteLine($"[PRINT ERROR] File not found for fileId: {request.FileId}");
-            Console.WriteLine($"[PRINT ERROR] Available fileIds: {string.Join(", ", uploadedFiles.Keys)}");
             return Results.NotFound(new PrintResponse
             {
                 Success = false,
@@ -298,7 +295,7 @@ app.MapPost("/api/print", (
         printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
 
         // Store job state for potential continuation
-        printJobs[jobState.JobId] = jobState;
+        sessions.AddJob(jobState.JobId, jobState);
 
         Console.WriteLine($"[PRINT] Print job created successfully. JobId: {jobState.JobId}, WaitingForFlip: {jobState.WaitingForFlip}");
 
@@ -329,18 +326,14 @@ app.MapPost("/api/print", (
 
 app.MapPost("/api/print/continue", (
     string jobId,
-    PrintAlgorithmService printAlgorithm) =>
+    PrintAlgorithmService printAlgorithm,
+    FileSessionService sessions) =>
 {
     try
     {
-        if (!printJobs.TryGetValue(jobId, out var jobState))
-        {
-            return Results.NotFound(new PrintResponse
-            {
-                Success = false,
-                Message = "Job not found"
-            });
-        }
+        var jobState = sessions.GetJob(jobId);
+        if (jobState == null)
+            return Results.NotFound(new PrintResponse { Success = false, Message = "Job not found" });
 
         if (!jobState.WaitingForFlip)
         {
@@ -355,6 +348,7 @@ app.MapPost("/api/print/continue", (
         printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
 
         jobState.WaitingForFlip = false;
+        sessions.RemoveJob(jobId);
         
         return Results.Ok(new PrintResponse
         {
