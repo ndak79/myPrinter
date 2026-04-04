@@ -443,6 +443,16 @@ const PageSelectModule = {
     toggle(pageNum) {
         if (AppState.selectedPages.has(pageNum)) AppState.selectedPages.delete(pageNum);
         else AppState.selectedPages.add(pageNum);
+
+        // Pop animation (O)
+        const thumb = document.querySelector(`.page-thumbnail[data-page-number="${pageNum}"]`);
+        if (thumb) {
+            thumb.classList.remove('pop');
+            void thumb.offsetWidth; // force reflow to re-trigger animation
+            thumb.classList.add('pop');
+            thumb.addEventListener('animationend', () => thumb.classList.remove('pop'), { once: true });
+        }
+
         PreviewModule.updateThumbnails();
         this.updateDisplay();
         PrintModule.updateButton();

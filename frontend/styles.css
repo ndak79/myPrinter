@@ -148,6 +148,18 @@ body {
     box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
 }
 
+/* ── Thumbnail Pop Animation (O) ───────────────────────────── */
+@keyframes thumbPop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.07); }
+    70%  { transform: scale(0.97); }
+    100% { transform: scale(1); }
+}
+
+.page-thumbnail.pop {
+    animation: thumbPop 180ms ease-out;
+}
+
 .sidebar-preview-grid canvas {
     width: 100% !important;
     height: auto !important;
