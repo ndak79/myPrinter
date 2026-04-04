@@ -134,8 +134,12 @@ body {
     border: 2px solid var(--border-color);
     border-radius: 8px;
     background: rgba(100, 116, 139, 0.1);
-    transition: all 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
     position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 90px; /* placeholder height before canvas loads */
 }
 
 .sidebar-preview-grid .page-thumbnail:hover {
@@ -175,7 +179,8 @@ body {
     width: 100% !important;
     height: auto !important;
     display: block;
-    border-radius: 6px;
+    border-radius: 6px 6px 0 0;
+    flex-shrink: 0;
 }
 
 .sidebar-preview-grid .page-number {

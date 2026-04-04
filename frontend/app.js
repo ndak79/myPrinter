@@ -403,14 +403,14 @@ const PreviewModule = {
         const div = document.createElement('div');
         div.className = 'page-thumbnail selected';
         div.dataset.pageNumber = pageNum;
-        div.style.cssText = 'position:relative;cursor:pointer;border:2px solid #22c55e;border-radius:8px;background:rgba(100,116,139,0.1);transition:all 0.2s;min-height:80px;';
+        div.style.cssText = 'border-color:#22c55e;';
         div.setAttribute('tabindex', '0');
         div.setAttribute('role', 'option');
         div.setAttribute('aria-label', `Trang ${pageNum}`);
         div.setAttribute('aria-selected', 'true');
 
         const label = document.createElement('div');
-        label.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,0.8);color:white;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;';
+        label.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,0.8);color:white;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;z-index:2;';
         label.textContent = pageNum;
         div.appendChild(label);
 
