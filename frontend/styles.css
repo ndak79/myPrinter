@@ -1082,3 +1082,14 @@ body {
   transition: border-color 0.15s, color 0.15s;
 }
 .btn-outline:hover { border-color: #667eea; color: var(--text-primary); }
+
+/* ── Upload Progress ─────────────────────────────────── */
+.upload-progress-wrap {
+  height: 6px; background: var(--bg-secondary);
+  border-radius: 3px; margin-top: 8px; overflow: hidden;
+}
+.upload-progress-bar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 3px; transition: width 0.2s ease;
+}

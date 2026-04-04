@@ -202,8 +202,33 @@ const UploadModule = {
             formData.append('file', file);
             document.getElementById('file-status').textContent = 'Dang tai len...';
 
-            const res    = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
-            const result = await res.json();
+            // Show progress bar
+            const wrap = document.getElementById('upload-progress-wrap');
+            const bar  = document.getElementById('upload-progress-bar');
+            if (wrap) wrap.classList.remove('hidden');
+
+            const result = await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', `${API_BASE}/upload`);
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable && bar) {
+                        bar.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+                    }
+                };
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(JSON.parse(xhr.responseText));
+                    } else {
+                        reject(new Error(`Upload failed: ${xhr.status}`));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('Network error during upload'));
+                xhr.send(formData);
+            });
+
+            if (wrap) wrap.classList.add('hidden');
+            if (bar) bar.style.width = '0%';
+
             if (!result.success) { showToast('Loi: ' + result.message, 'error'); return; }
 
             AppState.uploadedFile = { id: result.fileId, name: result.originalFileName, needsConversion: ext !== '.pdf' };
