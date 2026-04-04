@@ -279,6 +279,15 @@ app.MapPost("/api/print", (
                 request.SingleSidedPages
             );
         }
+        else if (request.Mode == PrintMode.Simplex)
+        {
+            Console.WriteLine($"[PRINT] Creating simplex job...");
+            jobState = printAlgorithm.CreateSimplexJob(
+                filePath,
+                request.PrinterName,
+                request.PageRange
+            );
+        }
         else // BookletA5
         {
             Console.WriteLine($"[PRINT] Creating booklet job...");

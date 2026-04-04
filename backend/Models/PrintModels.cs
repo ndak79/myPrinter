@@ -35,8 +35,9 @@ namespace PrinterApp.Models
 
     public enum PrintMode
     {
-        NormalDuplex,
-        BookletA5
+        NormalDuplex = 0,
+        BookletA5 = 1,
+        Simplex = 2,
     }
 
     public class PrintJobState

@@ -215,6 +215,40 @@ public class PrintAlgorithmService
         return CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter);
     }
 
+    public PrintJobState CreateSimplexJob(
+        string pdfPath,
+        string printerName,
+        string? pageRange = null)
+    {
+        Console.WriteLine("[CreateSimplexJob] Single-sided print.");
+
+        var pdfInfo = _wordService.GetPdfInfo(pdfPath);
+        string workingPdfPath = pdfPath;
+
+        if (!string.IsNullOrWhiteSpace(pageRange))
+        {
+            var selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
+            if (selectedPages.Length == 0)
+                throw new InvalidOperationException($"Page range '{pageRange}' is invalid.");
+
+            if (selectedPages.Length < pdfInfo.PageCount)
+            {
+                var subsetPath = Path.Combine(Path.GetTempPath(), $"simplex_subset_{Guid.NewGuid()}.pdf");
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
+                workingPdfPath = subsetPath;
+                Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");
+            }
+        }
+
+        return new PrintJobState
+        {
+            TempPdfPath    = workingPdfPath,
+            PrinterName    = printerName,
+            IsManualDuplex = false,
+            WaitingForFlip = false,
+        };
+    }
+
     private int RoundUpToMultipleOf4(int number)
     {
         return (int)Math.Ceiling(number / 4.0) * 4;

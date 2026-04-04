@@ -672,7 +672,7 @@ const PrintModule = {
         const body = {
             fileId:           AppState.uploadedFile.id,
             printerName:      AppState.selectedPrinter.name,
-            mode:             mode === 'normal' ? 0 : 1,
+            mode:             mode === 'normal' ? 0 : (mode === 'booklet' ? 1 : 2),
             pageRange,
             singleSidedPages: AppState.singleSidedPages.size > 0 ? Array.from(AppState.singleSidedPages) : null,
             copies:           CopiesModule.copies,
