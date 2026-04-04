@@ -414,10 +414,16 @@ const PreviewModule = {
         label.textContent = pageNum;
         div.appendChild(label);
 
+        let _clickTimer = null;
         div.addEventListener('click', e => {
-            if (e.detail === 1) setTimeout(() => { if (e.detail === 1) PageSelectModule.toggle(pageNum); }, 200);
+            if (e.button !== 0) return;
+            clearTimeout(_clickTimer);
+            _clickTimer = setTimeout(() => PageSelectModule.toggle(pageNum), 220);
         });
-        div.addEventListener('dblclick', () => ZoomModal.open(pageNum));
+        div.addEventListener('dblclick', () => {
+            clearTimeout(_clickTimer); // cancel the single-click toggle
+            ZoomModal.open(pageNum);
+        });
         div.addEventListener('contextmenu', e => { e.preventDefault(); ContextMenu.show(e, pageNum); });
         HoverPreviewModule.attach(div, pageNum);
         return div;
