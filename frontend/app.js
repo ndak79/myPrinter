@@ -153,11 +153,13 @@ const PrinterModule = {
                         <div class="printer-details">
                             <h3>${p.name}</h3>
                             <div class="printer-status">
-                                ${p.isDefault ? '<span class="badge badge-info">Mac dinh</span>' : ''}
-                                ${p.isDuplex
-                                    ? '<span class="badge badge-success">Ho tro 2 mat</span>'
-                                    : '<span class="badge badge-warning">Chi 1 mat</span>'}
                                 ${this._statusBadge(p.status)}
+                                ${p.isDefault
+                                    ? '<span class="badge badge-info" data-tooltip="Máy in mặc định của Windows">⭐ Mặc định</span>'
+                                    : ''}
+                                ${p.isDuplex
+                                    ? '<span class="badge badge-success" data-tooltip="Máy in này có thể in 2 mặt tự động">Hỗ trợ 2 mặt</span>'
+                                    : '<span class="badge badge-warning" data-tooltip="Máy in này chỉ in 1 mặt — dùng chế độ thủ công">Chỉ 1 mặt</span>'}
                             </div>
                         </div>
                     </div>
@@ -201,11 +203,11 @@ const PrinterModule = {
                     const badge = card.querySelector('.printer-status');
                     if (badge) {
                         badge.innerHTML = `
-                            ${p.isDefault ? '<span class="badge badge-info">Mac dinh</span>' : ''}
-                            ${p.isDuplex
-                                ? '<span class="badge badge-success">Ho tro 2 mat</span>'
-                                : '<span class="badge badge-warning">Chi 1 mat</span>'}
                             ${this._statusBadge(p.status)}
+                            ${p.isDefault ? '<span class="badge badge-info" data-tooltip="Máy in mặc định của Windows">⭐ Mặc định</span>' : ''}
+                            ${p.isDuplex
+                                ? '<span class="badge badge-success" data-tooltip="Máy in này có thể in 2 mặt tự động">Hỗ trợ 2 mặt</span>'
+                                : '<span class="badge badge-warning" data-tooltip="Máy in này chỉ in 1 mặt — dùng chế độ thủ công">Chỉ 1 mặt</span>'}
                         `;
                     }
                 });
@@ -215,13 +217,13 @@ const PrinterModule = {
 
     _statusBadge(status) {
         const map = {
-            3: { cls: 'online',  label: 'Sẵn sàng' },
-            4: { cls: 'busy',    label: 'Đang in' },
-            7: { cls: 'offline', label: 'Offline' },
+            3: { cls: 'online',  label: 'Sẵn sàng', tip: 'Máy in đang hoạt động bình thường' },
+            4: { cls: 'busy',    label: 'Đang in',   tip: 'Máy in đang xử lý lệnh in khác' },
+            7: { cls: 'offline', label: 'Offline',   tip: 'Máy in không kết nối. Kiểm tra dây cáp và bật máy.' },
         };
         const s = map[status];
-        if (!s) return '<span class="printer-status-dot unknown"></span>';
-        return `<span class="printer-status-dot ${s.cls}"></span><span class="badge badge-${s.cls === 'online' ? 'success' : s.cls === 'busy' ? 'warning' : 'danger'}">${s.label}</span>`;
+        if (!s) return '<span class="printer-status-dot unknown" data-tooltip="Trạng thái không xác định"></span>';
+        return `<span class="printer-status-dot ${s.cls}" data-tooltip="${s.tip}"></span><span class="badge badge-${s.cls === 'online' ? 'success' : s.cls === 'busy' ? 'warning' : 'danger'}" data-tooltip="${s.tip}">${s.label}</span>`;
     },
 };
 

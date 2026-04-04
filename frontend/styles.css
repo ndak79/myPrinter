@@ -438,6 +438,62 @@ body {
     margin-top: 0.25rem;
 }
 
+/* ── Printer Badge Tooltips (F) ────────────────────────────── */
+[data-tooltip] {
+    position: relative;
+    cursor: help;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.95);
+    color: #f1f5f9;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    padding: 0.4rem 0.65rem;
+    border-radius: 6px;
+    max-width: 220px;
+    white-space: normal;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease 400ms;
+    z-index: 9000;
+}
+
+[data-tooltip]:hover::after {
+    opacity: 1;
+}
+
+/* Arrow */
+[data-tooltip]::before {
+    content: '';
+    position: absolute;
+    bottom: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: rgba(15, 23, 42, 0.95);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms ease 400ms;
+    z-index: 9000;
+}
+
+[data-tooltip]:hover::before {
+    opacity: 1;
+}
+
+[data-theme="light"] [data-tooltip]::after {
+    background: rgba(15, 23, 42, 0.9);
+}
+
 .printer-info {
     display: flex;
     align-items: center;
