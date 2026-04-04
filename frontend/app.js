@@ -432,12 +432,12 @@ const PreviewModule = {
     async _renderCanvas(thumb, pageNum) {
         try {
             const page     = await AppState.currentPdfDoc.getPage(pageNum);
-            const viewport = page.getViewport({ scale: 0.6 });
+            const viewport = page.getViewport({ scale: 1.5 });
             const canvas   = document.createElement('canvas');
             const ctx      = canvas.getContext('2d');
             canvas.width  = viewport.width;
             canvas.height = viewport.height;
-            canvas.style.cssText = 'width:100%!important;height:auto!important;display:block;border-radius:6px;';
+            canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;';
             await page.render({ canvasContext: ctx, viewport }).promise;
             thumb.insertBefore(canvas, thumb.firstChild);
             thumb.dataset.rendered = '1';
@@ -1616,11 +1616,15 @@ const HoverPreviewModule = {
 // DragReorderModule — Pointer-event drag to reorder page thumbnails (I)
 // ═══════════════════════════════════════════════════════════════════
 const DragReorderModule = {
-    _ghost:       null,
-    _dragging:    null,
-    _placeholder: null,
-    _startY:      0,
-    _dragPageNum: null,
+    _ghost:        null,
+    _dragging:     null,
+    _placeholder:  null,
+    _startY:       0,
+    _startX:       0,
+    _dragPageNum:  null,
+    _dragStarted:  false,
+    _ghostOffsetX: 0,
+    _ghostOffsetY: 0,
 
     init() {
         const grid = document.getElementById('sidebar-preview-grid');
@@ -1631,37 +1635,62 @@ const DragReorderModule = {
     _onDown(e) {
         const thumb = e.target.closest('.page-thumbnail');
         if (!thumb) return;
-        // Only left button
         if (e.button !== 0) return;
 
         this._dragging    = thumb;
         this._dragPageNum = parseInt(thumb.dataset.pageNumber);
         this._startY      = e.clientY;
+        this._startX      = e.clientX;
+        this._dragStarted = false;
 
-        // Create ghost
-        const rect  = thumb.getBoundingClientRect();
-        this._ghost = thumb.cloneNode(true);
-        this._ghost.className = 'drag-ghost';
-        this._ghost.style.cssText = `
-            width: ${rect.width}px;
-            height: ${rect.height}px;
-            left: ${rect.left}px;
-            top:  ${rect.top}px;
-        `;
-        document.body.appendChild(this._ghost);
-
-        thumb.classList.add('dragging');
+        // Pre-compute ghost offset from pointer to thumb top-left
+        const rect = thumb.getBoundingClientRect();
+        this._ghostOffsetX = e.clientX - rect.left;
+        this._ghostOffsetY = e.clientY - rect.top;
 
         document.addEventListener('pointermove', this._onMove = e => this._move(e));
         document.addEventListener('pointerup',   this._onUp   = e => this._drop(e));
-        e.preventDefault();
+        // No preventDefault — lets click/dblclick still fire
+    },
+
+    _createGhost() {
+        const rect = this._dragging.getBoundingClientRect();
+        this._ghost = this._dragging.cloneNode(true);
+        this._ghost.className = 'drag-ghost';
+        this._ghost.style.cssText = [
+            `width: ${rect.width}px`,
+            `height: ${rect.height}px`,
+            `left: ${rect.left}px`,
+            `top: ${rect.top}px`,
+            'position: fixed',
+            'z-index: 9999',
+            'pointer-events: none',
+            'opacity: 0.85',
+            'box-shadow: 0 8px 32px rgba(0,0,0,0.4)',
+            'border-radius: 8px',
+            'transition: none',
+        ].join(';');
+        document.body.appendChild(this._ghost);
     },
 
     _move(e) {
+        if (!this._dragging) return;
+
+        // Threshold check — only start drag after 6px movement
+        if (!this._dragStarted) {
+            const dy = Math.abs(e.clientY - this._startY);
+            const dx = Math.abs(e.clientX - this._startX);
+            if (dy < 6 && dx < 6) return;
+            this._dragStarted = true;
+            this._createGhost();
+            this._dragging.classList.add('dragging');
+        }
+
         if (!this._ghost) return;
-        const dy = e.clientY - this._startY;
-        const rect = this._dragging.getBoundingClientRect();
-        this._ghost.style.top = (rect.top + dy) + 'px';
+
+        // Move ghost to follow cursor exactly
+        this._ghost.style.top  = (e.clientY - this._ghostOffsetY) + 'px';
+        this._ghost.style.left = (e.clientX - this._ghostOffsetX) + 'px';
 
         // Find drop target
         const grid   = document.getElementById('sidebar-preview-grid');
@@ -1692,12 +1721,22 @@ const DragReorderModule = {
         document.removeEventListener('pointermove', this._onMove);
         document.removeEventListener('pointerup',   this._onUp);
 
-        if (this._ghost)       { this._ghost.remove();       this._ghost = null; }
-        if (this._dragging)    this._dragging.classList.remove('dragging');
+        if (this._ghost)    { this._ghost.remove();    this._ghost = null; }
+        if (this._dragging) this._dragging.classList.remove('dragging');
+
+        // If user never crossed threshold — it was just a click, do nothing
+        if (!this._dragStarted) {
+            this._placeholder?.remove();
+            this._placeholder = null;
+            this._dragging    = null;
+            this._dragPageNum = null;
+            this._dragStarted = false;
+            return;
+        }
 
         if (this._placeholder) {
             // Reorder AppState.pageOrder
-            const grid    = document.getElementById('sidebar-preview-grid');
+            const grid = document.getElementById('sidebar-preview-grid');
 
             // Compute new order from DOM after inserting dragging before placeholder
             const newOrder = [];
@@ -1724,6 +1763,7 @@ const DragReorderModule = {
         this._dragging    = null;
         this._dragPageNum = null;
         this._placeholder = null;
+        this._dragStarted = false;
     },
 
     _reRenderGrid(order) {
