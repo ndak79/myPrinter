@@ -5,6 +5,8 @@ using PdfSharp.Pdf.IO;
 using PdfSharp.Drawing;
 using XPdfForm = PdfSharp.Drawing.XPdfForm;
 using XGraphics = PdfSharp.Drawing.XGraphics;
+using XUnit = PdfSharp.Drawing.XUnit;
+using XImage = PdfSharp.Drawing.XImage;
 using PrinterApp.Models;
 
 namespace PrinterApp.Services;
@@ -95,6 +97,46 @@ public class WordInteropService
         {
             CleanupWordObjects(doc, wordApp);
         }
+    }
+
+    /// <summary>
+    /// Convert a JPG/PNG image to a single-page A4 PDF using PdfSharp.
+    /// Image is centered and scaled to fit within 20mm margins.
+    /// </summary>
+    public void ConvertImageToPdf(string imagePath, string outputPdfPath)
+    {
+        Console.WriteLine($"[ConvertImageToPdf] Converting: {imagePath} -> {outputPdfPath}");
+
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+
+        // A4 size
+        page.Width  = XUnit.FromMillimeter(210);
+        page.Height = XUnit.FromMillimeter(297);
+
+        using var gfx = XGraphics.FromPdfPage(page);
+        using var image = XImage.FromFile(imagePath);
+
+        double imgW  = image.PointWidth;
+        double imgH  = image.PointHeight;
+        double pageW = page.Width.Point;
+        double pageH = page.Height.Point;
+
+        // 20mm margin on each side
+        double margin = XUnit.FromMillimeter(20).Point;
+        double maxW   = pageW - 2 * margin;
+        double maxH   = pageH - 2 * margin;
+
+        // Scale to fit while preserving aspect ratio
+        double scale  = Math.Min(maxW / imgW, maxH / imgH);
+        double drawW  = imgW * scale;
+        double drawH  = imgH * scale;
+        double x      = margin + (maxW - drawW) / 2.0;
+        double y      = margin + (maxH - drawH) / 2.0;
+
+        gfx.DrawImage(image, x, y, drawW, drawH);
+        document.Save(outputPdfPath);
+        Console.WriteLine($"[ConvertImageToPdf] Done. Output: {outputPdfPath}");
     }
 
     public void PrintDocument(string filePath, string printerName)

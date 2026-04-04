@@ -172,9 +172,13 @@ app.MapPost("/api/convert", (
         {
             wordService.ConvertToPdf(filePath, pdfPath);
         }
+        else if (extension is ".jpg" or ".jpeg" or ".png")
+        {
+            wordService.ConvertImageToPdf(filePath, pdfPath);
+        }
         else
         {
-            return Results.BadRequest("Image conversion is not currently supported. Please upload PDF or Word documents.");
+            return Results.BadRequest($"Unsupported file type for conversion: {extension}");
         }
 
         // Update the file path to PDF
