@@ -40,26 +40,50 @@ const AppState = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// ToastModule — Popup notifications with color by type
+// ═══════════════════════════════════════════════════════════════════
+// ToastModule — Upgraded sliding toast notifications (S)
 // ═══════════════════════════════════════════════════════════════════
 const ToastModule = {
-    _timer: null,
+    _MAX: 3,
 
-    show(message, type = 'info') {
-        const toast    = document.getElementById('toast');
-        const toastMsg = document.getElementById('toast-message');
-        if (!toast || !toastMsg) return;
+    show(message, type = 'info', duration = 3000) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
 
-        toastMsg.textContent = message;
-        toast.style.borderColor = {
-            success: 'rgba(16, 185, 129, 0.5)',
-            error:   'rgba(239, 68, 68, 0.5)',
-            info:    'rgba(148, 163, 184, 0.2)',
-        }[type] ?? 'rgba(148, 163, 184, 0.2)';
+        // Enforce max stack
+        const existing = container.querySelectorAll('.toast-item:not(.dismissing)');
+        if (existing.length >= this._MAX) {
+            this._dismiss(existing[0]);
+        }
 
-        toast.classList.remove('hidden');
-        clearTimeout(this._timer);
-        this._timer = setTimeout(() => toast.classList.add('hidden'), 3000);
+        const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+        const icon  = icons[type] || 'ℹ️';
+
+        const item = document.createElement('div');
+        item.className = `toast-item toast-item-border-${type}`;
+        item.innerHTML = `
+            <div class="toast-item-body">
+                <span class="toast-item-icon">${icon}</span>
+                <span class="toast-item-msg">${message}</span>
+            </div>
+            <div class="toast-countdown toast-countdown-${type}"
+                 style="animation-duration: ${duration}ms;"></div>
+        `;
+
+        item.addEventListener('click', () => this._dismiss(item));
+        container.appendChild(item);
+
+        // Screen reader announce
+        const sr = document.getElementById('sr-status');
+        if (sr) { sr.textContent = message; setTimeout(() => { sr.textContent = ''; }, 1000); }
+
+        setTimeout(() => this._dismiss(item), duration);
+    },
+
+    _dismiss(item) {
+        if (!item || item.classList.contains('dismissing')) return;
+        item.classList.add('dismissing');
+        item.addEventListener('animationend', () => item.remove(), { once: true });
     },
 };
 
