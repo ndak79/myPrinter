@@ -280,7 +280,8 @@ app.MapPost("/api/print", (
                 request.PrinterName,
                 printer.IsDuplex,
                 request.PageRange,
-                request.SingleSidedPages
+                request.SingleSidedPages,
+                request.Watermark
             );
         }
         else if (request.Mode == PrintMode.Simplex)
@@ -289,7 +290,8 @@ app.MapPost("/api/print", (
             jobState = printAlgorithm.CreateSimplexJob(
                 filePath,
                 request.PrinterName,
-                request.PageRange
+                request.PageRange,
+                request.Watermark
             );
         }
         else // BookletA5

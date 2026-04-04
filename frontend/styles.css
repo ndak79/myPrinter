@@ -152,7 +152,7 @@ body {
 }
 
 .container {
-    max-width: 900px;
+    max-width: 1600px;
     margin: 0 auto;
 }
 
@@ -1124,3 +1124,8 @@ kbd {
   display: inline-block; background: var(--bg-secondary); border: 1px solid var(--border-color);
   border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: monospace;
 }
+.watermark-row { margin-top: 10px; padding: 10px 14px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; }
+.watermark-toggle-label { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); cursor: pointer; }
+.watermark-options { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.watermark-input { width: 100%; padding: 6px 10px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 14px; box-sizing: border-box; }
+.watermark-opacity-row { display: flex; align-items: center; gap: 8px; }

@@ -877,6 +877,16 @@ const PrintModule = {
             singleSidedPages: AppState.singleSidedPages.size > 0 ? Array.from(AppState.singleSidedPages) : null,
             copies:           CopiesModule.copies,
             collate:          CopiesModule.collate,
+            watermark: (() => {
+                const enabled = document.getElementById('watermark-enable')?.checked;
+                if (!enabled) return null;
+                return {
+                    text:    document.getElementById('watermark-text')?.value || 'DRAFT',
+                    fontSize: 48,
+                    opacity: parseInt(document.getElementById('watermark-opacity')?.value || '30', 10),
+                    color:   '#94a3b8',
+                };
+            })(),
         };
 
         try {
@@ -1059,4 +1069,16 @@ document.addEventListener('DOMContentLoaded', () => {
     HistoryModule.init();
     KeyboardModule.init();
     SummaryModule.update();
+
+    // Watermark toggle
+    const wmEnable = document.getElementById('watermark-enable');
+    const wmOptions = document.getElementById('watermark-options');
+    const wmOpacity = document.getElementById('watermark-opacity');
+    const wmOpacityVal = document.getElementById('watermark-opacity-val');
+    wmEnable?.addEventListener('change', () => {
+        wmOptions?.classList.toggle('hidden', !wmEnable.checked);
+    });
+    wmOpacity?.addEventListener('input', () => {
+        if (wmOpacityVal) wmOpacityVal.textContent = wmOpacity.value + '%';
+    });
 });

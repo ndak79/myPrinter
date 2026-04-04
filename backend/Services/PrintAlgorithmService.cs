@@ -25,8 +25,16 @@ public class PrintAlgorithmService
     string printerName,
     bool isDuplexPrinter,
     string? pageRange = null,
-    int[]? singleSidedPages = null)
+    int[]? singleSidedPages = null,
+    WatermarkOptions? watermark = null)
     {
+        // Apply watermark if requested
+        if (watermark != null)
+        {
+            pdfPath = _wordService.AddWatermarkToPdf(pdfPath, watermark);
+            Console.WriteLine($"[CreateNormalDuplexJob] Watermark applied: {pdfPath}");
+        }
+
         // Đọc metadata PDF gốc
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
         var flipDirection = pdfInfo.IsLandscape ? FlipDirection.ShortEdge : FlipDirection.LongEdge;
@@ -218,9 +226,17 @@ public class PrintAlgorithmService
     public PrintJobState CreateSimplexJob(
         string pdfPath,
         string printerName,
-        string? pageRange = null)
+        string? pageRange = null,
+        WatermarkOptions? watermark = null)
     {
         Console.WriteLine("[CreateSimplexJob] Single-sided print.");
+
+        // Apply watermark if requested
+        if (watermark != null)
+        {
+            pdfPath = _wordService.AddWatermarkToPdf(pdfPath, watermark);
+            Console.WriteLine($"[CreateSimplexJob] Watermark applied: {pdfPath}");
+        }
 
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
         string workingPdfPath = pdfPath;
