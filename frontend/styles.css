@@ -160,6 +160,17 @@ body {
     animation: thumbPop 180ms ease-out;
 }
 
+/* ── Keyboard Navigation focus styles (B) ─────────────────── */
+.page-thumbnail:focus {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
+.page-thumbnail:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
 .sidebar-preview-grid canvas {
     width: 100% !important;
     height: auto !important;

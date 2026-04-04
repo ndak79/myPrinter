@@ -349,6 +349,9 @@ const PreviewModule = {
             PageSelectModule.updateDisplay();
 
             grid.innerHTML = '';
+            grid.setAttribute('role', 'listbox');
+            grid.setAttribute('aria-label', 'Danh sách trang');
+            grid.setAttribute('aria-multiselectable', 'true');
             this._observer?.disconnect();
             this._observer = new IntersectionObserver(entries => {
                 entries.forEach(entry => {
@@ -378,6 +381,10 @@ const PreviewModule = {
         div.className = 'page-thumbnail selected';
         div.dataset.pageNumber = pageNum;
         div.style.cssText = 'position:relative;cursor:pointer;border:2px solid #22c55e;border-radius:8px;background:rgba(100,116,139,0.1);transition:all 0.2s;min-height:80px;';
+        div.setAttribute('tabindex', '0');
+        div.setAttribute('role', 'option');
+        div.setAttribute('aria-label', `Trang ${pageNum}`);
+        div.setAttribute('aria-selected', 'true');
 
         const label = document.createElement('div');
         label.style.cssText = 'position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,0.8);color:white;padding:3px 6px;border-radius:4px;font-size:11px;font-weight:600;';
@@ -417,6 +424,7 @@ const PreviewModule = {
             thumb.classList.toggle('selected', sel);
             thumb.style.borderColor = sel ? (single ? '#3b82f6' : '#22c55e') : 'rgba(148,163,184,0.2)';
             thumb.title = `Trang ${n} - In ${single ? '1' : '2'} mat`;
+            thumb.setAttribute('aria-selected', sel ? 'true' : 'false');
         });
     },
 };
@@ -1042,6 +1050,33 @@ const KeyboardModule = {
                 PreviewModule.updateThumbnails();
                 PageSelectModule.updateDisplay();
                 PrintModule.updateButton();
+            }
+
+            // Arrow key navigation for thumbnail grid (B)
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                const grid = document.getElementById('sidebar-preview-grid');
+                if (!grid) return;
+                const thumbs = Array.from(grid.querySelectorAll('.page-thumbnail'));
+                if (!thumbs.length) return;
+                const focused = document.activeElement;
+                const idx = thumbs.indexOf(focused);
+                if (idx === -1) {
+                    thumbs[0].focus();
+                    return;
+                }
+                e.preventDefault();
+                const next = e.key === 'ArrowDown'
+                    ? thumbs[Math.min(idx + 1, thumbs.length - 1)]
+                    : thumbs[Math.max(idx - 1, 0)];
+                next.focus();
+                next.scrollIntoView({ block: 'nearest' });
+            }
+
+            // Space/Enter to toggle selection when thumbnail is focused (B)
+            if ((e.key === ' ' || e.key === 'Enter') && document.activeElement?.classList.contains('page-thumbnail')) {
+                e.preventDefault();
+                const n = parseInt(document.activeElement.dataset.pageNumber);
+                if (!isNaN(n)) PageSelectModule.toggle(n);
             }
         });
     },
