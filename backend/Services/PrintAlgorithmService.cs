@@ -13,9 +13,9 @@ namespace PrinterApp.Services;
 
 public class PrintAlgorithmService
 {
-    private readonly WordInteropService _wordService;
+    private readonly IWordInteropService _wordService;
 
-    public PrintAlgorithmService(WordInteropService wordService)
+    public PrintAlgorithmService(IWordInteropService wordService)
     {
         _wordService = wordService;
     }
@@ -265,12 +265,12 @@ public class PrintAlgorithmService
         };
     }
 
-    private int RoundUpToMultipleOf4(int number)
+    internal int RoundUpToMultipleOf4(int number)
     {
         return (int)Math.Ceiling(number / 4.0) * 4;
     }
 
-    private int[] CalculateBookletOrder(int pageCount)
+    internal int[] CalculateBookletOrder(int pageCount)
     {
         var sheets = pageCount / 4;
         var order = new List<int>();
@@ -404,7 +404,7 @@ public class PrintAlgorithmService
         gfx.DrawLine(pen, halfWidth, 0, halfWidth, pageHeight);
     }
 
-    private int[] ParsePageRange(string pageRange, int totalPages)
+    internal int[] ParsePageRange(string pageRange, int totalPages)
     {
         var pages = new HashSet<int>();
         var parts = pageRange.Split(',', StringSplitOptions.RemoveEmptyEntries);

@@ -103,7 +103,7 @@ public class PrinterManagementService
         return false;
     }
 
-    private bool HasDuplexCapability(string name, UInt16[]? capabilities)
+    internal bool HasDuplexCapability(string name, UInt16[]? capabilities)
     {
         Console.WriteLine($"[HasDuplexCapability] Checking: {name}");
 

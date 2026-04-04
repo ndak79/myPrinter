@@ -13,7 +13,7 @@ namespace PrinterApp.Services;
 
 public record PdfInfo(int PageCount, bool IsLandscape);
 
-public class WordInteropService
+public class WordInteropService : IWordInteropService
 {
     /// <summary>
     /// Tạo 1 trang "blank" nhưng có content siêu nhỏ để tránh bị viewer/driver skip.

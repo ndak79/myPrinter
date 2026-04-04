@@ -1,6 +1,8 @@
 # .NET Build Output
 backend/bin/
 backend/obj/
+backend.Tests/bin/
+backend.Tests/obj/
 
 # Log files
 backend/*.log

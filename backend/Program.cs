@@ -23,7 +23,7 @@ builder.Services.Configure<FormOptions>(options =>
 
 // Register services
 builder.Services.AddSingleton<PrinterManagementService>();
-builder.Services.AddSingleton<WordInteropService>();
+builder.Services.AddSingleton<IWordInteropService, WordInteropService>();
 builder.Services.AddSingleton<PrintAlgorithmService>();
 builder.Services.AddSingleton<FileSessionService>();
 
@@ -152,7 +152,7 @@ app.MapGet("/api/file/{fileId}", (string fileId, FileSessionService sessions) =>
 
 app.MapPost("/api/convert", (
     string fileId,
-    WordInteropService wordService,
+    IWordInteropService wordService,
     FileSessionService sessions) =>
 {
     try
@@ -195,7 +195,7 @@ app.MapPost("/api/convert", (
 app.MapPost("/api/print", (
     PrintRequest request,
     PrinterManagementService printerService,
-    WordInteropService wordService,
+    IWordInteropService wordService,
     PrintAlgorithmService printAlgorithm,
     FileSessionService sessions) =>
 {
