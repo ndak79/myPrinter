@@ -27,7 +27,8 @@ public class PrintAlgorithmService
     string? pageRange = null,
     int[]? singleSidedPages = null,
     WatermarkOptions? watermark = null,
-    int[]? pageOrder = null)
+    int[]? pageOrder = null,
+    List<PageRotation>? pageRotations = null)
     {
         // Apply watermark if requested
         if (watermark != null)
@@ -69,12 +70,24 @@ public class PrintAlgorithmService
             // Apply custom page order if provided (I)
             selectedPages = ApplyPageOrder(selectedPages, pageOrder);
 
+            // Apply per-page rotations before creating subset (U)
+            var rotationMap = BuildRotationMap(pageRotations);
+
             if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
             {
                 Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex creating subset for pages: {string.Join(",", selectedPages)}");
                 var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
                 _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
                 jobState.TempPdfPath = subsetPath;
+
+                // Remap rotation keys from original page numbers to subset indices
+                rotationMap = RemapRotations(rotationMap, selectedPages);
+            }
+
+            // Apply rotations if any
+            if (rotationMap.Count > 0)
+            {
+                jobState.TempPdfPath = _wordService.ApplyPageRotations(jobState.TempPdfPath, rotationMap);
             }
 
             jobState.WaitingForFlip = false;
@@ -147,6 +160,18 @@ public class PrintAlgorithmService
             pagesToPrint = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
         }
 
+        // Apply per-page rotations before mixed-orientation processing (U)
+        var manualRotationMap = BuildRotationMap(pageRotations);
+        if (!pagesToPrint.SequenceEqual(naturalOrder))
+        {
+            manualRotationMap = RemapRotations(manualRotationMap, pagesToPrint);
+        }
+        if (manualRotationMap.Count > 0)
+        {
+            workingPdfPath = _wordService.ApplyPageRotations(workingPdfPath, manualRotationMap);
+            pdfInfo = _wordService.GetPdfInfo(workingPdfPath);
+        }
+
         // 2) XỬ LÝ MIXED ORIENTATION + SINGLE-SIDED BẰNG ProcessMixedOrientation MỚI
         // Hàm này sẽ:
         //  - nhóm theo orientation,
@@ -198,7 +223,7 @@ public class PrintAlgorithmService
     }
 
 
-    public PrintJobState CreateBookletJob(string pdfPath, string printerName, bool isDuplexPrinter, string? pageRange = null, int[]? singleSidedPages = null, int[]? pageOrder = null)
+    public PrintJobState CreateBookletJob(string pdfPath, string printerName, bool isDuplexPrinter, string? pageRange = null, int[]? singleSidedPages = null, int[]? pageOrder = null, List<PageRotation>? pageRotations = null)
     {
         // If page range is specified, create a temp PDF with only those pages first
         string sourcePdfPath = pdfPath;
@@ -224,6 +249,13 @@ public class PrintAlgorithmService
             sourcePdfPath = tempSelectedPdf;
         }
 
+        // Apply per-page rotations before booklet creation (U)
+        var bookletRotationMap = BuildRotationMap(pageRotations);
+        if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
+            bookletRotationMap = RemapRotations(bookletRotationMap, selectedPages);
+        if (bookletRotationMap.Count > 0)
+            sourcePdfPath = _wordService.ApplyPageRotations(sourcePdfPath, bookletRotationMap);
+
         var pageCount = _wordService.GetPageCount(sourcePdfPath);
         var paddedCount = RoundUpToMultipleOf4(pageCount);
 
@@ -243,7 +275,8 @@ public class PrintAlgorithmService
         string printerName,
         string? pageRange = null,
         WatermarkOptions? watermark = null,
-        int[]? pageOrder = null)
+        int[]? pageOrder = null,
+        List<PageRotation>? pageRotations = null)
     {
         Console.WriteLine("[CreateSimplexJob] Single-sided print.");
 
@@ -279,6 +312,13 @@ public class PrintAlgorithmService
             workingPdfPath = subsetPath;
             Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");
         }
+
+        // Apply per-page rotations (U)
+        var simplexRotationMap = BuildRotationMap(pageRotations);
+        if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
+            simplexRotationMap = RemapRotations(simplexRotationMap, selectedPages);
+        if (simplexRotationMap.Count > 0)
+            workingPdfPath = _wordService.ApplyPageRotations(workingPdfPath, simplexRotationMap);
 
         return new PrintJobState
         {
@@ -484,6 +524,35 @@ public class PrintAlgorithmService
         foreach (var p in selectedPages.Where(p => !reordered.Contains(p)))
             reordered.Add(p);
         return reordered.ToArray();
+    }
+
+    /// <summary>
+    /// Build a rotation map from the list of PageRotation objects.
+    /// </summary>
+    internal static Dictionary<int, RotationDirection> BuildRotationMap(List<PageRotation>? pageRotations)
+    {
+        if (pageRotations == null || pageRotations.Count == 0)
+            return new Dictionary<int, RotationDirection>();
+        return pageRotations
+            .Where(r => r.Rotation != RotationDirection.None)
+            .ToDictionary(r => r.PageNumber, r => r.Rotation);
+    }
+
+    /// <summary>
+    /// Remap rotation keys from original page numbers to 1-based subset indices.
+    /// selectedPages[i] is the original page number at subset index i+1.
+    /// </summary>
+    internal static Dictionary<int, RotationDirection> RemapRotations(
+        Dictionary<int, RotationDirection> rotationMap, int[] selectedPages)
+    {
+        if (rotationMap.Count == 0) return rotationMap;
+        var remapped = new Dictionary<int, RotationDirection>();
+        for (int i = 0; i < selectedPages.Length; i++)
+        {
+            if (rotationMap.TryGetValue(selectedPages[i], out var rot))
+                remapped[i + 1] = rot;
+        }
+        return remapped;
     }
 
     private string GenerateFlipInstructionText(FlipDirection direction, int pageCount)

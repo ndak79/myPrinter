@@ -40,6 +40,28 @@ namespace PrinterApp.Models
         /// Example: [3, 1, 2] prints page 3 first, then 1, then 2.
         /// </summary>
         public int[]? PageOrder { get; set; }
+        /// <summary>
+        /// Per-page rotations/flips applied before printing.
+        /// Null or empty means no rotations.
+        /// </summary>
+        public List<PageRotation>? PageRotations { get; set; }
+    }
+
+    public enum RotationDirection
+    {
+        None           = 0,
+        CW90           = 90,   // Clockwise 90°
+        CCW90          = 270,  // Counter-clockwise 90°
+        Rotate180      = 180,
+        FlipHorizontal = -1,   // Mirror left-right  (MVP: maps to 180°)
+        FlipVertical   = -2,   // Mirror top-bottom  (MVP: maps to 180°)
+    }
+
+    public class PageRotation
+    {
+        /// <summary>1-based page number</summary>
+        public int PageNumber { get; set; }
+        public RotationDirection Rotation { get; set; }
     }
 
     public class WatermarkOptions

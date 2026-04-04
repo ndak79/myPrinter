@@ -282,7 +282,8 @@ app.MapPost("/api/print", (
                 request.PageRange,
                 request.SingleSidedPages,
                 request.Watermark,
-                request.PageOrder
+                request.PageOrder,
+                request.PageRotations
             );
         }
         else if (request.Mode == PrintMode.Simplex)
@@ -293,7 +294,8 @@ app.MapPost("/api/print", (
                 request.PrinterName,
                 request.PageRange,
                 request.Watermark,
-                request.PageOrder
+                request.PageOrder,
+                request.PageRotations
             );
         }
         else // BookletA5
@@ -305,7 +307,8 @@ app.MapPost("/api/print", (
                 printer.IsDuplex,
                 request.PageRange,
                 request.SingleSidedPages,
-                request.PageOrder
+                request.PageOrder,
+                request.PageRotations
             );
         }
 

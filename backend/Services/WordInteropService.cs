@@ -646,7 +646,7 @@ public class WordInteropService : IWordInteropService
             var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
             var targetDoc = new PdfDocument();
 
-            foreach (var pageNum in pageNumbers.OrderBy(p => p))
+            foreach (var pageNum in pageNumbers)
             {
                 if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)
                 {
@@ -1149,6 +1149,106 @@ public class WordInteropService : IWordInteropService
         targetDoc.Save(outputPath);
         Console.WriteLine($"[AddWatermarkToPdf] Done: {outputPath}");
         return outputPath;
+    }
+
+    /// <summary>
+    /// Apply per-page rotations to a PDF (U — per-page rotation).
+    /// Creates a new PDF where each page listed in rotationMap is rotated accordingly.
+    /// Pages not in rotationMap are copied as-is.
+    /// NOTE: FlipHorizontal and FlipVertical map to 180° as MVP fallback —
+    /// true flip requires content stream manipulation not supported by PdfSharp.
+    /// </summary>
+    public string ApplyPageRotations(string sourcePath, Dictionary<int, RotationDirection> rotationMap)
+    {
+        var outputPath = Path.Combine(Path.GetTempPath(), $"rotated_pages_{Guid.NewGuid()}.pdf");
+        Console.WriteLine($"[ApplyPageRotations] Applying rotations to {rotationMap.Count} pages in: {sourcePath}");
+
+        try
+        {
+            using var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
+            using var targetDoc = new PdfDocument();
+            using var form = XPdfForm.FromFile(sourcePath);
+
+            for (int i = 0; i < sourceDoc.PageCount; i++)
+            {
+                int pageNum = i + 1;
+                var srcPage = sourceDoc.Pages[i];
+
+                if (rotationMap.TryGetValue(pageNum, out var rotation) && rotation != RotationDirection.None)
+                {
+                    // Map rotation to degrees
+                    int degrees = rotation switch
+                    {
+                        RotationDirection.CW90 => 90,
+                        RotationDirection.CCW90 => 270,
+                        RotationDirection.Rotate180 => 180,
+                        RotationDirection.FlipHorizontal => 180, // MVP fallback
+                        RotationDirection.FlipVertical => 180,   // MVP fallback
+                        _ => 0,
+                    };
+
+                    if (degrees == 0)
+                    {
+                        targetDoc.AddPage(srcPage);
+                        continue;
+                    }
+
+                    form.PageNumber = pageNum;
+                    double formW = form.PointWidth;
+                    double formH = form.PointHeight;
+
+                    var newPage = targetDoc.AddPage();
+                    if (degrees == 90 || degrees == 270)
+                    {
+                        // Swap dimensions for 90/270
+                        newPage.Width = XUnit.FromPoint(formH);
+                        newPage.Height = XUnit.FromPoint(formW);
+                    }
+                    else
+                    {
+                        newPage.Width = XUnit.FromPoint(formW);
+                        newPage.Height = XUnit.FromPoint(formH);
+                    }
+
+                    using var gfx = XGraphics.FromPdfPage(newPage);
+                    gfx.Save();
+
+                    switch (degrees)
+                    {
+                        case 90:
+                            gfx.TranslateTransform(formH, 0);
+                            gfx.RotateTransform(90);
+                            break;
+                        case 180:
+                            gfx.TranslateTransform(formW, formH);
+                            gfx.RotateTransform(180);
+                            break;
+                        case 270:
+                            gfx.TranslateTransform(0, formW);
+                            gfx.RotateTransform(270);
+                            break;
+                    }
+
+                    gfx.DrawImage(form, 0, 0, formW, formH);
+                    gfx.Restore();
+
+                    Console.WriteLine($"[ApplyPageRotations] Page {pageNum}: rotated {degrees}°");
+                }
+                else
+                {
+                    targetDoc.AddPage(srcPage);
+                }
+            }
+
+            targetDoc.Save(outputPath);
+            Console.WriteLine($"[ApplyPageRotations] Created rotated PDF at: {outputPath}");
+            return outputPath;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ApplyPageRotations ERROR] {ex.GetType().Name}: {ex.Message}");
+            throw;
+        }
     }
 
 }

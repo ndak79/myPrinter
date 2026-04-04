@@ -14,4 +14,9 @@ public interface IWordInteropService
     string AddWatermarkToPdf(string sourcePath, WatermarkOptions opts);
     void ConvertImageToPdf(string imagePath, string outputPdfPath);
     void ConvertToPdf(string inputPath, string outputPath);
+    /// <summary>
+    /// Apply per-page rotations to a PDF. Keys in rotationMap are 1-based page numbers.
+    /// Returns path to a new PDF with rotations applied.
+    /// </summary>
+    string ApplyPageRotations(string sourcePath, Dictionary<int, RotationDirection> rotationMap);
 }
