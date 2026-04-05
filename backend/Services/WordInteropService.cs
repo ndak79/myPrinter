@@ -1,5 +1,6 @@
 using Word = Microsoft.Office.Interop.Word;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using PdfSharp.Drawing;
@@ -13,6 +14,7 @@ namespace PrinterApp.Services;
 
 public record PdfInfo(int PageCount, bool IsLandscape);
 
+[SupportedOSPlatform("windows")]
 public class WordInteropService : IWordInteropService
 {
     /// <summary>
@@ -26,8 +28,8 @@ public class WordInteropService : IWordInteropService
         var page = targetDoc.AddPage();
 
         // Lấy kích thước từ template, rồi chỉnh orientation nếu cần
-        double w = templatePage.Width;
-        double h = templatePage.Height;
+        double w = templatePage.Width.Point;
+        double h = templatePage.Height.Point;
 
         bool templateIsLandscape = w > h;
 
@@ -42,16 +44,16 @@ public class WordInteropService : IWordInteropService
             (w, h) = (h, w);
         }
 
-        page.Width  = w;
-        page.Height = h;
+        page.Width  = XUnit.FromPoint(w);
+        page.Height = XUnit.FromPoint(h);
 
         using (var gfx = XGraphics.FromPdfPage(page))
         {
             // Vẽ 1 hình chữ nhật nhỏ màu xám ở GẦN GIỮA TRANG
             // → chắc chắn nằm trong vùng in, có pixel khác trắng.
             double rectSize = 3; // kích thước rất nhỏ, khó thấy
-            double centerX  = page.Width  / 2.0;
-            double centerY  = page.Height / 2.0;
+            double centerX  = page.Width.Point  / 2.0;
+            double centerY  = page.Height.Point / 2.0;
 
             gfx.DrawRectangle(
                 new XSolidBrush(XColor.FromArgb(255, 250, 250, 250)),
@@ -100,43 +102,69 @@ public class WordInteropService : IWordInteropService
     }
 
     /// <summary>
-    /// Convert a JPG/PNG image to a single-page A4 PDF using PdfSharp.
+    /// Convert a JPG/PNG/TIFF/BMP/WebP image to a single-page A4 PDF using PdfSharp.
     /// Image is centered and scaled to fit within 20mm margins.
+    /// WebP and multi-frame TIFF are pre-converted to PNG in memory via System.Drawing.
     /// </summary>
     public void ConvertImageToPdf(string imagePath, string outputPdfPath)
     {
         Console.WriteLine($"[ConvertImageToPdf] Converting: {imagePath} -> {outputPdfPath}");
 
-        using var document = new PdfDocument();
-        var page = document.AddPage();
+        var ext = Path.GetExtension(imagePath).ToLower();
 
-        // A4 size
-        page.Width  = XUnit.FromMillimeter(210);
-        page.Height = XUnit.FromMillimeter(297);
+        // WebP and TIFF may not load directly in PdfSharp — normalise to PNG first
+        string? tempPng = null;
+        string effectivePath = imagePath;
 
-        using var gfx = XGraphics.FromPdfPage(page);
-        using var image = XImage.FromFile(imagePath);
+        if (ext is ".webp" or ".tif" or ".tiff" or ".bmp")
+        {
+            tempPng = Path.Combine(Path.GetTempPath(), $"img_convert_{Guid.NewGuid()}.png");
+            using var sysBmp = new System.Drawing.Bitmap(imagePath);
+            sysBmp.Save(tempPng, System.Drawing.Imaging.ImageFormat.Png);
+            effectivePath = tempPng;
+            Console.WriteLine($"[ConvertImageToPdf] Pre-converted {ext} → PNG: {tempPng}");
+        }
 
-        double imgW  = image.PointWidth;
-        double imgH  = image.PointHeight;
-        double pageW = page.Width.Point;
-        double pageH = page.Height.Point;
+        try
+        {
+            using var document = new PdfDocument();
+            var page = document.AddPage();
 
-        // 20mm margin on each side
-        double margin = XUnit.FromMillimeter(20).Point;
-        double maxW   = pageW - 2 * margin;
-        double maxH   = pageH - 2 * margin;
+            // A4 size
+            page.Width  = XUnit.FromMillimeter(210);
+            page.Height = XUnit.FromMillimeter(297);
 
-        // Scale to fit while preserving aspect ratio
-        double scale  = Math.Min(maxW / imgW, maxH / imgH);
-        double drawW  = imgW * scale;
-        double drawH  = imgH * scale;
-        double x      = margin + (maxW - drawW) / 2.0;
-        double y      = margin + (maxH - drawH) / 2.0;
+            using var gfx = XGraphics.FromPdfPage(page);
+            using var image = XImage.FromFile(effectivePath);
 
-        gfx.DrawImage(image, x, y, drawW, drawH);
-        document.Save(outputPdfPath);
-        Console.WriteLine($"[ConvertImageToPdf] Done. Output: {outputPdfPath}");
+            double imgW  = image.PointWidth;
+            double imgH  = image.PointHeight;
+            double pageW = page.Width.Point;
+            double pageH = page.Height.Point;
+
+            // 20mm margin on each side
+            double margin = XUnit.FromMillimeter(20).Point;
+            double maxW   = pageW - 2 * margin;
+            double maxH   = pageH - 2 * margin;
+
+            // Scale to fit while preserving aspect ratio
+            double scale  = Math.Min(maxW / imgW, maxH / imgH);
+            double drawW  = imgW * scale;
+            double drawH  = imgH * scale;
+            double x      = margin + (maxW - drawW) / 2.0;
+            double y      = margin + (maxH - drawH) / 2.0;
+
+            gfx.DrawImage(image, x, y, drawW, drawH);
+            document.Save(outputPdfPath);
+            Console.WriteLine($"[ConvertImageToPdf] Done. Output: {outputPdfPath}");
+        }
+        finally
+        {
+            if (tempPng != null)
+            {
+                try { File.Delete(tempPng); } catch { /* best-effort cleanup */ }
+            }
+        }
     }
 
     public void PrintDocument(string filePath, string printerName)
@@ -200,7 +228,7 @@ public class WordInteropService : IWordInteropService
 
         try
         {
-            using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.ReadOnly);
+            using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
             var pageCount = document.PageCount;
 
             if (pageCount == 0)
@@ -210,7 +238,7 @@ public class WordInteropService : IWordInteropService
             }
 
             var firstPage = document.Pages[0];
-            var isLandscape = firstPage.Width > firstPage.Height;
+            var isLandscape = firstPage.Width.Point > firstPage.Height.Point;
 
             Console.WriteLine($"[GetPdfInfo] PageCount={pageCount}, Orientation={(isLandscape ? "Landscape" : "Portrait")} (W:{firstPage.Width}, H:{firstPage.Height})");
 
@@ -255,7 +283,7 @@ public class WordInteropService : IWordInteropService
     {
         Console.WriteLine($"[GetPageOrientations] Analyzing page orientations in: {pdfPath}");
         
-        using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.ReadOnly);
+        using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
         var orientations = new bool[document.PageCount];
         
         for (int i = 0; i < document.PageCount; i++)
@@ -880,8 +908,8 @@ public class WordInteropService : IWordInteropService
             for (int i = 0; i < pageCount; i++)
             {
                 var p = sourceDoc.Pages[i];
-                double w = p.Width;
-                double h = p.Height;
+                double w = p.Width.Point;
+                double h = p.Height.Point;
 
                 // Nếu Rotate 90/270 thì width/height đổi vai trò
                 int rotate = p.Rotate;

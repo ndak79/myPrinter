@@ -4,42 +4,647 @@
 // Compatible with file:// (no ES import/export)
 // ═══════════════════════════════════════════════════════════════════
 
-const API_BASE = 'http://localhost:8787/api';
+const API_BASE = (() => {
+    // When running inside WinForms/WebView2, the port is passed as ?port=XXXX
+    const params = new URLSearchParams(window.location.search);
+    const port   = params.get('port') || '8787';
+    return `http://localhost:${port}/api`;
+})();
 
-// ─── PDF.js worker ──────────────────────────────────────────────────
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// ─── PDF.js worker (v5, ES module) ──────────────────────────────────
+// Worker served locally to eliminate CDN latency (~200-500ms savings)
+function _initPdfWorker() {
+    if (typeof pdfjsLib !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/pdf.worker.min.mjs';
+    }
+}
+window.addEventListener('pdfjsReady', _initPdfWorker);
+// Also try immediately in case script already loaded
+_initPdfWorker();
 
 // ═══════════════════════════════════════════════════════════════════
 // AppState — All application state centralized here
 // ═══════════════════════════════════════════════════════════════════
 const AppState = {
-    selectedPrinter:      null,
-    uploadedFile:         null,
-    currentJob:           null,
-    currentPdfDoc:        null,
-    selectedPages:        new Set(),
-    singleSidedPages:     new Set(),
-    totalPageCount:       0,
+    selectedPrinter:       null,
+    currentJob:            null,
     isUserTypingPageRange: false,
-    pageOrder:            [], // 1-based page numbers in display/print order; empty = natural order
-    pageRotations:        new Map(), // Map<pageNum, RotationDirection string>
+    printMode:             'duplex',   // 'duplex' | 'simplex' | 'booklet'
 
-    reset() {
-        this.uploadedFile         = null;
-        this.currentPdfDoc        = null;
-        this.currentJob           = null;
-        this.selectedPages        = new Set();
-        this.singleSidedPages     = new Set();
-        this.totalPageCount       = 0;
-        this.isUserTypingPageRange = false;
-        this.pageOrder            = [];
-        this.pageRotations        = new Map();
+    // Multi-file
+    files:           [],   // FileEntry[]
+    activeFileIndex: -1,   // index into files[], -1 = no file loaded
+
+    get activeFile() {
+        return this.files[this.activeFileIndex] ?? null;
+    },
+
+    // Legacy shims — keep these so untouched code still works during migration
+    get uploadedFile()     { return this.activeFile ? { id: this.activeFile.id, name: this.activeFile.name, needsConversion: this.activeFile.needsConversion } : null; },
+    get currentPdfDoc()    { return this.activeFile?.pdfDoc ?? null; },
+    set currentPdfDoc(v)   { if (this.activeFile) this.activeFile.pdfDoc = v; },
+    get selectedPages()    { return this.activeFile?.selectedPages ?? new Set(); },
+    set selectedPages(v)   { if (this.activeFile) this.activeFile.selectedPages = v; },
+    get singleSidedPages() { return this.activeFile?.singleSidedPages ?? new Set(); },
+    set singleSidedPages(v){ if (this.activeFile) this.activeFile.singleSidedPages = v; },
+    get totalPageCount()   { return this.activeFile?.totalPageCount ?? 0; },
+    set totalPageCount(v)  { if (this.activeFile) this.activeFile.totalPageCount = v; },
+    get pageOrder()        { return this.activeFile?.pageOrder ?? []; },
+    set pageOrder(v)       { if (this.activeFile) this.activeFile.pageOrder = v; },
+    get pageRotations()    { return this.activeFile?.pageRotations ?? new Map(); },
+    set pageRotations(v)   { if (this.activeFile) this.activeFile.pageRotations = v; },
+
+    createFileEntry(id, name, needsConversion) {
+        return {
+            id, name, needsConversion,
+            pdfDoc:           null,
+            totalPageCount:   0,
+            selectedPages:    new Set(),
+            singleSidedPages: new Set(),
+            pageOrder:        [],
+            pageRotations:    new Map(),
+        };
+    },
+
+    addFile(entry) {
+        this.files.push(entry);
+        this.activeFileIndex = this.files.length - 1;
+    },
+
+    removeFile(index) {
+        const entry = this.files[index];
+        // Release pdf.js worker memory for this document
+        if (entry?.pdfDoc) {
+            try { entry.pdfDoc.destroy(); } catch(_) {}
+            entry.pdfDoc = null;
+        }
+        this.files.splice(index, 1);
+        if (this.files.length === 0) {
+            this.activeFileIndex = -1;
+        } else {
+            this.activeFileIndex = Math.min(index, this.files.length - 1);
+        }
+    },
+
+    setActiveFile(index) {
+        if (index >= 0 && index < this.files.length) {
+            this.activeFileIndex = index;
+        }
     },
 
     selectAllPages() {
-        this.selectedPages = new Set();
-        for (let i = 1; i <= this.totalPageCount; i++) this.selectedPages.add(i);
+        const f = this.activeFile;
+        if (!f) return;
+        f.selectedPages = new Set();
+        for (let i = 1; i <= f.totalPageCount; i++) f.selectedPages.add(i);
+    },
+
+    reset() {
+        this.files                = [];
+        this.activeFileIndex      = -1;
+        this.currentJob           = null;
+        this.isUserTypingPageRange = false;
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// PrintPreviewModule — Full-screen preview modal with 2-panel layout
+// Left: thumbnail panel (click→navigate, drag→multiselect, right-click→menu)
+// Right: main view (all pages scrollable, synchronized with left panel)
+// ═══════════════════════════════════════════════════════════════════
+const PrintPreviewModule = {
+    _observer:     null,    // IntersectionObserver for main view pages
+    _thumbObserver: null,   // IntersectionObserver for thumbnail canvas rendering
+    _activePage:   1,
+    _isOpen:       false,
+    _mainPageEls:  new Map(),   // pageNum → .preview-main-page element
+    _thumbEls:     new Map(),   // pageNum → .preview-thumb-item element
+    _thumbCache:   new Map(),   // pageNum → rendered offscreen canvas (thumb)
+    _mainCache:    new Map(),   // pageNum → rendered offscreen canvas (main)
+    _scrollTimer:  null,
+    _thumbRenderTasks: new Map(), // pageNum → RenderTask (for cancel-and-replace)
+    _mainRenderTasks:  new Map(), // pageNum → RenderTask (for cancel-and-replace)
+
+    // ── Lasso state ───────────────────────────────────────────
+    _lasso: {
+        active:  false,
+        startX:  0,
+        startY:  0,
+        el:      null,   // the .lasso-rect div
+    },
+
+    _cacheKey(pageNum) {
+        return `${AppState.activeFile?.id ?? 'default'}-${pageNum}`;
+    },
+
+    init() {
+        // Print Preview modal is replaced by persistent PreviewPanelModule.
+        // Keep bulk action buttons, keyboard, lasso, and context-menu wiring.
+
+        // Bulk action buttons inside modal (still work if elements exist)
+        document.getElementById('preview-all-double-btn')
+            ?.addEventListener('click', () => {
+                AppState.selectAllPages(); AppState.singleSidedPages.clear();
+                this._syncAll();
+                showToast('Đã chọn tất cả in 2 mặt', 'success');
+            });
+        document.getElementById('preview-all-single-btn')
+            ?.addEventListener('click', () => {
+                AppState.selectAllPages(); AppState.singleSidedPages = new Set(AppState.selectedPages);
+                this._syncAll();
+                showToast('Đã chọn tất cả in 1 mặt', 'success');
+            });
+        document.getElementById('preview-deselect-all-btn')
+            ?.addEventListener('click', () => {
+                AppState.selectedPages.clear(); AppState.singleSidedPages.clear();
+                this._syncAll();
+                PrintModule.updateButton();
+                showToast('Đã bỏ chọn tất cả', 'info');
+            });
+
+        // Keyboard: Arrow keys navigate pages
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); this.setActivePage(Math.min(this._activePage + 1, AppState.totalPageCount)); }
+            if (e.key === 'ArrowUp')   { e.preventDefault(); this.setActivePage(Math.max(this._activePage - 1, 1)); }
+        });
+
+        // Lasso on thumb panel
+        const panel = document.getElementById('preview-thumb-panel');
+        if (panel) {
+            panel.addEventListener('pointerdown', (e) => this._lassoStart(e));
+            document.addEventListener('pointermove', (e) => this._lassoMove(e));
+            document.addEventListener('pointerup',   (e) => this._lassoEnd(e));
+        }
+    },
+
+    // ── Render both panels ─────────────────────────────────────
+    async _render() {
+        this._thumbEls.clear();
+        this._mainPageEls.clear();
+        this._thumbCache.clear();
+        this._mainCache.clear();
+
+        const thumbGrid    = document.getElementById('preview-thumb-grid');
+        const mainContainer = document.getElementById('preview-main-canvas-container');
+        if (!thumbGrid || !mainContainer) return;
+
+        thumbGrid.innerHTML    = '';
+        mainContainer.innerHTML = '<div class="loading" style="padding:2rem;text-align:center;color:var(--text-muted)">Đang tải...</div>';
+
+        const order = AppState.pageOrder.length > 0 ? AppState.pageOrder : Array.from({ length: AppState.totalPageCount }, (_, i) => i + 1);
+
+        // Build thumbnail items (lazy render via IntersectionObserver)
+        this._thumbObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !entry.target.dataset.rendered) {
+                    const n = parseInt(entry.target.dataset.pageNumber);
+                    this._renderThumb(entry.target, n);
+                    this._thumbObserver?.unobserve(entry.target);
+                }
+            });
+        }, { root: thumbGrid, rootMargin: '150px' });
+
+        for (const pageNum of order) {
+            const item = this._createThumbItem(pageNum);
+            thumbGrid.appendChild(item);
+            this._thumbEls.set(pageNum, item);
+            this._thumbObserver.observe(item);
+        }
+
+        // Build main view pages (lazy render too)
+        mainContainer.innerHTML = '';
+        const list = document.createElement('div');
+        list.style.cssText = 'width:100%;';
+
+        this._observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !entry.target.dataset.rendered) {
+                    const n = parseInt(entry.target.dataset.page);
+                    this._renderMainPage(entry.target, n);
+                    this._observer?.unobserve(entry.target);
+                }
+            });
+        }, { root: mainContainer, rootMargin: '200px' });
+
+        for (const pageNum of order) {
+            const card = this._createMainCard(pageNum);
+            list.appendChild(card);
+            this._mainPageEls.set(pageNum, card);
+            this._observer.observe(card);
+        }
+        mainContainer.appendChild(list);
+
+        // Sync scroll: when user scrolls main view, update active thumb highlight
+        mainContainer.addEventListener('scroll', () => {
+            clearTimeout(this._scrollTimer);
+            this._scrollTimer = setTimeout(() => this._syncActiveFromScroll(), 120);
+        });
+
+        // Bind drag-reorder to thumb grid
+        const thumbGrid2 = document.getElementById('preview-thumb-grid');
+        if (thumbGrid2) DragReorderModule.bindGrid(thumbGrid2);
+
+        // Update header counts & footer summary
+        this._updateCounts();
+        this._updateFooterSummary();
+        this._syncAllHighlights();
+
+        // Scroll to first page active after a tick
+        this._activePage = 1;
+        this._highlightThumb(1);
+    },
+
+    // ── Thumbnail item ─────────────────────────────────────────
+    _createThumbItem(pageNum) {
+        const div = document.createElement('div');
+        div.className = 'preview-thumb-item';
+        div.dataset.pageNumber = pageNum;
+
+        // Selection dot
+        const dot = document.createElement('div');
+        dot.className = 'thumb-sel-dot';
+        div.appendChild(dot);
+
+        // Page number label
+        const label = document.createElement('div');
+        label.className = 'thumb-page-num';
+        label.textContent = pageNum;
+        div.appendChild(label);
+
+        // Click → navigate main view
+        div.addEventListener('click', (e) => {
+            if (e.button !== 0) return;
+            this.setActivePage(pageNum);
+        });
+
+        // Right-click → context menu
+        div.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            ContextMenu.show(e, pageNum);
+        });
+
+        return div;
+    },
+
+    async _renderThumb(item, pageNum) {
+        try {
+            let canvas;
+            if (this._thumbCache.has(this._cacheKey(pageNum))) {
+                canvas = this._thumbCache.get(this._cacheKey(pageNum));
+            } else {
+                // Cancel any in-flight render for this page
+                const existing = this._thumbRenderTasks.get(pageNum);
+                if (existing) { try { existing.cancel(); } catch {} }
+
+                const page     = await AppState.currentPdfDoc.getPage(pageNum);
+                const vp       = page.getViewport({ scale: 0.3 });
+                const off      = document.createElement('canvas');
+                off.width      = vp.width;
+                off.height     = vp.height;
+                const task     = page.render({ canvasContext: off.getContext('2d'), viewport: vp });
+                this._thumbRenderTasks.set(pageNum, task);
+                await task.promise;
+                this._thumbRenderTasks.delete(pageNum);
+                page.cleanup();
+                this._thumbCache.set(this._cacheKey(pageNum), off);
+                canvas = off;
+            }
+
+            const c = document.createElement('canvas');
+            c.width  = canvas.width;
+            c.height = canvas.height;
+            c.getContext('2d').drawImage(canvas, 0, 0);
+            item.insertBefore(c, item.firstChild);
+            item.dataset.rendered = '1';
+
+            // Apply rotation if any
+            const rot = AppState.pageRotations.get(pageNum);
+            if (rot) this._applyRotation(c, rot);
+        } catch (err) {
+            if (err?.name !== 'RenderingCancelledException') {
+                console.error(`Thumb render error page ${pageNum}:`, err);
+            }
+        }
+    },
+
+    // ── Main view card ─────────────────────────────────────────
+    _createMainCard(pageNum) {
+        const div = document.createElement('div');
+        div.className = 'preview-main-page';
+        div.dataset.page = pageNum;
+
+        const isSel    = AppState.selectedPages.has(pageNum);
+        const isSingle = AppState.singleSidedPages.has(pageNum);
+        div.classList.toggle('selected-for-print', isSel);
+        div.classList.toggle('single-sided-print', isSingle && isSel);
+
+        const header = document.createElement('div');
+        header.className = 'preview-main-page-header';
+
+        const title = document.createElement('h4');
+        title.textContent = `Trang ${pageNum}`;
+        header.appendChild(title);
+
+        const badge = document.createElement('div');
+        badge.className   = isSingle ? 'single-sided-badge' : 'double-sided-badge';
+        badge.textContent = isSingle ? '1 MẶT' : '2 MẶT';
+        if (!isSel) badge.style.opacity = '0.3';
+        header.appendChild(badge);
+
+        div.appendChild(header);
+
+        // Click = toggle selection (in main view)
+        div.addEventListener('click', (e) => {
+            if (e.button !== 0) return;
+            if (AppState.selectedPages.has(pageNum)) AppState.selectedPages.delete(pageNum);
+            else AppState.selectedPages.add(pageNum);
+            this._syncAll();
+            PrintModule.updateButton();
+        });
+
+        // Right-click
+        div.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            ContextMenu.show(e, pageNum);
+        });
+
+        return div;
+    },
+
+    async _renderMainPage(card, pageNum) {
+        try {
+            let canvas;
+            if (this._mainCache.has(this._cacheKey(pageNum))) {
+                canvas = this._mainCache.get(this._cacheKey(pageNum));
+            } else {
+                // Cancel any in-flight render for this page
+                const existing = this._mainRenderTasks.get(pageNum);
+                if (existing) { try { existing.cancel(); } catch {} }
+
+                const page = await AppState.currentPdfDoc.getPage(pageNum);
+                const vp   = page.getViewport({ scale: 1.5 });
+                const off  = document.createElement('canvas');
+                off.width  = vp.width;
+                off.height = vp.height;
+                const task = page.render({ canvasContext: off.getContext('2d'), viewport: vp });
+                this._mainRenderTasks.set(pageNum, task);
+                await task.promise;
+                this._mainRenderTasks.delete(pageNum);
+                page.cleanup();
+                this._mainCache.set(this._cacheKey(pageNum), off);
+                canvas = off;
+            }
+
+            const c = document.createElement('canvas');
+            c.width  = canvas.width;
+            c.height = canvas.height;
+            c.getContext('2d').drawImage(canvas, 0, 0);
+            card.appendChild(c);
+            card.dataset.rendered = '1';
+
+            const rot = AppState.pageRotations.get(pageNum);
+            if (rot) this._applyRotation(c, rot);
+        } catch (err) {
+            if (err?.name !== 'RenderingCancelledException') {
+                console.error(`Main render error page ${pageNum}:`, err);
+            }
+        }
+    },
+
+    // ── Navigation ─────────────────────────────────────────────
+    setActivePage(pageNum) {
+        this._activePage = pageNum;
+        this._highlightThumb(pageNum);
+        this._scrollMainTo(pageNum);
+    },
+
+    jumpToFile(fileIndex) {
+        AppState.setActiveFile(fileIndex);
+        // Re-render preview with new active file's pages
+        this._thumbCache.clear();
+        this._mainCache.clear();
+        this._render();
+    },
+
+    _scrollMainTo(pageNum) {
+        const card      = this._mainPageEls.get(pageNum);
+        const container = document.getElementById('preview-main-canvas-container');
+        if (!card || !container) return;
+
+        const cRect = container.getBoundingClientRect();
+        const cTop  = card.getBoundingClientRect().top - cRect.top + container.scrollTop - 24;
+        container.scrollTo({ top: cTop, behavior: 'smooth' });
+    },
+
+    _scrollThumbTo(pageNum) {
+        const item = this._thumbEls.get(pageNum);
+        const grid = document.getElementById('preview-thumb-grid');
+        if (!item || !grid) return;
+        const gRect = grid.getBoundingClientRect();
+        const iRect = item.getBoundingClientRect();
+        const top   = iRect.top - gRect.top + grid.scrollTop - grid.offsetHeight / 2 + item.offsetHeight / 2;
+        grid.scrollTo({ top, behavior: 'smooth' });
+    },
+
+    _syncActiveFromScroll() {
+        const container = document.getElementById('preview-main-canvas-container');
+        if (!container) return;
+        const cRect  = container.getBoundingClientRect();
+        const center = cRect.top + cRect.height / 2;
+
+        let nearest    = null;
+        let minDist    = Infinity;
+        this._mainPageEls.forEach((el, pageNum) => {
+            const r    = el.getBoundingClientRect();
+            const dist = Math.abs(r.top + r.height / 2 - center);
+            if (dist < minDist) { minDist = dist; nearest = pageNum; }
+        });
+        if (nearest && nearest !== this._activePage) {
+            this._activePage = nearest;
+            this._highlightThumb(nearest);
+            this._scrollThumbTo(nearest);
+        }
+    },
+
+    // ── Highlight helpers ──────────────────────────────────────
+    _highlightThumb(pageNum) {
+        this._thumbEls.forEach((el, n) => el.classList.toggle('active-page', n === pageNum));
+        this._mainPageEls.forEach((el, n) => el.classList.toggle('active-page', n === pageNum));
+    },
+
+    _syncAllHighlights() {
+        this._thumbEls.forEach((el, n) => {
+            const isSel    = AppState.selectedPages.has(n);
+            const isSingle = isSel && AppState.singleSidedPages.has(n);
+            el.classList.toggle('selected-for-print', isSel);
+            el.classList.toggle('single-sided-print', isSingle);
+            // sync rotation on thumbnail canvas
+            const canvas = el.querySelector('canvas');
+            if (canvas) this._applyRotation(canvas, AppState.pageRotations.get(n));
+        });
+        this._mainPageEls.forEach((el, n) => {
+            const isSel    = AppState.selectedPages.has(n);
+            const isSingle = isSel && AppState.singleSidedPages.has(n);
+            el.classList.toggle('selected-for-print', isSel);
+            el.classList.toggle('single-sided-print', isSingle);
+
+            // update badge
+            const badge = el.querySelector('.single-sided-badge, .double-sided-badge');
+            if (badge) {
+                badge.className   = isSingle ? 'single-sided-badge' : 'double-sided-badge';
+                badge.textContent = isSingle ? '1 MẶT' : '2 MẶT';
+                badge.style.opacity = isSel ? '1' : '0.3';
+            }
+            // update rotation on canvas
+            const canvas = el.querySelector('canvas');
+            if (canvas) this._applyRotation(canvas, AppState.pageRotations.get(n));
+        });
+    },
+
+    _syncAll() {
+        this._syncAllHighlights();
+        this._updateCounts();
+        this._updateFooterSummary();
+        // Also keep old thumbnail grid in sync (for other modules that reference it)
+        PreviewModule.updateThumbnails();
+        PageSelectModule.updateDisplay();
+    },
+
+    _updateCounts() {
+        const total = AppState.totalPageCount;
+        const sel   = AppState.selectedPages.size;
+        const el1   = document.getElementById('preview-modal-page-count');
+        const el2   = document.getElementById('preview-modal-selected-count');
+        if (el1) el1.textContent = `${total} trang`;
+        if (el2) el2.textContent = sel === total ? 'Tất cả được chọn' : `${sel}/${total} trang được chọn`;
+    },
+
+    _updateFooterSummary() {
+        const el = document.getElementById('preview-print-summary');
+        if (!el) return;
+        const pages   = AppState.selectedPages.size;
+        const mode    = document.getElementById('mode-select')?.value || 'duplex';
+        const copies  = window.CopiesModule?.copies || 1;
+        if (pages === 0) { el.innerHTML = ''; return; }
+
+        let sheets;
+        if (mode === 'simplex') { sheets = pages * copies; }
+        else if (mode === 'booklet') { sheets = Math.ceil(pages / 4) * copies; }
+        else { const s = AppState.singleSidedPages.size; sheets = (Math.ceil((pages - s) / 2) + s) * copies; }
+
+        el.innerHTML = `<span>📄 ${pages} trang</span><span>·</span><span>🗒️ ${sheets} tờ</span>${copies > 1 ? `<span>· ${copies} bản</span>` : ''}`;
+    },
+
+    // ── Lasso (add-only brush select on thumbnail panel) ───────
+    _lassoStart(e) {
+        if (e.button !== 0) return;
+        const panel = document.getElementById('preview-thumb-panel');
+        const grid  = document.getElementById('preview-thumb-grid');
+        if (!panel || !grid) return;
+
+        // Only start lasso if NOT clicking on a thumbnail item directly
+        if (e.target.closest('.preview-thumb-item')) return;
+
+        this._lasso.active = true;
+        const rect = panel.getBoundingClientRect();
+        this._lasso.startX = e.clientX - rect.left;
+        this._lasso.startY = e.clientY - rect.top + panel.scrollTop;
+
+        const overlay = document.getElementById('lasso-overlay');
+        if (overlay) {
+            this._lasso.el = document.createElement('div');
+            this._lasso.el.className = 'lasso-rect';
+            overlay.appendChild(this._lasso.el);
+        }
+
+        panel.setPointerCapture(e.pointerId);
+    },
+
+    _lassoMove(e) {
+        if (!this._lasso.active) return;
+        const panel = document.getElementById('preview-thumb-panel');
+        if (!panel) return;
+        const rect = panel.getBoundingClientRect();
+        const cx   = e.clientX - rect.left;
+        const cy   = e.clientY - rect.top + panel.scrollTop;
+
+        const x = Math.min(cx, this._lasso.startX);
+        const y = Math.min(cy, this._lasso.startY);
+        const w = Math.abs(cx - this._lasso.startX);
+        const h = Math.abs(cy - this._lasso.startY);
+
+        if (this._lasso.el) {
+            this._lasso.el.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+        }
+
+        // Highlight thumbnails that intersect with lasso rect
+        this._thumbEls.forEach((el, pageNum) => {
+            const elRect  = el.getBoundingClientRect();
+            const panRect = panel.getBoundingClientRect();
+            const elTop   = elRect.top - panRect.top + panel.scrollTop;
+            const elBot   = elTop + elRect.height;
+            const elLeft  = elRect.left - panRect.left;
+            const elRight = elLeft + elRect.width;
+
+            const lassoRight  = this._lasso.startX + (cx - this._lasso.startX);
+            const lassoBottom = this._lasso.startY + (cy - this._lasso.startY);
+            const lassoTop    = Math.min(this._lasso.startY, cy - rect.top + panel.scrollTop);
+            const lassoLeft   = Math.min(this._lasso.startX, cx);
+            const lassoR      = Math.max(this._lasso.startX, cx);
+            const lassoB      = Math.max(this._lasso.startY, cy - rect.top + panel.scrollTop);
+
+            const intersects = !(elRight < lassoLeft || elLeft > lassoR || elBot < lassoTop || elTop > lassoB);
+            el.classList.toggle('lasso-hover', intersects);
+        });
+    },
+
+    _lassoEnd(e) {
+        if (!this._lasso.active) return;
+        this._lasso.active = false;
+
+        // Add all lasso-hover pages to selection
+        this._thumbEls.forEach((el, pageNum) => {
+            if (el.classList.contains('lasso-hover')) {
+                AppState.selectedPages.add(pageNum);
+                el.classList.remove('lasso-hover');
+            }
+        });
+
+        // Cleanup lasso rect
+        this._lasso.el?.remove();
+        this._lasso.el = null;
+
+        this._syncAll();
+        PrintModule.updateButton();
+    },
+
+    // ── Rotation helper ────────────────────────────────────────
+    _applyRotation(canvas, rotation) {
+        const map = {
+            CW90:          'rotate(90deg)',
+            CCW90:         'rotate(-90deg)',
+            Rotate180:     'rotate(180deg)',
+            FlipHorizontal:'scaleX(-1)',
+            FlipVertical:  'scaleY(-1)',
+        };
+        canvas.style.transform = (rotation && map[rotation]) ? map[rotation] : '';
+    },
+
+    // Called by DragReorderModule after reorder to sync main view DOM order
+    _reorderMainView(order) {
+        const container = document.getElementById('preview-main-canvas-container');
+        const list = container?.querySelector('div');
+        if (!list) return;
+        order.forEach(pageNum => {
+            const card = this._mainPageEls.get(pageNum);
+            if (card) list.appendChild(card);
+        });
+    },
+
+    // Called by ContextMenu and other modules after state changes
+    onStateChanged() {
+        this._syncAll();
+        PrintModule.updateButton();
     },
 };
 
@@ -139,59 +744,54 @@ const ThemeModule = {
 // PrinterModule — Load printer list from API
 // ═══════════════════════════════════════════════════════════════════
 const PrinterModule = {
+    _printers: [],   // cached printer list for polling
+
     async init() {
         try {
             const response = await fetch(`${API_BASE}/printers`);
             const printers = await response.json();
-            const list     = document.getElementById('printer-list');
+            this._printers = printers;
 
-            if (!printers.length) {
-                list.innerHTML = '<div class="loading">Khong tim thay may in nao</div>';
-                return;
-            }
+            this._renderPrinters(printers);
 
-            list.innerHTML = printers.map(p => `
-                <div class="printer-item" data-printer='${JSON.stringify(p)}' data-name="${p.name.replace(/"/g, '&quot;')}">
-                    <div class="printer-info">
-                        <span class="printer-icon">🖨️</span>
-                        <div class="printer-details">
-                            <h3>${p.name}</h3>
-                            <div class="printer-status">
-                                ${this._statusBadge(p.status)}
-                                ${p.isDefault
-                                    ? '<span class="badge badge-info" data-tooltip="Máy in mặc định của Windows">⭐ Mặc định</span>'
-                                    : ''}
-                                ${p.isDuplex
-                                    ? '<span class="badge badge-success" data-tooltip="Máy in này có thể in 2 mặt tự động">Hỗ trợ 2 mặt</span>'
-                                    : '<span class="badge badge-warning" data-tooltip="Máy in này chỉ in 1 mặt — dùng chế độ thủ công">Chỉ 1 mặt</span>'}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-
-            document.querySelectorAll('.printer-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    document.querySelectorAll('.printer-item').forEach(i => i.classList.remove('selected'));
-                    item.classList.add('selected');
-                    AppState.selectedPrinter = JSON.parse(item.dataset.printer);
-                    PrintModule.updateButton();
-                    StepIndicatorModule.update();
+            // Change listener for printer select dropdown
+            document.getElementById('printer-select')?.addEventListener('change', e => {
+                const name = e.target.value;
+                if (!name) { AppState.selectedPrinter = null; }
+                else {
+                    const p = this._printers.find(pr => pr.name === name);
+                    AppState.selectedPrinter = p || { name };
+                }
+                PrintModule.updateButton();
+                StepIndicatorModule.update();
+                if (AppState.selectedPrinter) {
                     SRModule.announce(`Đã chọn máy in: ${AppState.selectedPrinter.name}`);
-                });
+                }
             });
 
-            const def = printers.find(p => p.isDefault);
-            if (def) {
-                const defItem = Array.from(document.querySelectorAll('.printer-item'))
-                    .find(el => JSON.parse(el.dataset.printer).name === def.name);
-                defItem?.click();
-            }
-            
             this.startPolling();
         } catch (err) {
-            const card = document.getElementById('printer-list')?.closest('.card');
-            showCardError(card, `Lỗi tải danh sách máy in: ${err.message}`, () => PrinterModule.init());
+            showToast(`Lỗi tải danh sách máy in: ${err.message}`, 'error');
+        }
+    },
+
+    _renderPrinters(printers) {
+        const sel = document.getElementById('printer-select');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">🖨 Chọn máy in…</option>';
+        printers.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value       = p.name;
+            opt.textContent = p.name + (p.isDuplex ? ' ✦' : '');
+            sel.appendChild(opt);
+        });
+        // Auto-select default printer
+        const def = printers.find(p => p.isDefault) || printers[0];
+        if (def) {
+            sel.value = def.name;
+            AppState.selectedPrinter = def;
+            PrintModule.updateButton();
+            StepIndicatorModule.update();
         }
     },
 
@@ -200,35 +800,17 @@ const PrinterModule = {
             try {
                 const res = await fetch(`${API_BASE}/printers`);
                 if (!res.ok) return;
-                const printers = await res.json();
-                printers.forEach(p => {
-                    const safeName = p.name.replace(/"/g, '&quot;');
-                    const card = document.querySelector(`.printer-item[data-name="${safeName}"]`);
-                    if (!card) return;
-                    const badge = card.querySelector('.printer-status');
-                    if (badge) {
-                        badge.innerHTML = `
-                            ${this._statusBadge(p.status)}
-                            ${p.isDefault ? '<span class="badge badge-info" data-tooltip="Máy in mặc định của Windows">⭐ Mặc định</span>' : ''}
-                            ${p.isDuplex
-                                ? '<span class="badge badge-success" data-tooltip="Máy in này có thể in 2 mặt tự động">Hỗ trợ 2 mặt</span>'
-                                : '<span class="badge badge-warning" data-tooltip="Máy in này chỉ in 1 mặt — dùng chế độ thủ công">Chỉ 1 mặt</span>'}
-                        `;
-                    }
-                });
+                this._printers = await res.json();
+                // Re-render dropdown options (preserving current selection)
+                const sel = document.getElementById('printer-select');
+                if (!sel) return;
+                const currentVal = sel.value;
+                this._renderPrinters(this._printers);
+                if (currentVal && this._printers.some(p => p.name === currentVal)) {
+                    sel.value = currentVal;
+                }
             } catch { /* silently ignore poll failures */ }
         }, 30_000);
-    },
-
-    _statusBadge(status) {
-        const map = {
-            3: { cls: 'online',  label: 'Sẵn sàng', tip: 'Máy in đang hoạt động bình thường' },
-            4: { cls: 'busy',    label: 'Đang in',   tip: 'Máy in đang xử lý lệnh in khác' },
-            7: { cls: 'offline', label: 'Offline',   tip: 'Máy in không kết nối. Kiểm tra dây cáp và bật máy.' },
-        };
-        const s = map[status];
-        if (!s) return '<span class="printer-status-dot unknown" data-tooltip="Trạng thái không xác định"></span>';
-        return `<span class="printer-status-dot ${s.cls}" data-tooltip="${s.tip}"></span><span class="badge badge-${s.cls === 'online' ? 'success' : s.cls === 'busy' ? 'warning' : 'danger'}" data-tooltip="${s.tip}">${s.label}</span>`;
     },
 };
 
@@ -240,38 +822,48 @@ const UploadModule = {
         const area  = document.getElementById('upload-area');
         const input = document.getElementById('file-input');
 
-        area.addEventListener('click', () => input.click());
-        area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
-        area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
-        area.addEventListener('drop', async e => {
-            e.preventDefault();
-            area.classList.remove('drag-over');
-            if (e.dataTransfer.files[0]) await this._upload(e.dataTransfer.files[0]);
+        // upload-area may not exist in the new app-shell layout
+        if (area) {
+            area.addEventListener('click', () => input.click());
+            area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('drag-over'); });
+            area.addEventListener('dragleave', () => area.classList.remove('drag-over'));
+            area.addEventListener('drop', async e => {
+                e.preventDefault();
+                area.classList.remove('drag-over');
+                const files = Array.from(e.dataTransfer.files).filter(f =>
+                    ['.doc', '.docx', '.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.webp'].includes('.' + f.name.split('.').pop().toLowerCase())
+                );
+                for (const f of files) await this._upload(f);
+            });
+        }
+        input?.addEventListener('change', async e => {
+            const files = Array.from(e.target.files || []).filter(f =>
+                ['.doc', '.docx', '.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.webp'].includes('.' + f.name.split('.').pop().toLowerCase())
+            );
+            for (const f of files) await this._upload(f);
+            input.value = '';
         });
-        input.addEventListener('change', async e => {
-            if (e.target.files[0]) await this._upload(e.target.files[0]);
-        });
-        document.getElementById('remove-file').addEventListener('click', () => this._remove());
     },
 
     async _upload(file) {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         if (!['.doc', '.docx', '.pdf'].includes(ext)) {
-            showToast('Loai file khong duoc ho tro', 'error');
+            showToast('Loại file không được hỗ trợ: ' + file.name, 'error');
             return;
         }
+
         const uploadCard = document.getElementById('upload-area')?.closest('.card');
         if (uploadCard) clearCardError(uploadCard);
+
         try {
             const formData = new FormData();
             formData.append('file', file);
-            document.getElementById('file-status').textContent = 'Dang tai len...';
 
             // Show progress bar
             const wrap = document.getElementById('upload-progress-wrap');
             const bar  = document.getElementById('upload-progress-bar');
             if (wrap) wrap.classList.remove('hidden');
-            if (bar) bar.classList.add('uploading');
+            if (bar) { bar.classList.add('uploading'); bar.style.width = '0%'; }
 
             const result = await new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
@@ -293,48 +885,175 @@ const UploadModule = {
             });
 
             if (wrap) wrap.classList.add('hidden');
-            if (bar) bar.classList.remove('uploading');
-            if (bar) bar.style.width = '0%';
+            if (bar) { bar.classList.remove('uploading'); bar.style.width = '0%'; }
 
-            if (!result.success) { showToast('Loi: ' + result.message, 'error'); return; }
+            if (!result.success) { showToast('Lỗi: ' + result.message, 'error'); return; }
 
-            AppState.uploadedFile = { id: result.fileId, name: result.originalFileName, needsConversion: ext !== '.pdf' };
+            // Create and register file entry
+            const entry = AppState.createFileEntry(result.fileId, result.originalFileName, ext !== '.pdf');
+            AppState.addFile(entry);
 
-            if (AppState.uploadedFile.needsConversion) {
-                document.getElementById('file-status').textContent = 'Dang chuyen doi sang PDF...';
-                await fetch(`${API_BASE}/convert?fileId=${AppState.uploadedFile.id}`, { method: 'POST' });
+            // Convert if needed
+            if (entry.needsConversion) {
+                showToast(`Đang chuyển đổi ${entry.name}...`, 'info');
+                await fetch(`${API_BASE}/convert?fileId=${entry.id}`, { method: 'POST' });
             }
 
-            document.getElementById('file-name').textContent   = AppState.uploadedFile.name;
-            document.getElementById('file-status').textContent = 'Da san sang';
-            document.getElementById('upload-area').classList.add('hidden');
-            document.getElementById('file-info').classList.remove('hidden');
+            // Update file info display (legacy UI elements — may not exist in app-shell)
+            const fnEl = document.getElementById('file-name');
+            const fsEl = document.getElementById('file-status');
+            if (fnEl) fnEl.textContent = entry.name;
+            if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
+            document.getElementById('upload-area')?.classList.add('hidden');
+            document.getElementById('file-info')?.classList.remove('hidden');
 
-            await PreviewModule.render(AppState.uploadedFile.id);
+            // Load PDF for this file entry
+            await PreviewModule.renderEntry(entry);
+
+            // Render thumb strip + preview panel for new file
+            ThumbStripModule.render();
+            if (typeof PreviewPanelModule !== 'undefined') {
+                PreviewPanelModule.render(AppState.activeFile);
+            }
+
             document.getElementById('page-range-section')?.classList.remove('hidden');
             PrintModule.updateButton();
-            showToast('Tai file thanh cong!', 'success');
+            TabsModule.render();
+            showToast(`Đã tải: ${entry.name} (${entry.totalPageCount} trang)`, 'success');
             StepIndicatorModule.update();
-            SRModule.announce(`Đã tải file ${AppState.uploadedFile.name}, ${AppState.totalPageCount} trang`);
+            SRModule.announce(`Đã tải file ${entry.name}, ${entry.totalPageCount} trang`);
         } catch (err) {
             const card = document.getElementById('upload-area')?.closest('.card');
             showCardError(card, `Lỗi khi tải file: ${err.message}`, () => document.getElementById('file-input')?.click());
-            showToast('Loi khi tai file: ' + err.message, 'error');
+            showToast('Lỗi khi tải file: ' + err.message, 'error');
         }
     },
 
+    removeFile(index) {
+        AppState.removeFile(index);
+        if (AppState.files.length === 0) {
+            const fi = document.getElementById('file-input');
+            if (fi) fi.value = '';
+            document.getElementById('upload-area')?.classList.remove('hidden');
+            document.getElementById('file-info')?.classList.add('hidden');
+            document.getElementById('page-range-section')?.classList.add('hidden');
+            const pi = document.getElementById('page-range-input');
+            if (pi) pi.value = '';
+            // Clear thumb strip and preview panel
+            ThumbStripModule.render();
+            if (typeof PreviewPanelModule !== 'undefined') {
+                PreviewPanelModule.clear();
+            }
+        } else {
+            // Still have files — refresh UI to show new active file
+            const active = AppState.activeFile;
+            if (active) {
+                const fnEl = document.getElementById('file-name');
+                const fsEl = document.getElementById('file-status');
+                if (fnEl) fnEl.textContent = active.name;
+                if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
+            }
+            ThumbStripModule.render();
+            if (typeof PreviewPanelModule !== 'undefined') {
+                PreviewPanelModule.render(AppState.activeFile);
+            }
+        }
+        PrintModule.updateButton();
+        StepIndicatorModule.update();
+    },
+
     _remove() {
+        // Legacy single-file remove — removes all files (called from remove-file button)
         AppState.reset();
-        document.getElementById('file-input').value = '';
-        document.getElementById('upload-area').classList.remove('hidden');
-        document.getElementById('file-info').classList.add('hidden');
-        const sidebar = document.getElementById('preview-sidebar');
-        if (sidebar) sidebar.style.display = 'none';
+        const fi = document.getElementById('file-input');
+        if (fi) fi.value = '';
+        document.getElementById('upload-area')?.classList.remove('hidden');
+        document.getElementById('file-info')?.classList.add('hidden');
         document.getElementById('page-range-section')?.classList.add('hidden');
         const pi = document.getElementById('page-range-input');
         if (pi) pi.value = '';
+        ThumbStripModule.render();
+        if (typeof PreviewPanelModule !== 'undefined') {
+            PreviewPanelModule.clear();
+        }
         PrintModule.updateButton();
         StepIndicatorModule.update();
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// TabsModule — File tab strip for multi-file support
+// ═══════════════════════════════════════════════════════════════════
+const TabsModule = {
+    init() {
+        const addBtn = document.getElementById('file-tab-add-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                document.getElementById('file-input')?.click();
+            });
+        }
+    },
+
+    render() {
+        const tabList = document.getElementById('file-tab-list');
+        const tabBar  = document.getElementById('file-tabs');
+        if (!tabList || !tabBar) return;
+
+        // Never hide the entire tab bar — the "+ Thêm file" button must always be visible.
+        // Just clear the tab list when there are 0 files (no tabs needed yet).
+        tabBar.classList.remove('hidden');
+        tabList.innerHTML = '';
+
+        if (AppState.files.length === 0) return;
+        AppState.files.forEach((file, idx) => {
+            const tab = document.createElement('div');
+            tab.className = 'file-tab' + (idx === AppState.activeFileIndex ? ' active' : '');
+            tab.title = file.name;
+
+            const name = document.createElement('span');
+            name.className   = 'file-tab-name';
+            name.textContent = file.name.length > 20 ? file.name.slice(0, 18) + '…' : file.name;
+            tab.appendChild(name);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className   = 'file-tab-close';
+            closeBtn.textContent = '×';
+            closeBtn.title       = 'Đóng file';
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                UploadModule.removeFile(idx);
+                this.render();
+            });
+            tab.appendChild(closeBtn);
+
+            tab.addEventListener('click', () => {
+                this.setActive(idx);
+            });
+
+            tabList.appendChild(tab);
+        });
+    },
+
+    // Switch to file at given index — updates tabs, thumbs, and preview panel
+    setActive(idx) {
+        if (idx < 0 || idx >= AppState.files.length) return;
+        AppState.activeFileIndex = idx;
+
+        // Update file-info display (legacy elements — may not exist)
+        const active = AppState.activeFile;
+        if (active) {
+            const fnEl = document.getElementById('file-name');
+            const fsEl = document.getElementById('file-status');
+            if (fnEl) fnEl.textContent = active.name;
+            if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
+        }
+
+        this.render();
+        ThumbStripModule.render();
+        if (typeof PreviewPanelModule !== 'undefined') {
+            PreviewPanelModule.render(AppState.activeFile);
+        }
+        PrintModule.updateButton();
     },
 };
 
@@ -345,57 +1064,55 @@ const PreviewModule = {
     _observer: null,
 
     async render(fileId) {
-        const sidebar = document.getElementById('preview-sidebar');
-        const grid    = document.getElementById('sidebar-preview-grid');
-        if (!sidebar || !grid) return;
-
-        sidebar.style.display = 'flex';
-        grid.innerHTML = `
-            <div class="skeleton skeleton-thumb"></div>
-            <div class="skeleton skeleton-thumb"></div>
-            <div class="skeleton skeleton-thumb"></div>
-            <div class="skeleton skeleton-thumb"></div>
-        `;
-
         try {
-            const blob     = await fetch(`${API_BASE}/file/${fileId}`).then(r => r.blob());
-            const url      = URL.createObjectURL(blob);
-            const loadTask = pdfjsLib.getDocument(url);
+            const url      = `${API_BASE}/file/${fileId}`;
+            const loadTask = pdfjsLib.getDocument({
+                url,
+                rangeChunkSize:           65536,  // 64 KB chunks
+                disableAutoFetch:         true,   // Only fetch pages when needed
+                disableStream:            false,  // Enable streaming
+                isOffscreenCanvasSupported: true, // Render off main thread
+                useWasm:                  true,   // WASM decoders for JBIG2/JPEG2000
+            });
             AppState.currentPdfDoc  = await loadTask.promise;
             AppState.totalPageCount = AppState.currentPdfDoc.numPages;
             AppState.pageOrder = Array.from({ length: AppState.totalPageCount }, (_, i) => i + 1);
             AppState.selectAllPages();
+            HoverPreviewModule.clearCache();
 
-            const countEl = document.getElementById('sidebar-page-count');
-            if (countEl) countEl.textContent = `${AppState.totalPageCount} trang`;
             PageSelectModule.updateDisplay();
 
-            grid.innerHTML = '';
-            grid.setAttribute('role', 'listbox');
-            grid.setAttribute('aria-label', 'Danh sách trang');
-            grid.setAttribute('aria-multiselectable', 'true');
-            this._observer?.disconnect();
-            HoverPreviewModule.clearCache();
-            this._observer = new IntersectionObserver(entries => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting && !entry.target.dataset.rendered) {
-                        const n = parseInt(entry.target.dataset.pageNumber);
-                        this._renderCanvas(entry.target, n);
-                        this._observer.unobserve(entry.target);
-                    }
-                });
-            }, { rootMargin: '100px' });
-
-            for (let i = 1; i <= AppState.totalPageCount; i++) {
-                const thumb = this._createPlaceholder(i);
-                grid.appendChild(thumb);
-                this._observer.observe(thumb);
-            }
-
-            showToast(`Da tai ${AppState.totalPageCount} trang`, 'success');
+            showToast(`Đã tải ${AppState.totalPageCount} trang`, 'success');
         } catch (err) {
-            console.error('Error rendering PDF:', err);
-            showToast('Loi khi tai preview PDF: ' + err.message, 'error');
+            console.error('Error loading PDF:', err);
+            showToast('Lỗi khi tải PDF: ' + err.message, 'error');
+        }
+    },
+
+    async renderEntry(entry) {
+        try {
+            const url      = `${API_BASE}/file/${entry.id}`;
+            const loadTask = pdfjsLib.getDocument({
+                url,
+                rangeChunkSize:           65536,  // 64 KB chunks
+                disableAutoFetch:         true,   // Only fetch pages when needed
+                disableStream:            false,  // Enable streaming
+                isOffscreenCanvasSupported: true, // Render off main thread
+                useWasm:                  true,   // WASM decoders for JBIG2/JPEG2000
+            });
+            entry.pdfDoc           = await loadTask.promise;
+            entry.totalPageCount   = entry.pdfDoc.numPages;
+            entry.pageOrder        = Array.from({ length: entry.totalPageCount }, (_, i) => i + 1);
+            entry.selectedPages    = new Set(entry.pageOrder);
+
+            // If this is the active file, sync legacy state and update UI
+            if (AppState.activeFile === entry) {
+                HoverPreviewModule.clearCache();
+                PageSelectModule.updateDisplay();
+            }
+        } catch (err) {
+            console.error('Error loading PDF entry:', err);
+            showToast('Lỗi khi tải PDF: ' + err.message, 'error');
         }
     },
 
@@ -670,13 +1387,16 @@ const ZoomModal = {
         if (!isSel) badge.style.opacity = '0.3';
 
         const canvas = document.createElement('canvas');
-        const vp     = page.getViewport({ scale: 1.2 });
-        canvas.width  = vp.width; canvas.height = vp.height;
-        canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;transition:transform 0.25s ease;';
+        const rotation = AppState.pageRotations.get(n) ?? null;
+        const rotDeg   = RotationHelper.toDeg(rotation);
+        const vp       = page.getViewport({ scale: 1.2, rotation: rotDeg });
+        canvas.width   = vp.width; canvas.height = vp.height;
+        canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;';
         page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
 
-        // Apply current rotation (U)
-        this._applyCanvasRotation(canvas, AppState.pageRotations.get(n));
+        // CSS flip only (viewport handles CW/CCW/180)
+        canvas.style.transform = RotationHelper.toCSS(rotation);
+        RotationHelper.updateBadge(div, rotation);
 
         div.appendChild(header); div.appendChild(badge); div.appendChild(canvas);
 
@@ -692,32 +1412,14 @@ const ZoomModal = {
     },
 
     _updateModalStyles() {
-        document.querySelectorAll('.modal-page-container').forEach(el => {
-            const n = parseInt(el.dataset.page);
-            const isSel    = AppState.selectedPages.has(n);
-            const isSingle = AppState.singleSidedPages.has(n);
-            el.style.borderColor = isSel ? (isSingle ? '#3b82f6' : '#22c55e') : 'transparent';
-            const badge = el.querySelector('.single-sided-badge, .double-sided-badge');
-            if (badge) {
-                badge.className   = isSingle ? 'single-sided-badge' : 'double-sided-badge';
-                badge.textContent = isSingle ? '1 MAT' : '2 MAT';
-                badge.style.opacity = isSel ? '1' : '0.3';
-            }
-            // Update rotation (U)
-            const canvas = el.querySelector('canvas');
-            if (canvas) this._applyCanvasRotation(canvas, AppState.pageRotations.get(n));
+        const modal = document.getElementById('page-zoom-modal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        // Full re-render to apply viewport-based rotation + selection colors
+        const container = document.querySelector('.zoom-canvas-container');
+        const scrollPos = container?.scrollTop ?? 0;
+        this._renderAllPages().then(() => {
+            if (container) container.scrollTop = scrollPos;
         });
-    },
-
-    _applyCanvasRotation(canvas, rotation) {
-        const map = {
-            CW90:          'rotate(90deg)',
-            CCW90:         'rotate(-90deg)',
-            Rotate180:     'rotate(180deg)',
-            FlipHorizontal:'scaleX(-1)',
-            FlipVertical:  'scaleY(-1)',
-        };
-        canvas.style.transform = map[rotation] || '';
     },
 };
 
@@ -778,10 +1480,14 @@ const ContextMenu = {
         }
         PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
         ZoomModal._updateModalStyles(); this.hide();
+        PrintPreviewModule.onStateChanged();
+        PreviewPanelModule.onStateChanged();
+        ThumbStripModule._syncSelectionHighlights?.();
     },
 
     _applyRotation(pageNum, rotation) {
         if (pageNum === null) return;
+        const prevRotation = AppState.pageRotations.get(pageNum) ?? null;
         if (rotation === null) {
             AppState.pageRotations.delete(pageNum);
             showToast(`Trang ${pageNum}: đã reset xoay`, 'info');
@@ -790,16 +1496,39 @@ const ContextMenu = {
             const labels = { CW90: 'Xoay phải 90°', CCW90: 'Xoay trái 90°', Rotate180: 'Xoay 180°', FlipHorizontal: 'Lật ngang', FlipVertical: 'Lật dọc' };
             showToast(`Trang ${pageNum}: ${labels[rotation] || rotation}`, 'info');
         }
-        // Update data-rotation attribute on thumbnail
-        const thumb = document.querySelector(`.page-thumbnail[data-page-number="${pageNum}"]`);
-        if (thumb) {
-            if (rotation) {
-                thumb.dataset.rotation = rotation;
-            } else {
-                delete thumb.dataset.rotation;
+
+        // Invalidate cached renders for this page (old + new rotation)
+        const fileEntry = AppState.activeFile;
+        if (fileEntry) {
+            const fid = fileEntry.id;
+            // Remove ALL cached canvases for this page (any rotation, any scale)
+            const prefix = `${fid}-${pageNum}-`;
+            PreviewPanelModule._cache.deleteByPrefix(prefix);
+            ThumbStripModule._cache.deleteByPrefix(prefix);
+            // Force re-render in PreviewPanelModule
+            const ppmKey = `${fid}-${pageNum}`;
+            const card = PreviewPanelModule._pageEls.get(ppmKey);
+            if (card) {
+                card.classList.remove('rendered');
+                PreviewPanelModule._enqueue(fid, pageNum, card);
+            }
+            // Force re-render in ThumbStripModule
+            const thumbEl = ThumbStripModule._container?.querySelector(
+                `.thumb-item[data-file-id="${fid}"][data-page="${pageNum}"]`
+            );
+            if (thumbEl) {
+                thumbEl.classList.remove('rendered');
+                ThumbStripModule._enqueue(fid, pageNum, thumbEl);
             }
         }
-        // Update zoom modal canvas if open (U)
+
+        // Update data-rotation attribute on legacy thumbnail (for other modules)
+        const thumb = document.querySelector(`.page-thumbnail[data-page-number="${pageNum}"]`);
+        if (thumb) {
+            if (rotation) thumb.dataset.rotation = rotation;
+            else delete thumb.dataset.rotation;
+        }
+        // Update zoom modal canvas if open
         ZoomModal._updateModalStyles();
     },
 };
@@ -901,8 +1630,8 @@ const HistoryModule = {
 
         // Restore mode
         if (item.mode) {
-            const modeInput = document.querySelector(`input[name="print-mode"][value="${item.mode}"]`);
-            if (modeInput) modeInput.click();
+            const modeSel = document.getElementById('mode-select');
+            if (modeSel) { modeSel.value = item.mode; AppState.printMode = item.mode; }
         }
 
         // Restore copies
@@ -1009,101 +1738,128 @@ const PrintModule = {
     },
 
     updateButton() {
-        const btn = document.getElementById('print-btn');
-        btn.disabled = !AppState.selectedPrinter || !AppState.uploadedFile || AppState.selectedPages.size === 0;
+        const printBtn   = document.getElementById('print-btn');
+        const ready = !!(AppState.selectedPrinter && AppState.uploadedFile && AppState.selectedPages.size > 0);
+        if (printBtn)   printBtn.disabled   = !ready;
         SummaryModule.update();
+        if (PrintPreviewModule._isOpen) PrintPreviewModule._updateFooterSummary();
     },
 
     async _startPrint() {
-        if (!AppState.selectedPrinter) { showToast('Vui long chon may in', 'error'); return; }
-        if (!AppState.uploadedFile)    { showToast('Vui long tai len file can in', 'error'); return; }
-        if (AppState.selectedPages.size === 0) { showToast('Vui long chon it nhat 1 trang de in', 'error'); return; }
+        if (!AppState.selectedPrinter) { showToast('Chọn máy in trước', 'error'); return; }
 
-        // Show confirmation dialog (7)
+        // Collect all files with at least 1 selected page
+        const filesToPrint = AppState.files.filter(f => f.selectedPages.size > 0);
+        if (filesToPrint.length === 0) {
+            showToast('Không có trang nào được chọn để in', 'error');
+            return;
+        }
+
+        // Show confirmation dialog
         const confirmed = await ConfirmPrintModal.show();
         if (!confirmed) return;
 
         const btn = document.getElementById('print-btn');
         const originalText = btn.textContent;
         btn.disabled = true;
-        btn.textContent = '⏳ Đang gửi lệnh in...';
         btn.style.opacity = '0.8';
 
-        const mode  = document.querySelector('input[name="print-mode"]:checked').value;
-        const total = AppState.totalPageCount;
-        const sel   = AppState.selectedPages;
-        const pageRange = (sel.size > 0 && sel.size < total)
-            ? Array.from(sel).sort((a,b) => a-b).join(',')
-            : null;
-
-        const body = {
-            fileId:           AppState.uploadedFile.id,
-            printerName:      AppState.selectedPrinter.name,
-            mode:             mode === 'normal' ? 0 : (mode === 'booklet' ? 1 : 2),
-            pageRange,
-            singleSidedPages: AppState.singleSidedPages.size > 0 ? Array.from(AppState.singleSidedPages) : null,
-            copies:           CopiesModule.copies,
-            collate:          CopiesModule.collate,
-            // Drag-reorder (I)
-            pageOrder:        AppState.pageOrder.length > 0 ? AppState.pageOrder : null,
-            // Per-page rotation (U)
-            pageRotations:    AppState.pageRotations.size > 0
-                ? Array.from(AppState.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
-                : null,
-        };
+        const mode = document.getElementById('mode-select')?.value || 'duplex';
+        const modeCode = (mode === 'duplex' || mode === 'normal') ? 0 : (mode === 'booklet' ? 1 : 2);
 
         try {
-            showToast('Dang gui lenh in...', 'info');
-            SRModule.announce('Đang gửi lệnh in...');
-            const res    = await fetch(`${API_BASE}/print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-            const result = await res.json();
-            if (!result.success) { 
-                showToast('Loi: ' + result.message, 'error'); 
-                btn.disabled = false;
-                btn.textContent = originalText;
-                btn.style.opacity = '';
-                return; 
-            }
-            if (result.jobState?.waitingForFlip) {
-                AppState.currentJob = result.jobState;
-                this._showFlipModal(result.jobState.instruction);
-                // Show cancel button (A)
-                btn.dataset.mode = 'cancellable';
-                btn.classList.add('cancellable');
-                btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
-                btn.disabled = false;
-                btn.style.opacity = '1';
-                showToast('Da in mat le! Vui long lam theo huong dan.', 'info');
-            } else {
-                // SUCCESS: flash button green
-                btn.textContent = '✓ Đã gửi lệnh in!';
-                btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-                btn.style.opacity = '1';
-                showToast('In thành công!', 'success');
-                SRModule.announce('In thành công!');
-                
+            for (let i = 0; i < filesToPrint.length; i++) {
+                const file = filesToPrint[i];
+                const isLast = i === filesToPrint.length - 1;
+
+                btn.textContent = filesToPrint.length > 1
+                    ? `⏳ Đang in file ${i + 1}/${filesToPrint.length}...`
+                    : '⏳ Đang gửi lệnh in...';
+
+                const sel = file.selectedPages;
+                const pageRange = (sel.size > 0 && sel.size < file.totalPageCount)
+                    ? Array.from(sel).sort((a,b) => a-b).join(',')
+                    : null;
+
+                const body = {
+                    fileId:           file.id,
+                    printerName:      AppState.selectedPrinter.name,
+                    mode:             modeCode,
+                    pageRange,
+                    singleSidedPages: file.singleSidedPages.size > 0 ? Array.from(file.singleSidedPages) : null,
+                    copies:           CopiesModule.copies,
+                    collate:          CopiesModule.collate,
+                    pageOrder:        file.pageOrder.length > 0 ? file.pageOrder : null,
+                    pageRotations:    file.pageRotations.size > 0
+                        ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
+                        : null,
+                };
+
+                showToast(`Đang gửi lệnh in: ${file.name}...`, 'info');
+                SRModule.announce(`Đang in file ${file.name}`);
+
+                const res    = await fetch(`${API_BASE}/print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const result = await res.json();
+
+                if (!result.success) {
+                    showToast(`Lỗi in file ${file.name}: ${result.message}`, 'error');
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                    btn.style.opacity = '';
+                    return;
+                }
+
+                if (result.jobState?.waitingForFlip) {
+                    // Manual duplex: show flip modal and wait for user to continue
+                    AppState.currentJob = result.jobState;
+                    this._showFlipModal(result.jobState.instruction);
+                    btn.dataset.mode = 'cancellable';
+                    btn.classList.add('cancellable');
+                    btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    showToast('Đã in mặt lẻ! Vui lòng làm theo hướng dẫn.', 'info');
+                    // Stop multi-file loop — user must manually continue
+                    return;
+                }
+
+                // Add to history for each file printed
                 HistoryModule.add({
-                    file:        AppState.uploadedFile.name,
-                    fileId:      AppState.uploadedFile.id,
+                    file:        file.name,
+                    fileId:      file.id,
                     printer:     AppState.selectedPrinter.name,
                     printerData: AppState.selectedPrinter,
-                    pages:       AppState.selectedPages.size,
+                    pages:       file.selectedPages.size,
                     pageRange,
-                    mode:        document.querySelector('input[name="print-mode"]:checked')?.value || 'normal',
+                    mode:        mode,
                     copies:      CopiesModule.copies,
                     collate:     CopiesModule.collate,
                 });
 
-                setTimeout(() => {
-                    btn.disabled = false;
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.style.opacity = '';
-                    PrintModule.updateButton();
-                }, 2000);
+                if (!isLast) {
+                    // Brief pause between files
+                    await new Promise(r => setTimeout(r, 500));
+                }
             }
+
+            // All files printed successfully
+            const fileCount = filesToPrint.length;
+            btn.textContent = fileCount > 1 ? `✓ Đã in ${fileCount} file!` : '✓ Đã gửi lệnh in!';
+            btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            btn.style.opacity = '1';
+            showToast(fileCount > 1 ? `In thành công ${fileCount} file!` : 'In thành công!', 'success');
+            SRModule.announce('In thành công!');
+
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                btn.style.background = '';
+                btn.style.opacity = '';
+                PrintModule.updateButton();
+            }, 2000);
+
         } catch (err) {
-            showToast('Loi khi in: ' + err.message, 'error');
+            showToast('Lỗi khi in: ' + err.message, 'error');
             const actionSec = document.querySelector('.action-section') || document.getElementById('print-btn')?.closest('.card');
             showCardError(actionSec, `Lệnh in thất bại: ${err.message}`, () => document.getElementById('print-btn')?.click());
             btn.disabled = false;
@@ -1230,6 +1986,7 @@ const KeyboardModule = {
 
             if (e.ctrlKey && e.key === 'p') {
                 e.preventDefault();
+                // In app-shell layout, Ctrl+P triggers print directly if ready
                 const btn = document.getElementById('print-btn');
                 if (btn && !btn.disabled) btn.click();
             }
@@ -1242,6 +1999,7 @@ const KeyboardModule = {
             if (e.key === 'Escape') {
                 document.getElementById('page-zoom-modal')?.classList.add('hidden');
                 document.getElementById('flip-modal')?.classList.add('hidden');
+                if (PrintPreviewModule._isOpen) { PrintPreviewModule.close(); return; }
                 ContextMenu.hide();
             }
 
@@ -1292,7 +2050,7 @@ const SummaryModule = {
 
         const pages   = AppState.selectedPages.size;
         const copies  = CopiesModule?.copies || 1;
-        const mode    = document.querySelector('input[name="print-mode"]:checked')?.value || 'normal';
+        const mode    = document.getElementById('mode-select')?.value || 'duplex';
         const printer = AppState.selectedPrinter;
 
         if (!AppState.uploadedFile || pages === 0) { el.classList.add('hidden'); return; }
@@ -1462,11 +2220,11 @@ const ConfirmPrintModal = {
         const container = document.getElementById('confirm-print-summary');
         if (!container) return;
 
-        const mode    = document.querySelector('input[name="print-mode"]:checked')?.value || 'normal';
+        const mode    = document.getElementById('mode-select')?.value || 'duplex';
         const pages   = AppState.selectedPages.size;
         const copies  = CopiesModule?.copies || 1;
         const printer = AppState.selectedPrinter;
-        const modeLabel = { normal: 'In 2 Mặt Thường', booklet: 'Sách A5 (Booklet)', simplex: 'In 1 Mặt' };
+        const modeLabel = { duplex: 'In 2 Mặt Thường', normal: 'In 2 Mặt Thường', booklet: 'Sách A5 (Booklet)', simplex: 'In 1 Mặt' };
 
         let sheets;
         if (mode === 'simplex') {
@@ -1556,25 +2314,31 @@ const HoverPreviewModule = {
         const pCanvas = this._pCanvas();
         if (!preview || !pCanvas) return;
 
-        // Render or use cached
-        if (!this._cache.has(pageNum)) {
+        const rotation = AppState.pageRotations.get(pageNum) ?? null;
+        const rotDeg   = RotationHelper.toDeg(rotation);
+        const cacheKey = `${pageNum}-${rotation ?? '0'}`;
+
+        // Render or use cached (cache key includes rotation)
+        if (!this._cache.has(cacheKey)) {
             try {
                 const page     = await AppState.currentPdfDoc.getPage(pageNum);
-                const viewport = page.getViewport({ scale: 1.0 });
+                const viewport = page.getViewport({ scale: 1.0, rotation: rotDeg });
                 const scale    = Math.min(this.PREVIEW_W / viewport.width, this.PREVIEW_H / viewport.height);
-                const vp2      = page.getViewport({ scale });
+                const vp2      = page.getViewport({ scale, rotation: rotDeg });
                 const off      = document.createElement('canvas');
                 off.width      = vp2.width;
                 off.height     = vp2.height;
                 await page.render({ canvasContext: off.getContext('2d'), viewport: vp2 }).promise;
-                this._cache.set(pageNum, off);
+                this._cache.set(cacheKey, off);
             } catch { return; }
         }
 
-        const cached = this._cache.get(pageNum);
+        const cached = this._cache.get(cacheKey);
         pCanvas.width  = cached.width;
         pCanvas.height = cached.height;
         pCanvas.getContext('2d').drawImage(cached, 0, 0);
+        // CSS flip only (viewport handles CW/CCW/180)
+        pCanvas.style.transform = RotationHelper.toCSS(rotation);
 
         // Position
         const rect = thumb.getBoundingClientRect();
@@ -1627,13 +2391,15 @@ const DragReorderModule = {
     _ghostOffsetY: 0,
 
     init() {
-        const grid = document.getElementById('sidebar-preview-grid');
-        if (!grid) return;
+        // Bind lazily — called from PrintPreviewModule after grid is rendered
+    },
+
+    bindGrid(grid) {
         grid.addEventListener('pointerdown', e => this._onDown(e));
     },
 
     _onDown(e) {
-        const thumb = e.target.closest('.page-thumbnail');
+        const thumb = e.target.closest('.preview-thumb-item');
         if (!thumb) return;
         if (e.button !== 0) return;
 
@@ -1643,14 +2409,12 @@ const DragReorderModule = {
         this._startX      = e.clientX;
         this._dragStarted = false;
 
-        // Pre-compute ghost offset from pointer to thumb top-left
         const rect = thumb.getBoundingClientRect();
         this._ghostOffsetX = e.clientX - rect.left;
         this._ghostOffsetY = e.clientY - rect.top;
 
         document.addEventListener('pointermove', this._onMove = e => this._move(e));
         document.addEventListener('pointerup',   this._onUp   = e => this._drop(e));
-        // No preventDefault — lets click/dblclick still fire
     },
 
     _createGhost() {
@@ -1693,8 +2457,8 @@ const DragReorderModule = {
         this._ghost.style.left = (e.clientX - this._ghostOffsetX) + 'px';
 
         // Find drop target
-        const grid   = document.getElementById('sidebar-preview-grid');
-        const thumbs = Array.from(grid.querySelectorAll('.page-thumbnail:not(.dragging)'));
+        const grid   = document.getElementById('preview-thumb-grid');
+        const thumbs = Array.from(grid.querySelectorAll('.preview-thumb-item:not(.dragging)'));
         const y      = e.clientY;
 
         // Remove old placeholder
@@ -1736,7 +2500,7 @@ const DragReorderModule = {
 
         if (this._placeholder) {
             // Reorder AppState.pageOrder
-            const grid = document.getElementById('sidebar-preview-grid');
+            const grid = document.getElementById('preview-thumb-grid');
 
             // Compute new order from DOM after inserting dragging before placeholder
             const newOrder = [];
@@ -1744,7 +2508,7 @@ const DragReorderModule = {
             for (const t of grid.childNodes) {
                 if (t === this._placeholder) {
                     if (!placed) { newOrder.push(this._dragPageNum); placed = true; }
-                } else if (t.classList?.contains('page-thumbnail') && t !== this._dragging) {
+                } else if (t.classList?.contains('preview-thumb-item') && t !== this._dragging) {
                     newOrder.push(parseInt(t.dataset.pageNumber));
                 }
             }
@@ -1757,6 +2521,9 @@ const DragReorderModule = {
             this._placeholder = null;
             this._reRenderGrid(newOrder);
 
+            // Also re-order main view pages
+            PrintPreviewModule._reorderMainView(newOrder);
+
             showToast('Đã đổi thứ tự trang', 'info');
         }
 
@@ -1767,8 +2534,9 @@ const DragReorderModule = {
     },
 
     _reRenderGrid(order) {
-        const grid   = document.getElementById('sidebar-preview-grid');
-        const thumbs = Array.from(grid.querySelectorAll('.page-thumbnail'));
+        const grid   = document.getElementById('preview-thumb-grid');
+        if (!grid) return;
+        const thumbs = Array.from(grid.querySelectorAll('.preview-thumb-item'));
         const byPage = new Map(thumbs.map(t => [parseInt(t.dataset.pageNumber), t]));
         // Reorder DOM
         order.forEach(pageNum => {
@@ -1780,12 +2548,626 @@ const DragReorderModule = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+// LRUCanvasCache — Memory-bounded LRU cache for rendered PDF canvases
+// Evicts oldest entries when total pixel memory exceeds MAX_BYTES.
+// ═══════════════════════════════════════════════════════════════════
+class LRUCanvasCache {
+    #map      = new Map();
+    #totalBytes = 0;
+    #maxBytes;
+
+    constructor(maxMB = 50) {
+        this.#maxBytes = maxMB * 1024 * 1024;
+    }
+
+    has(key)  { return this.#map.has(key); }
+    get size() { return this.#map.size; }
+
+    get(key) {
+        if (!this.#map.has(key)) return undefined;
+        // Move to end = most recently used
+        const val = this.#map.get(key);
+        this.#map.delete(key);
+        this.#map.set(key, val);
+        return val;
+    }
+
+    set(key, canvas) {
+        const bytes = canvas.width * canvas.height * 4;
+        // Remove old entry if replacing
+        if (this.#map.has(key)) {
+            const old = this.#map.get(key);
+            this.#totalBytes -= old.width * old.height * 4;
+            this.#map.delete(key);
+        }
+        // Evict oldest until under limit
+        while (this.#totalBytes + bytes > this.#maxBytes && this.#map.size > 0) {
+            const oldestKey = this.#map.keys().next().value;
+            const oldest    = this.#map.get(oldestKey);
+            this.#totalBytes -= oldest.width * oldest.height * 4;
+            this.#map.delete(oldestKey);
+        }
+        this.#map.set(key, canvas);
+        this.#totalBytes += bytes;
+    }
+
+    delete(key) {
+        if (!this.#map.has(key)) return;
+        const old = this.#map.get(key);
+        this.#totalBytes -= old.width * old.height * 4;
+        this.#map.delete(key);
+    }
+
+    /** Delete ALL entries whose key starts with `prefix` (e.g. "fileId-pageNum-") */
+    deleteByPrefix(prefix) {
+        for (const k of [...this.#map.keys()]) {
+            if (k.startsWith(prefix)) this.delete(k);
+        }
+    }
+
+    clear() { this.#map.clear(); this.#totalBytes = 0; }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Rotation helpers — shared by ThumbStripModule and PreviewPanelModule
+// ═══════════════════════════════════════════════════════════════════
+const RotationHelper = {
+    // Maps rotation key → pdf.js viewport rotation degrees (0/90/180/270)
+    // Flips are handled via CSS since pdf.js doesn't support them natively
+    toDeg(rotation) {
+        return { CW90: 90, CCW90: 270, Rotate180: 180 }[rotation] ?? 0;
+    },
+
+    // CSS transform for flip cases (only applies to canvas element)
+    toCSS(rotation) {
+        if (rotation === 'FlipHorizontal') return 'scaleX(-1)';
+        if (rotation === 'FlipVertical')   return 'scaleY(-1)';
+        return '';
+    },
+
+    // Human-readable label for badge
+    toLabel(rotation) {
+        return { CW90: '+90°', CCW90: '-90°', Rotate180: '180°',
+                 FlipHorizontal: '↔', FlipVertical: '↕' }[rotation] ?? '';
+    },
+
+    // Update or remove the rotation badge on a card/thumb element
+    updateBadge(el, rotation) {
+        let badge = el.querySelector('.rot-badge');
+        if (!rotation) {
+            badge?.remove();
+            return;
+        }
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'rot-badge';
+            el.appendChild(badge);
+        }
+        badge.textContent = this.toLabel(rotation);
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// PreviewPanelModule — Persistent right-panel PDF preview
+// Replaces the old modal main view.
+// ═══════════════════════════════════════════════════════════════════
+const PreviewPanelModule = {
+    _container:   null,
+    _renderTasks: new Map(),           // 'fileId-pageNum-rot-scale' → RenderTask
+    _cache:       new LRUCanvasCache(50), // 50 MB LRU — evicts oldest pages
+    _pageEls:     new Map(),           // 'fileId-pageNum' → .preview-page-card el
+    _renderQueue: [],
+    _activeRenders: 0,
+    _MAX_CONCURRENT: 2,
+    _scrollTimer: null,
+    _hiResTimer:  null,                // Tier 2: fires high-res re-render after scroll stops
+    _currentFileId: null,
+    _isScrolling: false,
+
+    init() {
+        this._container = document.getElementById('preview-panel');
+        this._container?.addEventListener('scroll', () => {
+            this._isScrolling = true;
+            this._onScroll();
+            // Lazy-render new pages that scrolled into view (low-res while scrolling)
+            clearTimeout(this._scrollTimer);
+            this._scrollTimer = setTimeout(() => this._renderVisible(), 100);
+            // Tier 2: re-render visible pages at full quality after scroll stops
+            clearTimeout(this._hiResTimer);
+            this._hiResTimer = setTimeout(() => {
+                this._isScrolling = false;
+                this._reRenderHiRes();
+            }, 250);
+        }, { passive: true });
+    },
+
+    // Render all pages of active file
+    render(fileEntry) {
+        if (!this._container || !fileEntry?.pdfDoc) return;
+
+        // Cancel queue and in-flight tasks
+        this._renderQueue = [];
+        this._activeRenders = 0;
+        for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
+        this._renderTasks.clear();
+        this._currentFileId = fileEntry.id;
+
+        this._pageEls.clear();
+        this._container.innerHTML = '';
+
+        // Create all placeholder cards immediately
+        for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+            const card       = document.createElement('div');
+            card.className   = 'preview-page-card';
+            card.dataset.fileId = fileEntry.id;
+            card.dataset.page   = p;
+
+            // Apply initial selection state
+            if (fileEntry.selectedPages?.has(p)) card.classList.add('selected-for-print');
+            if (fileEntry.singleSidedPages?.has(p) && fileEntry.selectedPages?.has(p))
+                card.classList.add('single-sided-print');
+
+            // Click = toggle page selection
+            card.addEventListener('click', (e) => {
+                if (e.button !== 0) return;
+                const pageNum = parseInt(card.dataset.page);
+                const entry   = AppState.files.find(f => f.id === card.dataset.fileId);
+                if (!entry) return;
+                if (entry.selectedPages.has(pageNum)) entry.selectedPages.delete(pageNum);
+                else entry.selectedPages.add(pageNum);
+                this._syncSelectionUI();
+                PrintModule.updateButton();
+                PageSelectModule.updateDisplay();
+            });
+
+            // Right-click = context menu
+            card.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                ContextMenu.show(e, parseInt(card.dataset.page));
+            });
+
+            const canvas = document.createElement('canvas');
+            card.appendChild(canvas);
+
+            const key = `${fileEntry.id}-${p}`;
+            this._pageEls.set(key, card);
+            this._container.appendChild(card);
+        }
+
+        // Scroll to top, then render visible pages
+        this._container.scrollTop = 0;
+        // rAF ensures DOM has been laid out before we measure visibility
+        requestAnimationFrame(() => this._renderVisible());
+    },
+
+    // Render all pages currently visible (+ 1 page lookahead)
+    _renderVisible() {
+        if (!this._container || !this._currentFileId) return;
+        const cRect     = this._container.getBoundingClientRect();
+        const lookahead = cRect.height; // 1 screen ahead
+
+        let enqueued = 0;
+        this._pageEls.forEach((el, key) => {
+            if (!key.startsWith(this._currentFileId + '-')) return;
+            if (el.classList.contains('rendered')) return;
+            const eRect = el.getBoundingClientRect();
+            const visible = eRect.bottom >= cRect.top - lookahead && eRect.top <= cRect.bottom + lookahead;
+            if (visible) {
+                const fileId  = el.dataset.fileId;
+                const pageNum = parseInt(el.dataset.page);
+                this._enqueue(fileId, pageNum, el);
+                enqueued++;
+            }
+        });
+    },
+
+    _enqueue(fileId, pageNum, el, hiRes = false) {
+        const key = `${fileId}-${pageNum}`;
+        // Skip if already rendering at same or higher quality
+        if (this._renderTasks.has(key)) return;
+        if (el.classList.contains('rendered') && !hiRes) return;
+        // Skip if already in queue
+        if (this._renderQueue.some(j => j.fileId === fileId && j.pageNum === pageNum && j.hiRes === hiRes)) return;
+        // If hi-res re-render, remove any pending low-res job
+        if (hiRes) {
+            const idx = this._renderQueue.findIndex(j => j.fileId === fileId && j.pageNum === pageNum && !j.hiRes);
+            if (idx >= 0) this._renderQueue.splice(idx, 1);
+        }
+        this._renderQueue.push({ fileId, pageNum, el, hiRes });
+        this._drainQueue();
+    },
+
+    _drainQueue() {
+        while (this._activeRenders < this._MAX_CONCURRENT && this._renderQueue.length > 0) {
+            const job = this._renderQueue.shift();
+            this._activeRenders++;
+            this._renderPage(job.fileId, job.pageNum, job.el, job.hiRes).finally(() => {
+                this._activeRenders--;
+                this._drainQueue();
+            });
+        }
+    },
+
+    // Tier 2: re-render currently visible pages at full resolution
+    _reRenderHiRes() {
+        if (!this._container || !this._currentFileId) return;
+        const cRect = this._container.getBoundingClientRect();
+        this._pageEls.forEach((el, key) => {
+            if (!key.startsWith(this._currentFileId + '-')) return;
+            if (!el.classList.contains('hi-res')) { // not yet hi-res
+                const eRect = el.getBoundingClientRect();
+                if (eRect.bottom >= cRect.top && eRect.top <= cRect.bottom) {
+                    this._enqueue(el.dataset.fileId, parseInt(el.dataset.page), el, true);
+                }
+            }
+        });
+    },
+
+    async _renderPage(fileId, pageNum, el, hiRes = false) {
+        const fileEntry = AppState.files.find(f => f.id === fileId);
+        if (!fileEntry?.pdfDoc) return;
+
+        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotDeg   = RotationHelper.toDeg(rotation);
+        // Tier 2: use low-res while scrolling, full-res when idle
+        // DPR is used for CSS sizing only — render scale stays sane for performance
+        const scale    = hiRes ? 1.5 : (this._isScrolling ? 0.8 : 1.5);
+        const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
+        const canvas   = el.querySelector('canvas');
+        if (!canvas) return;
+
+        // Apply CSS transform for flip + rotation badge
+        canvas.style.transform = RotationHelper.toCSS(rotation);
+        RotationHelper.updateBadge(el, rotation);
+
+        if (this._cache.has(key)) {
+            const cached = this._cache.get(key);
+            canvas.width  = cached.width;
+            canvas.height = cached.height;
+            canvas.style.width  = `${cached.width}px`;
+            canvas.style.height = `${cached.height}px`;
+            canvas.getContext('2d').drawImage(cached, 0, 0);
+            el.classList.add('rendered');
+            if (scale >= 1.5) el.classList.add('hi-res');
+            return;
+        }
+
+        const taskKey  = `${fileId}-${pageNum}`;
+        const existing = this._renderTasks.get(taskKey);
+        if (existing) { try { existing.cancel(); } catch(_){} }
+
+        const page = await fileEntry.pdfDoc.getPage(pageNum);
+        const vp   = page.getViewport({ scale, rotation: rotDeg });
+        const off  = document.createElement('canvas');
+        off.width  = vp.width;
+        off.height = vp.height;
+
+        const task = page.render({
+            canvasContext: off.getContext('2d', { alpha: false }),
+            viewport:      vp,
+            intent:        'display',
+        });
+        this._renderTasks.set(taskKey, task);
+
+        try {
+            await task.promise;
+            this._cache.set(key, off);
+            canvas.width  = vp.width;
+            canvas.height = vp.height;
+            canvas.style.width  = `${vp.width}px`;
+            canvas.style.height = `${vp.height}px`;
+            canvas.getContext('2d').drawImage(off, 0, 0);
+            el.classList.add('rendered');
+            if (scale >= 1.5) el.classList.add('hi-res');
+        } catch(err) {
+            if (err?.name !== 'RenderingCancelledException') console.warn(err);
+        } finally {
+            page.cleanup();
+            this._renderTasks.delete(taskKey);
+        }
+    },
+
+    scrollToPage(pageNum) {
+        const fileId = AppState.activeFile?.id;
+        if (!fileId) return;
+        const key = `${fileId}-${pageNum}`;
+        const el  = this._pageEls.get(key);
+        // Use instant scroll for manual navigation to reduce perceived lag
+        el?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    },
+
+    // Sync selection highlight on all visible cards (called after state changes)
+    _syncSelectionUI() {
+        const activeFile = AppState.activeFile;
+        if (!activeFile) return;
+        this._pageEls.forEach((card, key) => {
+            if (!key.startsWith(activeFile.id + '-')) return;
+            const pageNum  = parseInt(card.dataset.page);
+            const isSel    = activeFile.selectedPages.has(pageNum);
+            const isSingle = activeFile.singleSidedPages?.has(pageNum);
+            card.classList.toggle('selected-for-print', isSel);
+            card.classList.toggle('single-sided-print', !!(isSingle && isSel));
+            // Update rotation badge
+            const rotation = activeFile.pageRotations?.get(pageNum) ?? null;
+            RotationHelper.updateBadge(card, rotation);
+        });
+    },
+
+    // Called externally when selection state changes (e.g. from ContextMenu, select-all)
+    onStateChanged() {
+        this._syncSelectionUI();
+    },
+
+    _onScroll() {
+        // Find which page is most visible → update thumb highlight
+        if (!this._container || !AppState.activeFile) return;
+        const containerRect = this._container.getBoundingClientRect();
+        let   bestPage      = 1;
+        let   bestOverlap   = 0;
+
+        this._pageEls.forEach((el, key) => {
+            if (!key.startsWith(AppState.activeFile.id + '-')) return;
+            const rect    = el.getBoundingClientRect();
+            const overlap = Math.min(rect.bottom, containerRect.bottom)
+                          - Math.max(rect.top,    containerRect.top);
+            if (overlap > bestOverlap) {
+                bestOverlap = overlap;
+                bestPage    = parseInt(el.dataset.page);
+            }
+        });
+
+        ThumbStripModule.onPreviewScroll(AppState.activeFileIndex, bestPage);
+    },
+
+    clear() {
+        if (this._observer) { this._observer.disconnect(); this._observer = null; }
+        if (this._container) {
+            this._container.innerHTML = `
+                <div class="preview-empty">
+                    <span class="preview-empty-icon">🖨</span>
+                    <span>Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
+                </div>`;
+        }
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ThumbStripModule — Persistent left thumbnail panel
+// Renders thumbnails for ALL loaded files with file dividers.
+// Click thumbnail → scroll preview panel to that page.
+// ═══════════════════════════════════════════════════════════════════
+const ThumbStripModule = {
+    _container:    null,
+    _scrollTimer:  null,
+    _renderTasks:  new Map(),
+    _cache:        new LRUCanvasCache(20), // 20 MB LRU for thumbnails
+    _renderQueue:  [],
+    _activeRenders: 0,
+    _MAX_CONCURRENT: 4,
+
+    init() {
+        this._container = document.getElementById('thumb-strip');
+        // thumb-strip is itself the scrollable element (overflow-y: auto)
+        this._container?.addEventListener('scroll', () => {
+            clearTimeout(this._scrollTimer);
+            this._scrollTimer = setTimeout(() => this._renderVisible(), 80);
+        }, { passive: true });
+    },
+
+    // Full re-render: called on file add/remove/switch
+    render() {
+        if (!this._container) return;
+
+        // Cancel all in-flight renders and queue
+        for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
+        this._renderTasks.clear();
+        this._renderQueue = [];
+        this._activeRenders = 0;
+        this._container.innerHTML = '';
+
+        if (AppState.files.length === 0) {
+            this._container.innerHTML = `
+                <div class="preview-empty" style="padding:16px;text-align:center">
+                    <span class="preview-empty-icon">📄</span>
+                    <span style="font-size:12px">Chưa có file</span>
+                </div>`;
+            return;
+        }
+
+        // Render all files — build DOM first, then render visible
+        AppState.files.forEach((f, fileIndex) => {
+            const divider = document.createElement('div');
+            divider.className   = 'thumb-file-divider';
+            divider.textContent = f.name;
+            divider.title       = f.name;
+            this._container.appendChild(divider);
+
+            for (let p = 1; p <= f.totalPageCount; p++) {
+                const item = document.createElement('div');
+                item.className        = 'thumb-item';
+                item.dataset.fileId   = f.id;
+                item.dataset.page     = p;
+                item.dataset.fileIndex = fileIndex;
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('role', 'button');
+                item.setAttribute('aria-label', `File ${f.name}, trang ${p}`);
+
+                const canvas  = document.createElement('canvas');
+                const label   = document.createElement('div');
+                label.className   = 'thumb-item-label';
+                label.textContent = p;
+
+                item.appendChild(canvas);
+                item.appendChild(label);
+
+                if (fileIndex === AppState.activeFileIndex && p === 1) {
+                    item.classList.add('active');
+                }
+
+                item.addEventListener('click', () => this._onThumbClick(fileIndex, p));
+                item.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    ContextMenu.show(e, p);
+                });
+                this._container.appendChild(item);
+            }
+        });
+
+        // rAF to ensure layout, then render visible thumbs
+        requestAnimationFrame(() => this._renderVisible());
+    },
+
+    // Render thumbs currently in view of the scroll container
+    _renderVisible() {
+        if (!this._container) return;
+        // _container (#thumb-strip) is itself the scrollable element
+        const cRect     = this._container.getBoundingClientRect();
+        const lookahead = cRect.height;
+
+        this._container.querySelectorAll('.thumb-item:not(.rendered)').forEach(el => {
+            const eRect = el.getBoundingClientRect();
+            if (eRect.bottom >= cRect.top - lookahead && eRect.top <= cRect.bottom + lookahead) {
+                const fileId  = el.dataset.fileId;
+                const pageNum = parseInt(el.dataset.page);
+                this._enqueue(fileId, pageNum, el);
+            }
+        });
+    },
+
+    _enqueue(fileId, pageNum, el) {
+        const key = `${fileId}-${pageNum}`;
+        if (this._renderTasks.has(key)) return;
+        if (el.classList.contains('rendered')) return;
+        if (this._renderQueue.some(j => j.fileId === fileId && j.pageNum === pageNum)) return;
+        this._renderQueue.push({ fileId, pageNum, el });
+        this._drainQueue();
+    },
+
+    _drainQueue() {
+        while (this._activeRenders < this._MAX_CONCURRENT && this._renderQueue.length > 0) {
+            const job = this._renderQueue.shift();
+            this._activeRenders++;
+            this._renderThumb(job.fileId, job.pageNum, job.el).finally(() => {
+                this._activeRenders--;
+                this._drainQueue();
+            });
+        }
+    },
+
+    async _renderThumb(fileId, pageNum, el) {
+        const fileEntry = AppState.files.find(f => f.id === fileId);
+        if (!fileEntry?.pdfDoc) return;
+
+        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotDeg   = RotationHelper.toDeg(rotation);
+        const thumbScale = 0.26;    // fixed scale — fits 270px thumb panel
+        const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${thumbScale}`;
+        const canvas   = el.querySelector('canvas');
+        if (!canvas) return;
+
+        // Apply CSS flip transform + rotation badge
+        canvas.style.transform = RotationHelper.toCSS(rotation);
+        RotationHelper.updateBadge(el, rotation);
+
+        if (this._cache.has(key)) {
+            const cached = this._cache.get(key);
+            canvas.width  = cached.width;
+            canvas.height = cached.height;
+            canvas.style.width  = `${cached.width}px`;
+            canvas.style.height = `${cached.height}px`;
+            canvas.getContext('2d').drawImage(cached, 0, 0);
+            el.classList.add('rendered');
+            return;
+        }
+
+        const existing = this._renderTasks.get(key);
+        if (existing) { try { existing.cancel(); } catch(_){} }
+
+        const page = await fileEntry.pdfDoc.getPage(pageNum);
+        const vp   = page.getViewport({ scale: thumbScale, rotation: rotDeg });
+        const off  = document.createElement('canvas');
+        off.width  = vp.width;
+        off.height = vp.height;
+
+        const task = page.render({
+            canvasContext: off.getContext('2d', { alpha: false }),
+            viewport:      vp,
+            intent:        'display',
+        });
+        this._renderTasks.set(key, task);
+
+        try {
+            await task.promise;
+            this._cache.set(key, off);
+            canvas.width  = vp.width;
+            canvas.height = vp.height;
+            canvas.style.width  = `${vp.width}px`;
+            canvas.style.height = `${vp.height}px`;
+            canvas.getContext('2d').drawImage(off, 0, 0);
+            el.classList.add('rendered');
+        } catch(err) {
+            if (err?.name !== 'RenderingCancelledException') console.warn(err);
+        } finally {
+            page.cleanup();
+            this._renderTasks.delete(key);
+        }
+    },
+
+    _onThumbClick(fileIndex, pageNum) {
+        // Switch active file if needed
+        if (fileIndex !== AppState.activeFileIndex) {
+            TabsModule.setActive(fileIndex);
+        }
+        // Scroll preview panel to this page
+        if (typeof PreviewPanelModule !== 'undefined') {
+            PreviewPanelModule.scrollToPage(pageNum);
+        }
+        // Update active highlight
+        this._setActiveHighlight(fileIndex, pageNum);
+    },
+
+    _setActiveHighlight(fileIndex, pageNum) {
+        this._container.querySelectorAll('.thumb-item.active')
+            .forEach(el => el.classList.remove('active'));
+        const target = this._container.querySelector(
+            `.thumb-item[data-file-index="${fileIndex}"][data-page="${pageNum}"]`
+        );
+        target?.classList.add('active');
+        target?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    },
+
+    // Called when preview panel scrolls — update active thumb highlight
+    onPreviewScroll(fileIndex, pageNum) {
+        this._setActiveHighlight(fileIndex, pageNum);
+    },
+
+    // Sync selection CSS + rotation badges on all thumb items
+    _syncSelectionHighlights() {
+        if (!this._container) return;
+        this._container.querySelectorAll('.thumb-item').forEach(el => {
+            const fileId  = el.dataset.fileId;
+            const pageNum = parseInt(el.dataset.page);
+            const entry   = AppState.files.find(f => f.id === fileId);
+            if (!entry) return;
+            const isSel    = entry.selectedPages.has(pageNum);
+            const isSingle = entry.singleSidedPages?.has(pageNum);
+            el.classList.toggle('selected-for-print', isSel);
+            el.classList.toggle('single-sided-print', !!(isSingle && isSel));
+            // Update rotation badge
+            const rotation = entry.pageRotations?.get(pageNum) ?? null;
+            RotationHelper.updateBadge(el, rotation);
+        });
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
 // ═══════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
     ThemeModule.init();
     PrinterModule.init();
     UploadModule.init();
+    TabsModule.init();
     PageSelectModule.init();
     ZoomModal.init();
     ContextMenu.init();
@@ -1795,6 +3177,33 @@ document.addEventListener('DOMContentLoaded', () => {
     KeyboardModule.init();
     DragReorderModule.init();
     ConfirmPrintModal.init();
+    PrintPreviewModule.init();
+    ThumbStripModule.init();
+    PreviewPanelModule.init();
     SummaryModule.update();
     StepIndicatorModule.update();
+
+    // ── Mode select handler ───────────────────────────────────
+    document.getElementById('mode-select')?.addEventListener('change', e => {
+        AppState.printMode = e.target.value;
+        PrintModule.updateButton();
+    });
+
+    // ── Global drag-drop — anywhere on the window ─────────────
+    document.addEventListener('dragover', e => {
+        e.preventDefault();
+        document.getElementById('drop-hint')?.classList.add('visible');
+    });
+    document.addEventListener('dragleave', e => {
+        if (!e.relatedTarget) {
+            document.getElementById('drop-hint')?.classList.remove('visible');
+        }
+    });
+    document.addEventListener('drop', async e => {
+        e.preventDefault();
+        document.getElementById('drop-hint')?.classList.remove('visible');
+        for (const file of e.dataTransfer.files) {
+            await UploadModule._upload(file);
+        }
+    });
 });

@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>myPrinter — 3-Column Dashboard Mockup</title>
+<style>
+  :root {
+    --primary: #667eea;
+    --primary-end: #764ba2;
+    --accent: #38bdf8;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warn: #f59e0b;
+
+    --bg: #0f172a;
+    --bg2: #1e293b;
+    --bg3: #334155;
+    --border: #334155;
+    --text: #f1f5f9;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --card: #1e293b;
+    --card2: #273449;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    --transition: 0.18s ease;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TOP BAR ─────────────────────────────────────── */
+  .topbar {
+    height: 52px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .topbar-logo {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 700; font-size: 16px;
+  }
+  .topbar-logo .icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-end));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+  }
+  .topbar-spacer { flex: 1; }
+  .topbar-badge {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 12px;
+    font-size: 12px; color: var(--text2);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .topbar-badge .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--success); box-shadow: 0 0 6px var(--success);
+  }
+  .topbar-btn {
+    background: none; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 6px 14px;
+    color: var(--text2); font-size: 12px; cursor: pointer;
+    transition: var(--transition);
+  }
+  .topbar-btn:hover { border-color: var(--primary); color: var(--text); }
+
+  /* ── MAIN LAYOUT ─────────────────────────────────── */
+  .main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 260px 1fr 300px;
+    overflow: hidden;
+  }
+
+  /* ── COLUMN SHARED ───────────────────────────────── */
+  .col {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .col + .col { border-left: 1px solid var(--border); }
+  .col-header {
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .col-header-title {
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text2);
+  }
+  .col-header-badge {
+    margin-left: auto;
+    background: var(--bg3); border-radius: 10px;
+    padding: 2px 8px; font-size: 11px; color: var(--text3);
+  }
+  .col-body { flex: 1; overflow-y: auto; padding: 12px; }
+  .col-body::-webkit-scrollbar { width: 4px; }
+  .col-body::-webkit-scrollbar-track { background: transparent; }
+  .col-body::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 2px; }
+
+  /* ── COL 1: PRINTERS ─────────────────────────────── */
+  .search-box {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg3); border-radius: var(--radius-sm);
+    padding: 8px 12px; margin-bottom: 12px;
+    border: 1px solid transparent;
+    transition: var(--transition);
+  }
+  .search-box:focus-within { border-color: var(--primary); }
+  .search-box input {
+    background: none; border: none; outline: none;
+    color: var(--text); font-size: 13px; flex: 1;
+  }
+  .search-box input::placeholder { color: var(--text3); }
+
+  .printer-card {
+    background: var(--card); border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 13px 14px;
+    margin-bottom: 8px; cursor: pointer;
+    transition: var(--transition);
+    position: relative; overflow: hidden;
+  }
+  .printer-card::before {
+    content: ''; position: absolute;
+    left: 0; top: 0; bottom: 0; width: 3px;
+    background: transparent; transition: var(--transition);
+  }
+  .printer-card:hover { border-color: var(--primary); background: var(--card2); }
+  .printer-card:hover::before { background: var(--primary); }
+  .printer-card.active { border-color: var(--primary); background: var(--card2); }
+  .printer-card.active::before { background: linear-gradient(to bottom, var(--primary), var(--primary-end)); }
+
+  .printer-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .printer-meta { font-size: 11px; color: var(--text2); }
+  .printer-status {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; margin-top: 6px;
+  }
+  .printer-status .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .status-ready .dot { background: var(--success); box-shadow: 0 0 5px var(--success); }
+  .status-busy .dot { background: var(--warn); }
+  .status-offline .dot { background: var(--text3); }
+
+  .printer-caps {
+    display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .cap-chip {
+    background: var(--bg3); border-radius: 4px;
+    padding: 2px 7px; font-size: 10px; color: var(--text2);
+  }
+
+  /* ── COL 2: DOCUMENT ─────────────────────────────── */
+  .upload-zone {
+    background: var(--card); border: 2px dashed var(--border);
+    border-radius: var(--radius); padding: 36px 20px;
+    text-align: center; cursor: pointer; margin-bottom: 12px;
+    transition: var(--transition);
+  }
+  .upload-zone:hover { border-color: var(--primary); background: var(--card2); }
+  .upload-icon { font-size: 40px; margin-bottom: 10px; }
+  .upload-text { font-size: 14px; color: var(--text2); margin-bottom: 4px; }
+  .upload-hint { font-size: 11px; color: var(--text3); }
+
+  .doc-info-bar {
+    background: var(--card); border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 12px 14px;
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 12px;
+  }
+  .doc-icon { font-size: 28px; }
+  .doc-details { flex: 1; }
+  .doc-name { font-size: 13px; font-weight: 600; }
+  .doc-meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .doc-remove { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 16px; }
+  .doc-remove:hover { color: var(--danger); }
+
+  .page-range-bar {
+    background: var(--card); border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 12px 14px;
+    margin-bottom: 12px;
+  }
+  .page-range-label { font-size: 11px; color: var(--text2); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .page-range-options { display: flex; gap: 6px; flex-wrap: wrap; }
+  .range-btn {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 12px; font-size: 12px;
+    color: var(--text2); cursor: pointer; transition: var(--transition);
+  }
+  .range-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .range-input {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px;
+    color: var(--text); flex: 1; min-width: 80px; outline: none;
+    transition: var(--transition);
+  }
+  .range-input:focus { border-color: var(--primary); }
+
+  /* Preview thumbnails */
+  .preview-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .preview-title { font-size: 11px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .preview-nav { display: flex; gap: 6px; }
+  .preview-nav-btn {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; font-size: 12px;
+    color: var(--text2); cursor: pointer;
+  }
+  .preview-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .preview-thumb {
+    background: var(--card2); border-radius: 8px; border: 1px solid var(--border);
+    aspect-ratio: 3/4; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; cursor: pointer;
+    position: relative; overflow: hidden; transition: var(--transition);
+  }
+  .preview-thumb:hover { border-color: var(--primary); }
+  .preview-thumb.selected { border-color: var(--accent); }
+  .preview-thumb-content {
+    width: 85%; height: 80%;
+    background: linear-gradient(135deg, var(--bg3) 0%, var(--bg2) 100%);
+    border-radius: 4px; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--text3);
+  }
+  .preview-page-num {
+    position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; color: var(--text3);
+  }
+  .preview-check {
+    position: absolute; top: 4px; right: 4px;
+    width: 16px; height: 16px; background: var(--accent);
+    border-radius: 50%; display: none; align-items: center; justify-content: center;
+    font-size: 8px; color: white;
+  }
+  .preview-thumb.selected .preview-check { display: flex; }
+
+  /* ── COL 3: SETTINGS ─────────────────────────────── */
+  .settings-section { margin-bottom: 14px; }
+  .settings-section-title {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--text3); margin-bottom: 8px;
+  }
+
+  .setting-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+  }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 13px; color: var(--text2); }
+  .setting-label small { display: block; font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+  .toggle {
+    width: 36px; height: 20px; background: var(--bg3);
+    border-radius: 10px; position: relative; cursor: pointer;
+    border: 1px solid var(--border); transition: var(--transition);
+  }
+  .toggle.on { background: var(--primary); border-color: var(--primary); }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; background: white;
+    border-radius: 50%; transition: var(--transition);
+  }
+  .toggle.on::after { transform: translateX(16px); }
+
+  .select-mini {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px;
+    color: var(--text); outline: none;
+  }
+
+  .copies-control {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .copies-btn {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: var(--bg3); border: 1px solid var(--border);
+    color: var(--text); cursor: pointer; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+    transition: var(--transition);
+  }
+  .copies-btn:hover { border-color: var(--primary); }
+  .copies-val { font-size: 13px; font-weight: 600; min-width: 20px; text-align: center; }
+
+  /* Summary panel */
+  .summary-card {
+    background: linear-gradient(135deg, rgba(102,126,234,0.15), rgba(118,75,162,0.1));
+    border: 1px solid rgba(102,126,234,0.3); border-radius: var(--radius);
+    padding: 14px; margin-bottom: 14px;
+  }
+  .summary-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; margin-bottom: 6px;
+  }
+  .summary-row:last-child { margin-bottom: 0; }
+  .summary-key { color: var(--text2); }
+  .summary-val { color: var(--text); font-weight: 500; }
+  .summary-divider { border: none; border-top: 1px solid rgba(102,126,234,0.2); margin: 8px 0; }
+
+  /* Print button */
+  .print-btn {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-end));
+    border: none; border-radius: var(--radius); color: white;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: var(--transition); box-shadow: 0 4px 20px rgba(102,126,234,0.4);
+    margin-bottom: 8px;
+  }
+  .print-btn:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 6px 28px rgba(102,126,234,0.5); }
+  .print-btn:active { transform: translateY(0); }
+
+  .secondary-btn {
+    width: 100%; padding: 10px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text2);
+    font-size: 13px; cursor: pointer; transition: var(--transition);
+  }
+  .secondary-btn:hover { border-color: var(--primary); color: var(--text); }
+
+  /* Preset chips */
+  .preset-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preset-chip {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 20px; padding: 5px 12px; font-size: 11px;
+    color: var(--text2); cursor: pointer; transition: var(--transition);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .preset-chip:hover { border-color: var(--primary); color: var(--text); }
+  .preset-chip.new { border-style: dashed; color: var(--text3); }
+
+  /* Bottom status bar */
+  .statusbar {
+    height: 26px; background: var(--bg2);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 16px; gap: 16px;
+    flex-shrink: 0; font-size: 11px; color: var(--text3);
+  }
+  .statusbar-item { display: flex; align-items: center; gap: 5px; }
+
+  /* Annotations for mockup */
+  .note {
+    background: rgba(251,191,36,0.12); border: 1px dashed rgba(251,191,36,0.4);
+    border-radius: 6px; padding: 5px 10px; font-size: 10px; color: #fbbf24;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo">
+    <div class="icon">🖨️</div>
+    myPrinter
+  </div>
+  <div class="topbar-badge">
+    <div class="dot"></div>
+    3 printers online
+  </div>
+  <div class="topbar-spacer"></div>
+  <button class="topbar-btn">⚙ Settings</button>
+  <button class="topbar-btn">🌙</button>
+</div>
+
+<!-- MAIN 3-COLUMN LAYOUT -->
+<div class="main">
+
+  <!-- ── COL 1: PRINTERS ──────────────────────────── -->
+  <div class="col">
+    <div class="col-header">
+      <span>🖨️</span>
+      <span class="col-header-title">Printers</span>
+      <span class="col-header-badge">4</span>
+    </div>
+    <div class="col-body">
+      <div class="search-box">
+        <span style="color:var(--text3)">🔍</span>
+        <input placeholder="Search printers..." />
+      </div>
+
+      <!-- Printer 1 — active -->
+      <div class="printer-card active">
+        <div class="printer-name">HP LaserJet Pro M404</div>
+        <div class="printer-meta">\\SERVER\HP_LaserJet_Pro</div>
+        <div class="printer-status status-ready"><div class="dot"></div> Ready</div>
+        <div class="printer-caps">
+          <span class="cap-chip">Duplex</span>
+          <span class="cap-chip">Color</span>
+          <span class="cap-chip">A4/A3</span>
+        </div>
+      </div>
+
+      <!-- Printer 2 -->
+      <div class="printer-card">
+        <div class="printer-name">Canon iR-ADV C5560</div>
+        <div class="printer-meta">\\SERVER\Canon_ADV</div>
+        <div class="printer-status status-busy"><div class="dot"></div> Busy (2 jobs)</div>
+        <div class="printer-caps">
+          <span class="cap-chip">Duplex</span>
+          <span class="cap-chip">Staple</span>
+          <span class="cap-chip">A3</span>
+        </div>
+      </div>
+
+      <!-- Printer 3 -->
+      <div class="printer-card">
+        <div class="printer-name">Epson WorkForce WF-7840</div>
+        <div class="printer-meta">\\OFFICE\Epson_WF</div>
+        <div class="printer-status status-ready"><div class="dot"></div> Ready</div>
+        <div class="printer-caps">
+          <span class="cap-chip">Color</span>
+          <span class="cap-chip">A3+</span>
+        </div>
+      </div>
+
+      <!-- Printer 4 -->
+      <div class="printer-card">
+        <div class="printer-name">Xerox VersaLink C405</div>
+        <div class="printer-meta">\\FLOOR2\Xerox_VL</div>
+        <div class="printer-status status-offline"><div class="dot"></div> Offline</div>
+        <div class="printer-caps">
+          <span class="cap-chip">Duplex</span>
+          <span class="cap-chip">Fax</span>
+        </div>
+      </div>
+
+      <div class="note">📌 New: printer status live polling every 30s via WebSocket</div>
+    </div>
+  </div>
+
+  <!-- ── COL 2: DOCUMENT ──────────────────────────── -->
+  <div class="col">
+    <div class="col-header">
+      <span>📄</span>
+      <span class="col-header-title">Document</span>
+      <span class="col-header-badge">12 pages</span>
+    </div>
+    <div class="col-body">
+
+      <!-- Upload zone (shown when no doc) -->
+      <!-- <div class="upload-zone">
+        <div class="upload-icon">📂</div>
+        <div class="upload-text">Drop your file here or click to browse</div>
+        <div class="upload-hint">Supports: DOCX, PDF, DOC, RTF</div>
+      </div> -->
+
+      <!-- Doc loaded state -->
+      <div class="doc-info-bar">
+        <div class="doc-icon">📝</div>
+        <div class="doc-details">
+          <div class="doc-name">Báo cáo tháng 3 - 2026.docx</div>
+          <div class="doc-meta">12 pages · 2.3 MB · Word Document</div>
+        </div>
+        <button class="doc-remove">✕</button>
+      </div>
+
+      <!-- Page range -->
+      <div class="page-range-bar">
+        <div class="page-range-label">Page Range</div>
+        <div class="page-range-options">
+          <button class="range-btn active">All pages</button>
+          <button class="range-btn">Odd</button>
+          <button class="range-btn">Even</button>
+          <input class="range-input" placeholder="e.g. 1-3, 5, 7-12" />
+        </div>
+      </div>
+
+      <!-- Page thumbnails -->
+      <div class="preview-header">
+        <span class="preview-title">Preview — select pages to print</span>
+        <div class="preview-nav">
+          <button class="preview-nav-btn">Select All</button>
+          <button class="preview-nav-btn">Clear</button>
+        </div>
+      </div>
+
+      <div class="preview-grid">
+        <!-- pages 1-9 as thumbnails -->
+        <div class="preview-thumb selected">
+          <div class="preview-thumb-content">p.1</div>
+          <div class="preview-page-num">1</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb selected">
+          <div class="preview-thumb-content">p.2</div>
+          <div class="preview-page-num">2</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb">
+          <div class="preview-thumb-content">p.3</div>
+          <div class="preview-page-num">3</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb selected">
+          <div class="preview-thumb-content">p.4</div>
+          <div class="preview-page-num">4</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb">
+          <div class="preview-thumb-content">p.5</div>
+          <div class="preview-page-num">5</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb selected">
+          <div class="preview-thumb-content">p.6</div>
+          <div class="preview-page-num">6</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb">
+          <div class="preview-thumb-content">p.7</div>
+          <div class="preview-page-num">7</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb">
+          <div class="preview-thumb-content">p.8</div>
+          <div class="preview-page-num">8</div>
+          <div class="preview-check">✓</div>
+        </div>
+        <div class="preview-thumb">
+          <div class="preview-thumb-content">+ 4 more</div>
+          <div class="preview-page-num">…</div>
+        </div>
+      </div>
+
+      <div class="note">📌 New: thumbnail grid with click-to-toggle page selection + lazy loading</div>
+    </div>
+  </div>
+
+  <!-- ── COL 3: SETTINGS ──────────────────────────── -->
+  <div class="col">
+    <div class="col-header">
+      <span>⚙️</span>
+      <span class="col-header-title">Print Settings</span>
+    </div>
+    <div class="col-body">
+
+      <!-- Presets -->
+      <div class="settings-section">
+        <div class="settings-section-title">Quick Presets</div>
+        <div class="preset-list">
+          <div class="preset-chip">⭐ Draft</div>
+          <div class="preset-chip">📋 Office</div>
+          <div class="preset-chip">🎨 Photo</div>
+          <div class="preset-chip">📊 Report</div>
+          <div class="preset-chip new">＋ New preset</div>
+        </div>
+      </div>
+
+      <!-- Print mode -->
+      <div class="settings-section">
+        <div class="settings-section-title">Mode</div>
+        <div class="setting-row">
+          <div class="setting-label">Duplex (2-sided)<small>Auto-detected from printer caps</small></div>
+          <div class="toggle on"></div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Flip on short edge</div>
+          <div class="toggle"></div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Color / B&W</div>
+          <select class="select-mini">
+            <option>Auto</option>
+            <option>Color</option>
+            <option>Grayscale</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Orientation</div>
+          <select class="select-mini">
+            <option>Portrait</option>
+            <option>Landscape</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Paper size</div>
+          <select class="select-mini">
+            <option>A4</option>
+            <option>A3</option>
+            <option>Letter</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Copies -->
+      <div class="settings-section">
+        <div class="settings-section-title">Copies & Collation</div>
+        <div class="setting-row">
+          <div class="setting-label">Number of copies</div>
+          <div class="copies-control">
+            <div class="copies-btn">−</div>
+            <div class="copies-val">1</div>
+            <div class="copies-btn">＋</div>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Collate</div>
+          <div class="toggle on"></div>
+        </div>
+      </div>
+
+      <!-- Advanced -->
+      <div class="settings-section">
+        <div class="settings-section-title">Advanced</div>
+        <div class="setting-row">
+          <div class="setting-label">N-up (pages per sheet)</div>
+          <select class="select-mini">
+            <option>1 (Normal)</option>
+            <option>2-up</option>
+            <option>4-up</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Watermark</div>
+          <div class="toggle"></div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-label">Quality / DPI</div>
+          <select class="select-mini">
+            <option>600 dpi</option>
+            <option>300 dpi</option>
+            <option>1200 dpi</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div class="summary-card">
+        <div class="summary-row">
+          <span class="summary-key">Printer</span>
+          <span class="summary-val">HP LaserJet Pro M404</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Document</span>
+          <span class="summary-val">Báo cáo tháng 3.docx</span>
+        </div>
+        <hr class="summary-divider" />
+        <div class="summary-row">
+          <span class="summary-key">Pages to print</span>
+          <span class="summary-val">5 / 12 pages</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Sheets</span>
+          <span class="summary-val">3 sheets × 1 copy</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-key">Mode</span>
+          <span class="summary-val">Duplex · Color · A4</span>
+        </div>
+      </div>
+
+      <button class="print-btn">🖨️ Print Now</button>
+      <button class="secondary-btn">💾 Save as Preset</button>
+
+      <div class="note" style="margin-top:10px">📌 New: Smart summary auto-calculates sheets used & estimated time</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+  <div class="statusbar-item">🖨️ HP LaserJet Pro M404</div>
+  <div class="statusbar-item">📄 12 pages</div>
+  <div class="statusbar-item">⚙ Duplex · 1 copy</div>
+  <div style="flex:1"></div>
+  <div class="statusbar-item" style="color:var(--success)">● Connected</div>
+  <div class="statusbar-item">v2.0.0</div>
+</div>
+
+</body>
+</html>

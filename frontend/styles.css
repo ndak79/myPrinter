@@ -1,59 +1,65 @@
 :root {
+    /* Colors */
+    --color-bg:            #F5F5F7;
+    --color-surface:       #FFFFFF;
+    --color-surface-alt:   #F2F2F7;
+    --color-border:        #D1D1D6;
+    --color-border-strong: #C7C7CC;
+    --color-accent:        #0071E3;
+    --color-accent-hover:  #0077ED;
+    --color-accent-light:  #E8F1FD;
+    --color-text-primary:  #1D1D1F;
+    --color-text-secondary:#6E6E73;
+    --color-text-muted:    #AEAEB2;
+    --color-danger:        #FF3B30;
+    --color-success:       #34C759;
+    --color-warning:       #FF9500;
+
+    /* Layout */
+    --header-height-r1:    44px;
+    --header-height-r2:    36px;
+    --thumb-panel-width:   270px;
+    --header-total-height: calc(var(--header-height-r1) + var(--header-height-r2));
+
+    /* Typography */
+    --font-system: -apple-system, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    --font-mono:   "SF Mono", "Cascadia Code", monospace;
+
+    /* Elevation */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    --shadow-md: 0 4px 12px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
+
+    /* Shape */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+
+    /* Legacy compat aliases — old code references these */
     --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    --success-color: #10b981;
-    --danger-color: #ef4444;
-    --warning-color: #f59e0b;
-
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-card: rgba(30, 41, 59, 0.8);
-
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-
-    --border-color: rgba(148, 163, 184, 0.2);
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
-    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
-    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+    --success-color: #34C759;
+    --danger-color: #FF3B30;
+    --warning-color: #FF9500;
+    --bg-primary: #F5F5F7;
+    --bg-secondary: #FFFFFF;
+    --bg-card: rgba(255, 255, 255, 0.9);
+    --text-primary: #1D1D1F;
+    --text-secondary: #6E6E73;
+    --text-muted: #AEAEB2;
+    --border-color: #D1D1D6;
+    --shadow-lg: 0 8px 24px rgba(0,0,0,.12);
 }
 
-/* ── Theme Transition (H) ──────────────────────────────────── */
-*, *::before, *::after {
-    transition:
-        background-color 300ms ease,
-        background 300ms ease,
-        border-color 300ms ease,
-        color 300ms ease;
-}
-
-/* Exclude transitions that cause visual glitches */
-.page-thumbnail,
-.page-thumbnail canvas,
-canvas,
-.ripple,
-.skeleton,
-.upload-progress-bar {
-    transition: none !important;
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+/* Global reset */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    min-height: 100vh;
-    background-image:
-        radial-gradient(at 20% 30%, rgba(102, 126, 234, 0.15) 0, transparent 50%),
-        radial-gradient(at 80% 70%, rgba(118, 75, 162, 0.15) 0, transparent 50%);
-    margin: 0;
-    padding: 0;
+    font-family: var(--font-system);
+    background:  var(--color-bg);
+    color:       var(--color-text-primary);
+    height:      100vh;
+    overflow:    hidden; /* app shell — no body scroll */
+    -webkit-font-smoothing: antialiased;
 }
 
 /* App Container with Sidebar Layout */
@@ -2000,4 +2006,467 @@ kbd {
 }
 .page-thumbnail[data-rotation="FlipVertical"] canvas {
     transform: scaleY(-1);
+}
+
+/* ── File Tabs ───────────────────────────────────────────────── */
+.file-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    padding: 4px 0;
+    border-top: 1px solid var(--border-color);
+    overflow-x: auto;
+}
+
+.file-tab-list {
+    display: flex;
+    gap: 4px;
+    flex: 1;
+    overflow-x: auto;
+}
+
+.file-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(100, 116, 139, 0.1);
+    border: 1px solid transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    transition: background 0.15s, border-color 0.15s;
+    max-width: 160px;
+}
+
+.file-tab:hover {
+    background: rgba(100, 116, 139, 0.2);
+}
+
+.file-tab.active {
+    background: rgba(102, 126, 234, 0.15);
+    border-color: rgba(102, 126, 234, 0.4);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.file-tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-tab-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 2px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.file-tab-close:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.file-tab-add-btn {
+    background: none;
+    border: 1px dashed var(--border-color);
+    color: var(--text-secondary);
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+
+.file-tab-add-btn:hover {
+    background: rgba(102, 126, 234, 0.1);
+    color: var(--text-primary);
+    border-color: rgba(102, 126, 234, 0.4);
+}
+
+/* ── App Shell ────────────────────────────────────────────── */
+.app-shell {
+  display:        flex;
+  flex-direction: column;
+  height:         100vh;
+  overflow:       hidden;
+}
+
+/* ── Header Row 1: Settings bar ────────────────────────────── */
+.header-settings {
+  display:          flex;
+  align-items:      center;
+  gap:              8px;
+  padding:          0 16px;
+  height:           var(--header-height-r1);
+  background:       rgba(255,255,255,0.85);
+  backdrop-filter:  blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom:    1px solid var(--color-border);
+  flex-shrink:      0;
+  z-index:          100;
+}
+
+.header-spacer { flex: 1; }
+
+/* Compact select controls in settings row */
+.header-select {
+  height:           28px;
+  padding:          0 8px;
+  border:           1px solid var(--color-border);
+  border-radius:    var(--radius-sm);
+  background:       var(--color-surface);
+  color:            var(--color-text-primary);
+  font-family:      var(--font-system);
+  font-size:        13px;
+  cursor:           pointer;
+  max-width:        180px;
+  appearance:       none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236E6E73'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right:    24px;
+}
+.header-select:focus {
+  outline:          2px solid var(--color-accent);
+  outline-offset:   -1px;
+}
+
+/* Print button */
+.btn-print {
+  height:           28px;
+  padding:          0 14px;
+  background:       var(--color-accent);
+  color:            #fff;
+  border:           none;
+  border-radius:    var(--radius-sm);
+  font-size:        13px;
+  font-weight:      500;
+  cursor:           pointer;
+  white-space:      nowrap;
+  font-family:      var(--font-system);
+  transition:       background 0.15s;
+}
+.btn-print:hover:not(:disabled)  { background: var(--color-accent-hover); }
+.btn-print:disabled               { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Header Row 2: File tabs ────────────────────────────────── */
+.file-tabs-bar {
+  display:          flex;
+  align-items:      center;
+  gap:              2px;
+  padding:          0 12px;
+  height:           var(--header-height-r2);
+  background:       var(--color-surface-alt);
+  border-bottom:    1px solid var(--color-border);
+  overflow-x:       auto;
+  overflow-y:       hidden;
+  flex-shrink:      0;
+  scrollbar-width:  none;
+}
+.file-tabs-bar::-webkit-scrollbar { display: none; }
+
+.file-tabs-bar .file-tab {
+  display:          flex;
+  align-items:      center;
+  gap:              4px;
+  height:           26px;
+  padding:          0 10px 0 8px;
+  border:           1px solid transparent;
+  border-radius:    var(--radius-sm);
+  background:       transparent;
+  color:            var(--color-text-secondary);
+  font-size:        12px;
+  font-family:      var(--font-system);
+  cursor:           pointer;
+  white-space:      nowrap;
+  max-width:        180px;
+  transition:       background 0.1s, color 0.1s;
+  position:         relative;
+}
+.file-tabs-bar .file-tab:hover {
+  background:       var(--color-surface);
+  color:            var(--color-text-primary);
+}
+.file-tabs-bar .file-tab.active {
+  background:       var(--color-surface);
+  color:            var(--color-text-primary);
+  border-color:     var(--color-border);
+  box-shadow:       var(--shadow-sm);
+}
+.file-tab-icon  { font-size: 11px; flex-shrink: 0; }
+.file-tab-label { overflow: hidden; text-overflow: ellipsis; }
+
+.file-tab-add {
+  height:           24px;
+  padding:          0 10px;
+  border:           1px dashed var(--color-border);
+  border-radius:    var(--radius-sm);
+  background:       transparent;
+  color:            var(--color-text-secondary);
+  font-size:        12px;
+  font-family:      var(--font-system);
+  cursor:           pointer;
+  white-space:      nowrap;
+  margin-left:      4px;
+  transition:       all 0.15s;
+}
+.file-tab-add:hover {
+  background:       var(--color-surface);
+  border-color:     var(--color-accent);
+  color:            var(--color-accent);
+}
+
+/* ── Body: thumb panel + preview panel ─────────────────────── */
+.app-body {
+  display:          flex;
+  flex:             1;
+  overflow:         hidden;
+  min-height:       0;
+}
+
+/* ── Thumbnail Panel (left, vertical) ──────────────────────── */
+.thumb-panel {
+  width:            var(--thumb-panel-width);
+  min-width:        var(--thumb-panel-width);
+  max-width:        400px;           /* expands for landscape pages */
+  flex-shrink:      0;
+  background:       var(--color-surface);
+  border-right:     1px solid var(--color-border);
+  display:          flex;
+  flex-direction:   column;
+  overflow:         hidden;
+  min-height:       0;
+}
+.thumb-panel-inner {
+  flex:             1;
+  overflow-y:       auto;
+  overflow-x:       auto;
+  padding:          8px 6px;
+  display:          flex;
+  flex-direction:   column;
+  align-items:      stretch;
+  gap:              4px;
+  scrollbar-width:  thin;
+  scrollbar-color:  var(--color-border) transparent;
+}
+
+/* File section divider inside thumb strip */
+.thumb-file-divider {
+  font-size:        10px;
+  font-weight:      600;
+  color:            var(--color-text-muted);
+  text-transform:   uppercase;
+  letter-spacing:   0.04em;
+  padding:          8px 4px 2px;
+  border-top:       1px solid var(--color-border);
+  margin-top:       4px;
+  overflow:         hidden;
+  text-overflow:    ellipsis;
+  white-space:      nowrap;
+}
+.thumb-file-divider:first-child { border-top: none; margin-top: 0; padding-top: 2px; }
+
+/* Individual thumbnail */
+.thumb-item {
+  position:         relative;
+  border-radius:    var(--radius-sm);
+  border:           2px solid transparent;
+  cursor:           pointer;
+  background:       var(--color-surface-alt);
+  transition:       border-color 0.12s, box-shadow 0.12s;
+  width:            fit-content;   /* shrink-wrap to canvas */
+  margin:           0 auto;        /* center in panel, scroll horizontally if landscape wider */
+  min-width:        80px;
+}
+.thumb-item canvas {
+  display:          block;
+  border-radius:    calc(var(--radius-sm) - 2px);
+}
+.thumb-item:hover  { border-color: var(--color-border-strong); }
+.thumb-item.active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+/* not selected = default gray border (already transparent) */
+/* selected for print 2-sided = green */
+.thumb-item.selected-for-print {
+  border-color:     #22c55e;
+  box-shadow:       0 0 0 1px rgba(34,197,94,0.35);
+  background:       rgba(34,197,94,0.06);
+}
+/* selected for print 1-sided = blue (overrides green) */
+.thumb-item.selected-for-print.single-sided-print {
+  border-color:     #3b82f6;
+  box-shadow:       0 0 0 1px rgba(59,130,246,0.35);
+  background:       rgba(59,130,246,0.06);
+}
+.thumb-item-label {
+  position:         absolute;
+  bottom:           3px;
+  right:            4px;
+  background:       rgba(0,0,0,0.55);
+  color:            #fff;
+  font-size:        10px;
+  font-weight:      600;
+  padding:          1px 5px;
+  border-radius:    3px;
+  pointer-events:   none;
+}
+
+/* ── Preview Panel (right, scrollable) ─────────────────────── */
+.preview-panel {
+  flex:             1;
+  overflow-y:       auto;
+  overflow-x:       auto;
+  background:       var(--color-bg);
+  padding:          24px;
+  display:          flex;
+  flex-direction:   column;
+  align-items:      stretch;   /* let cards use margin:auto for centering */
+  gap:              20px;
+  scrollbar-width:  thin;
+  scrollbar-color:  var(--color-border) transparent;
+}
+
+.preview-page-card {
+  background:       var(--color-surface);
+  border-radius:    var(--radius-md);
+  box-shadow:       var(--shadow-sm);
+  width:            fit-content;   /* shrink-wrap to canvas */
+  margin:           0 auto;        /* center horizontally — works even when wider than panel */
+  border:           3px solid transparent;
+  cursor:           pointer;
+  position:         relative;
+  transition:       border-color 0.12s, box-shadow 0.12s;
+}
+.preview-page-card canvas {
+  display:          block;
+  border-radius:    calc(var(--radius-md) - 3px);
+}
+.preview-page-card:hover {
+  border-color:     var(--color-border-strong);
+}
+/* selected 2-sided = green */
+.preview-page-card.selected-for-print {
+  border-color:     #22c55e;
+  box-shadow:       var(--shadow-sm), 0 0 0 1px rgba(34,197,94,0.3);
+}
+/* selected 1-sided = blue */
+.preview-page-card.selected-for-print.single-sided-print {
+  border-color:     #3b82f6;
+  box-shadow:       var(--shadow-sm), 0 0 0 1px rgba(59,130,246,0.3);
+}
+
+/* Rotation badge — shown on both thumb-item and preview-page-card */
+.rot-badge {
+  position:         absolute;
+  top:              4px;
+  left:             4px;
+  background:       rgba(0,0,0,0.72);
+  color:            #fff;
+  font-size:        10px;
+  font-weight:      700;
+  padding:          2px 5px;
+  border-radius:    4px;
+  pointer-events:   none;
+  z-index:          10;
+  letter-spacing:   0.02em;
+}
+/* larger badge on main preview cards */
+.preview-page-card .rot-badge {
+  font-size:        12px;
+  padding:          3px 8px;
+  top:              8px;
+  left:             8px;
+}
+
+/* Empty state */
+.preview-empty {
+  flex:             1;
+  align-self:       stretch;  /* fill panel width even when parent is align-items:center */
+  display:          flex;
+  flex-direction:   column;
+  align-items:      center;
+  justify-content:  center;
+  color:            var(--color-text-muted);
+  gap:              12px;
+  font-size:        15px;
+}
+.preview-empty-icon { font-size: 48px; }
+
+/* ── Utility: upload drop overlay ───────────────────────────── */
+.upload-drop-hint {
+  position:         fixed;
+  inset:            0;
+  background:       rgba(0,113,227,.08);
+  border:           2px dashed var(--color-accent);
+  border-radius:    var(--radius-lg);
+  z-index:          200;
+  pointer-events:   none;
+  display:          none;
+}
+.upload-drop-hint.visible { display: flex; align-items: center; justify-content: center; }
+
+/* ── Toast notifications (app-shell) ────────────────────────── */
+.toast-container-appshell {
+  position:         fixed;
+  bottom:           24px;
+  right:            24px;
+  display:          flex;
+  flex-direction:   column;
+  gap:              8px;
+  z-index:          9999;
+}
+.toast {
+  padding:          10px 16px;
+  border-radius:    var(--radius-md);
+  font-size:        13px;
+  font-weight:      500;
+  box-shadow:       var(--shadow-md);
+  animation:        toast-in 0.2s ease;
+  max-width:        320px;
+  background:       var(--color-surface);
+  color:            var(--color-text-primary);
+  border-left:      3px solid var(--color-accent);
+}
+.toast.success { border-color: var(--color-success); }
+.toast.error   { border-color: var(--color-danger); }
+.toast.info    { border-color: var(--color-accent); }
+@keyframes toast-in {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* ── Modals (manual flip, zoom, confirm print) ──────────────── */
+.modal-overlay {
+  position:         fixed;
+  inset:            0;
+  background:       rgba(0,0,0,0.3);
+  backdrop-filter:  blur(4px);
+  display:          flex;
+  align-items:      center;
+  justify-content:  center;
+  z-index:          500;
+}
+.modal-overlay.hidden { display: none; }
+
+.modal-box {
+  background:       var(--color-surface);
+  border-radius:    var(--radius-lg);
+  box-shadow:       var(--shadow-md);
+  padding:          28px;
+  max-width:        480px;
+  width:            90%;
 }

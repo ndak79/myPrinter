@@ -5,371 +5,253 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ứng Dụng In Ấn Thông Minh</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=11">
+    <link rel="stylesheet" href="sidebar-styles.css?v=4">
+    <link rel="stylesheet" href="zoom-toolbar-styles.css?v=4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script type="module">
+        import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.0.375/pdf.min.mjs';
+        window.pdfjsLib = pdfjsLib;
+        window.dispatchEvent(new Event('pdfjsReady'));
+    </script>
 </head>
 
 <body>
-    <!-- Theme Toggle -->
-    <div class="theme-toggle" id="theme-toggle">
-        <button class="theme-btn active" data-theme="auto" title="Tự động">A</button>
-        <button class="theme-btn" data-theme="light" title="Sáng">L</button>
-        <button class="theme-btn" data-theme="dark" title="Tối">D</button>
-    </div>
+<div class="app-shell">
 
-    <div class="app-container">
-        <!-- Left Sidebar: Page Preview -->
-        <aside class="sidebar" id="preview-sidebar" style="display:none;">
-            <div class="sidebar-header">
-                <h3>📄 Preview</h3>
-                <div class="page-stats-compact">
-                    <span id="sidebar-page-count">0 trang</span>
-                    <span id="sidebar-selected-pages">Tất cả</span>
-                </div>
-            </div>
-            <div class="sidebar-preview-grid" id="sidebar-preview-grid">
-                <div class="skeleton skeleton-thumb"></div>
-                <div class="skeleton skeleton-thumb"></div>
-                <div class="skeleton skeleton-thumb"></div>
-            </div>
-        </aside>
+  <!-- ── Row 1: Settings bar ────────────────────────────── -->
+  <header class="header-settings">
+    <!-- Printer selector -->
+    <select id="printer-select" class="header-select" aria-label="Chọn máy in">
+      <option value="">🖨 Chọn máy in…</option>
+    </select>
 
-        <!-- Main Content -->
-        <div class="main-container">
-            <header class="header">
-                <div class="header-content">
-                    <h1>🖨️ Máy In 1 Mặt Thông Minh</h1>
-                    <p class="subtitle">Hơn cả Máy In 2 mặt</p>
-                </div>
-            </header>
+    <!-- Print mode selector -->
+    <select id="mode-select" class="header-select" aria-label="Chế độ in">
+      <option value="duplex">2 mặt thường</option>
+      <option value="simplex">1 mặt</option>
+      <option value="booklet">Booklet A5</option>
+    </select>
 
-            <main class="main-content">
-                <!-- Step Indicator (2) -->
-                <nav class="step-indicator" id="step-indicator" aria-label="Tiến độ">
-                    <div class="step-indicator-item" id="step-ind-1" data-step="1">
-                        <div class="step-ind-circle"><span class="step-ind-num">1</span><span class="step-ind-check" hidden>✓</span></div>
-                        <div class="step-ind-label">Chọn Máy In</div>
-                    </div>
-                    <div class="step-indicator-line" id="step-line-1"></div>
-                    <div class="step-indicator-item" id="step-ind-2" data-step="2">
-                        <div class="step-ind-circle"><span class="step-ind-num">2</span><span class="step-ind-check" hidden>✓</span></div>
-                        <div class="step-ind-label">Tải File</div>
-                    </div>
-                    <div class="step-indicator-line" id="step-line-2"></div>
-                    <div class="step-indicator-item" id="step-ind-3" data-step="3">
-                        <div class="step-ind-circle"><span class="step-ind-num">3</span><span class="step-ind-check" hidden>✓</span></div>
-                        <div class="step-ind-label">Chọn Trang</div>
-                    </div>
-                    <div class="step-indicator-line" id="step-line-3"></div>
-                    <div class="step-indicator-item" id="step-ind-4" data-step="4">
-                        <div class="step-ind-circle"><span class="step-ind-num">4</span><span class="step-ind-check" hidden>✓</span></div>
-                        <div class="step-ind-label">Chế Độ In</div>
-                    </div>
-                    <div class="step-indicator-line" id="step-line-4"></div>
-                    <div class="step-indicator-item" id="step-ind-5" data-step="5">
-                        <div class="step-ind-circle"><span class="step-ind-num">5</span><span class="step-ind-check" hidden>✓</span></div>
-                        <div class="step-ind-label">In</div>
-                    </div>
-                </nav>
+    <!-- Page range -->
+    <input id="page-range-input"
+           class="header-select"
+           type="text"
+           placeholder="Trang: 1-∞"
+           aria-label="Chọn trang"
+           style="width:110px; padding-right:8px; background-image:none;">
 
-                <!-- Step 1: Printer Selection -->
-                <section class="card card-animate" style="animation-delay: 0ms;">
-                    <div class="card-header">
-                        <h2><span class="step-number">1</span> Chọn Máy In</h2>
-                    </div>
-                    <div class="card-body">
-                        <div id="printer-list" class="printer-list">
-                            <div class="skeleton-printer-item">
-                                <div class="skeleton skeleton-icon"></div>
-                                <div class="skeleton-lines">
-                                    <div class="skeleton skeleton-line"></div>
-                                    <div class="skeleton skeleton-line-short"></div>
-                                </div>
-                            </div>
-                            <div class="skeleton-printer-item">
-                                <div class="skeleton skeleton-icon"></div>
-                                <div class="skeleton-lines">
-                                    <div class="skeleton skeleton-line"></div>
-                                    <div class="skeleton skeleton-line-short"></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+    <div class="header-spacer"></div>
 
-                <!-- Step 2: File Upload -->
-                <section class="card card-animate" style="animation-delay: 80ms;">
-                    <div class="card-header">
-                        <h2><span class="step-number">2</span> Tải File In</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="upload-area" id="upload-area">
-                            <div class="upload-icon">📄</div>
-                            <p class="upload-text">Kéo thả file vào đây hoặc nhấn để chọn</p>
-                            <p class="upload-hint">Hỗ trợ: DOC, DOCX, PDF</p>
-                            <input type="file" id="file-input" accept=".doc,.docx,.pdf" hidden>
-                        </div>
-                        <div id="upload-progress-wrap" class="upload-progress-wrap hidden">
-                          <div class="upload-progress-bar" id="upload-progress-bar"></div>
-                        </div>
-                        <div id="file-info" class="file-info hidden">
-                            <div class="file-preview">
-                                <span class="file-icon">📄</span>
-                                <div class="file-details">
-                                    <p class="file-name" id="file-name"></p>
-                                    <p class="file-status" id="file-status">Đã tải lên</p>
-                                </div>
-                                <button class="btn-remove" id="remove-file">✕</button>
-                            </div>
-                        </div>
-                    </div>
-                </section>
+    <!-- Print button -->
+    <button id="print-btn" class="btn-print" disabled>🖨 In</button>
+  </header>
 
-                <!-- Step 3: Page Range Selection -->
-                <section class="card hidden card-animate" id="page-range-section" style="animation-delay: 160ms;">
-                    <div class="card-header">
-                        <h2><span class="step-number">3</span> Chọn Trang In</h2>
-                    </div>
-                    <div class="card-body" style="text-align: center;">
-                        <div style="margin-bottom: 1rem;">
-                            <label
-                                style="display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-                                Nhập các trang cần in (ví dụ: 1-3,5,7-9) hoặc để trống để in tất cả
-                            </label>
-                            <input type="text" id="page-range-input" placeholder="VD: 1-3,5,7-9"
-                                style="width: 100%; max-width: 400px; padding: 0.75rem; background: rgba(100,116,139,0.1); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); font-size: 0.875rem;">
-                        </div>
-                        <div style="font-size: 0.875rem; color: var(--text-muted);">
-                            <span id="inline-page-count">0 trang</span> • <span id="inline-selected">Đã chọn: Tất
-                                cả</span>
-                        </div>
-                    </div>
-                </section>
+  <!-- ── Row 2: File tabs ───────────────────────────────── -->
+  <div id="file-tabs" class="file-tabs-bar" role="tablist" aria-label="Các file đang mở">
+    <div id="file-tab-list" class="file-tab-list"></div>
+    <button id="file-tab-add-btn" class="file-tab-add" type="button" title="Thêm file">+ Thêm file</button>
+  </div>
 
-                <!-- Step 4: Print Mode -->
-                <section class="card card-animate" style="animation-delay: 240ms;">
-                    <div class="card-header">
-                        <h2><span class="step-number">4</span> Chế Độ In</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="mode-selector">
-                            <label class="mode-option">
-                                <input type="radio" name="print-mode" value="normal" checked>
-                                <div class="mode-card">
-                                    <div class="mode-icon">📋</div>
-                                    <h3>In 2 Mặt Thường</h3>
-                                    <p>Dọc lật cạnh dài, ngang lật cạnh ngắn</p>
-                                </div>
-                            </label>
-                            <label class="mode-option">
-                                <input type="radio" name="print-mode" value="simplex">
-                                <div class="mode-card">
-                                    <div class="mode-icon">📄</div>
-                                    <h3>In 1 Mặt</h3>
-                                    <p>In một mặt thông thường</p>
-                                </div>
-                            </label>
-                            <label class="mode-option">
-                                <input type="radio" name="print-mode" value="booklet">
-                                <div class="mode-card">
-                                    <div class="mode-icon">📖</div>
-                                    <h3>Chế Độ Sách (A5)</h3>
-                                    <p>4 trang A5 trên 2 mặt giấy A4</p>
-                                </div>
-                            </label>
-                            <!-- Copies control -->
-                            <div class="copies-row" id="copies-row">
-                              <span class="copies-label">Số bản in</span>
-                              <div class="copies-control">
-                                <button class="copies-btn" id="copies-dec" type="button" aria-label="Giảm">−</button>
-                                <span class="copies-val" id="copies-display">1</span>
-                                <button class="copies-btn" id="copies-inc" type="button" aria-label="Tăng">+</button>
-                              </div>
-                              <label class="collate-label" id="collate-label" style="display:none">
-                                <input type="checkbox" id="collate-check" checked />
-                                Collate (1-2-3, 1-2-3)
-                              </label>
-                            </div>
+  <!-- ── Body ──────────────────────────────────────────── -->
+  <div class="app-body">
 
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Step 5: Print Button -->
-                <section class="action-section card-animate" style="animation-delay: 320ms;">
-                    <div id="print-summary" class="print-summary hidden"></div>
-                    <button id="print-btn" class="btn-primary" disabled>
-                        <span class="btn-icon">🖨️</span> Bắt Đầu In
-                    </button>
-                    <div class="kbd-hint">
-                      <kbd>Ctrl+P</kbd> In · <kbd>Ctrl+O</kbd> Mở file · <kbd>A</kbd> Chọn tất cả · <kbd>Esc</kbd> Đóng
-                    </div>
-                </section>
-
-                <!-- Print History -->
-                <div class="history-section">
-                  <div class="history-header">
-                    <button class="btn-outline" id="history-toggle-btn" type="button">📋 Lịch sử in</button>
-                    <button class="btn-outline" id="history-clear-btn" type="button" style="color:#ef4444;border-color:rgba(239,68,68,0.4)">Xóa</button>
-                  </div>
-                  <div id="history-panel" class="history-panel hidden">
-                    <div id="history-list"></div>
-                  </div>
-                </div>
-            </main>
+    <!-- Left: thumbnail strip -->
+    <nav class="thumb-panel" aria-label="Danh sách trang">
+      <div id="thumb-strip" class="thumb-panel-inner">
+        <!-- Rendered by ThumbStripModule -->
+        <div class="preview-empty" style="padding:16px;text-align:center">
+          <span class="preview-empty-icon">📄</span>
+          <span>Chưa có file</span>
         </div>
-    </div>
+      </div>
+    </nav>
 
-    <!-- Page Zoom Modal -->
-    <div id="page-zoom-modal" class="modal hidden">
-        <div class="modal-overlay" id="zoom-modal-overlay"></div>
-        <div class="modal-content modal-zoom">
-            <div class="modal-header">
-                <h2 id="zoom-page-title">Tất cả trang</h2>
-                <button class="modal-close" id="zoom-modal-close">✕</button>
+    <!-- Right: preview area -->
+    <main id="preview-panel" class="preview-panel" aria-label="Xem trước tài liệu">
+      <div class="preview-empty">
+        <span class="preview-empty-icon">🖨</span>
+        <span>Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
+      </div>
+
+      <!-- Print History (collapsible at bottom of preview) -->
+      <div class="history-section" style="margin-top:auto;">
+        <div class="history-header">
+          <button class="btn-outline" id="history-toggle-btn" type="button">📋 Lịch sử in</button>
+          <button class="btn-outline" id="history-clear-btn" type="button" style="color:#ef4444;border-color:rgba(239,68,68,0.4)">Xóa</button>
+        </div>
+        <div id="history-panel" class="history-panel hidden">
+          <div id="history-list"></div>
+        </div>
+      </div>
+    </main>
+
+  </div><!-- /.app-body -->
+
+</div><!-- /.app-shell -->
+
+<!-- ── Hidden file input ──────────────────────────────── -->
+<input type="file" id="file-input" multiple
+       accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp"
+       style="display:none">
+
+<!-- ── Upload drop overlay ───────────────────────────── -->
+<div class="upload-drop-hint" id="drop-hint">
+  <span style="font-size:32px">📄</span>
+  <span style="font-size:18px; color:var(--color-accent); margin-left:12px">Thả file vào đây</span>
+</div>
+
+<!-- ── Toast container ───────────────────────────────── -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ── Page Zoom Modal ────────────────────────────────── -->
+<div id="page-zoom-modal" class="modal hidden">
+    <div class="modal-overlay" id="zoom-modal-overlay"></div>
+    <div class="modal-content modal-zoom">
+        <div class="modal-header">
+            <h2 id="zoom-page-title">Tất cả trang</h2>
+            <button class="modal-close" id="zoom-modal-close">✕</button>
+        </div>
+        <div class="modal-body modal-zoom-body">
+            <div class="zoom-toolbar">
+                <button class="zoom-action-btn" id="all-double-btn">Tất cả 2 mặt</button>
+                <button class="zoom-action-btn" id="all-single-btn">Tất cả 1 mặt</button>
+                <button class="zoom-action-btn" id="deselect-all-btn">✕ Bỏ chọn tất cả</button>
+                <span class="zoom-page-info" id="zoom-page-info">Click phải vào trang để chọn in 1 mặt</span>
             </div>
-            <div class="modal-body modal-zoom-body">
-                <div class="zoom-toolbar">
-                    <button class="zoom-action-btn" id="all-double-btn">Tất cả 2 mặt</button>
-                    <button class="zoom-action-btn" id="all-single-btn">Tất cả 1 mặt</button>
-                    <button class="zoom-action-btn" id="deselect-all-btn">✕ Bỏ chọn tất cả</button>
-                    <span class="zoom-page-info" id="zoom-page-info">Click phải vào trang để chọn in 1 mặt</span>
-                </div>
-                <div class="zoom-canvas-container">
-                    <canvas id="zoom-canvas"></canvas>
-                </div>
+            <div class="zoom-canvas-container">
+                <canvas id="zoom-canvas"></canvas>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Manual Duplex Instruction Modal (upgraded) (3) -->
-    <div id="flip-modal" class="modal hidden">
-        <div class="modal-overlay"></div>
-        <div class="modal-content modal-flip">
-            <div class="modal-header">
-                <h2>📄 Hướng Dẫn Đặt Giấy</h2>
-            </div>
-            <div class="modal-body">
-                <!-- Animated flip diagram -->
-                <div class="flip-diagram" id="instruction-visual"></div>
-                <p class="instruction-text" id="instruction-text"></p>
+<!-- ── Manual Duplex Instruction Modal (upgraded) (3) ── -->
+<div id="flip-modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-flip">
+        <div class="modal-header">
+            <h2>📄 Hướng Dẫn Đặt Giấy</h2>
+        </div>
+        <div class="modal-body">
+            <!-- Animated flip diagram -->
+            <div class="flip-diagram" id="instruction-visual"></div>
+            <p class="instruction-text" id="instruction-text"></p>
 
-                <!-- Checklist (3) -->
-                <div class="flip-checklist" id="flip-checklist">
-                    <label class="flip-check-item">
-                        <input type="checkbox" class="flip-checkbox" id="flip-check-1">
-                        <span class="flip-check-label">1. Chờ máy in xong — đèn ngừng nhấp nháy</span>
-                    </label>
-                    <label class="flip-check-item">
-                        <input type="checkbox" class="flip-checkbox" id="flip-check-2">
-                        <span class="flip-check-label">2. Lấy chồng giấy ra — theo đúng hướng mũi tên</span>
-                    </label>
-                    <label class="flip-check-item">
-                        <input type="checkbox" class="flip-checkbox" id="flip-check-3">
-                        <span class="flip-check-label">3. Đặt lại vào khay — mặt trắng ngửa lên</span>
-                    </label>
-                </div>
-
-                <!-- Auto-continue timer (optional) -->
-                <label class="flip-timer-toggle">
-                    <input type="checkbox" id="flip-timer-enable">
-                    <span>Tự động tiếp tục sau <strong>30 giây</strong></span>
+            <!-- Checklist (3) -->
+            <div class="flip-checklist" id="flip-checklist">
+                <label class="flip-check-item">
+                    <input type="checkbox" class="flip-checkbox" id="flip-check-1">
+                    <span class="flip-check-label">1. Chờ máy in xong — đèn ngừng nhấp nháy</span>
                 </label>
-                <div class="flip-timer-bar hidden" id="flip-timer-bar">
-                    <div class="flip-timer-fill" id="flip-timer-fill"></div>
-                </div>
+                <label class="flip-check-item">
+                    <input type="checkbox" class="flip-checkbox" id="flip-check-2">
+                    <span class="flip-check-label">2. Lấy chồng giấy ra — theo đúng hướng mũi tên</span>
+                </label>
+                <label class="flip-check-item">
+                    <input type="checkbox" class="flip-checkbox" id="flip-check-3">
+                    <span class="flip-check-label">3. Đặt lại vào khay — mặt trắng ngửa lên</span>
+                </label>
             </div>
-            <div class="modal-footer">
-                <button id="continue-btn" class="btn-primary flip-continue-btn">✓ Đã Đặt Giấy - Tiếp Tục In</button>
+
+            <!-- Auto-continue timer (optional) -->
+            <label class="flip-timer-toggle">
+                <input type="checkbox" id="flip-timer-enable">
+                <span>Tự động tiếp tục sau <strong>30 giây</strong></span>
+            </label>
+            <div class="flip-timer-bar hidden" id="flip-timer-bar">
+                <div class="flip-timer-fill" id="flip-timer-fill"></div>
             </div>
+        </div>
+        <div class="modal-footer">
+            <button id="continue-btn" class="btn-primary flip-continue-btn">✓ Đã Đặt Giấy - Tiếp Tục In</button>
         </div>
     </div>
+</div>
 
-    <!-- Page Context Menu -->
-    <div id="page-context-menu" class="context-menu hidden">
-        <div class="context-menu-header" id="context-menu-header">Trang 1</div>
-        <div class="context-menu-item" data-action="all-double-sided">
-            <span class="context-menu-icon">📑</span>
-            <span>Tất cả 2 mặt</span>
+<!-- ── Page Context Menu ──────────────────────────────── -->
+<div id="page-context-menu" class="context-menu hidden">
+    <div class="context-menu-header" id="context-menu-header">Trang 1</div>
+    <div class="context-menu-item" data-action="all-double-sided">
+        <span class="context-menu-icon">📑</span>
+        <span>Tất cả 2 mặt</span>
+    </div>
+    <div class="context-menu-item" data-action="all-single-sided">
+        <span class="context-menu-icon">📋</span>
+        <span>Tất cả 1 mặt</span>
+    </div>
+    <div class="context-menu-item" data-action="deselect-all">
+        <span class="context-menu-icon">✕</span>
+        <span>Bỏ chọn tất cả</span>
+    </div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-item" data-action="double-sided">
+        <span class="context-menu-icon">📄</span>
+        <span>Trang này: 2 mặt</span>
+        <span class="context-menu-check" id="check-double">✓</span>
+    </div>
+    <div class="context-menu-item" data-action="single-sided">
+        <span class="context-menu-icon">📃</span>
+        <span>Trang này: 1 mặt</span>
+        <span class="context-menu-check" id="check-single"></span>
+    </div>
+    <div class="context-menu-separator"></div>
+    <div class="context-menu-header-sub">Xoay trang</div>
+    <div class="context-menu-item" data-action="rotate-cw90">
+        <span class="context-menu-icon">↻</span>
+        <span>Xoay phải 90°</span>
+    </div>
+    <div class="context-menu-item" data-action="rotate-ccw90">
+        <span class="context-menu-icon">↺</span>
+        <span>Xoay trái 90°</span>
+    </div>
+    <div class="context-menu-item" data-action="rotate-fliph">
+        <span class="context-menu-icon">↔</span>
+        <span>Lật ngang</span>
+    </div>
+    <div class="context-menu-item" data-action="rotate-flipv">
+        <span class="context-menu-icon">↕</span>
+        <span>Lật dọc</span>
+    </div>
+    <div class="context-menu-item" data-action="rotate-180">
+        <span class="context-menu-icon">🔄</span>
+        <span>Xoay 180°</span>
+    </div>
+    <div class="context-menu-item" data-action="rotate-reset">
+        <span class="context-menu-icon">↩</span>
+        <span>Reset về gốc</span>
+    </div>
+</div>
+
+<!-- ── Screen reader live region ──────────────────────── -->
+<div id="sr-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+
+<!-- ── Print Confirmation Modal (7) ───────────────────── -->
+<div id="confirm-print-modal" class="modal hidden">
+    <div class="modal-overlay" id="confirm-modal-overlay"></div>
+    <div class="modal-content modal-confirm">
+        <div class="modal-header">
+            <h2>🖨️ Xác Nhận Lệnh In</h2>
+            <button class="modal-close" id="confirm-modal-close">✕</button>
         </div>
-        <div class="context-menu-item" data-action="all-single-sided">
-            <span class="context-menu-icon">📋</span>
-            <span>Tất cả 1 mặt</span>
+        <div class="modal-body">
+            <div id="confirm-print-summary" class="confirm-print-summary"></div>
         </div>
-        <div class="context-menu-item" data-action="deselect-all">
-            <span class="context-menu-icon">✕</span>
-            <span>Bỏ chọn tất cả</span>
-        </div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-item" data-action="double-sided">
-            <span class="context-menu-icon">📄</span>
-            <span>Trang này: 2 mặt</span>
-            <span class="context-menu-check" id="check-double">✓</span>
-        </div>
-        <div class="context-menu-item" data-action="single-sided">
-            <span class="context-menu-icon">📃</span>
-            <span>Trang này: 1 mặt</span>
-            <span class="context-menu-check" id="check-single"></span>
-        </div>
-        <div class="context-menu-separator"></div>
-        <div class="context-menu-header-sub">Xoay trang</div>
-        <div class="context-menu-item" data-action="rotate-cw90">
-            <span class="context-menu-icon">↻</span>
-            <span>Xoay phải 90°</span>
-        </div>
-        <div class="context-menu-item" data-action="rotate-ccw90">
-            <span class="context-menu-icon">↺</span>
-            <span>Xoay trái 90°</span>
-        </div>
-        <div class="context-menu-item" data-action="rotate-fliph">
-            <span class="context-menu-icon">↔</span>
-            <span>Lật ngang</span>
-        </div>
-        <div class="context-menu-item" data-action="rotate-flipv">
-            <span class="context-menu-icon">↕</span>
-            <span>Lật dọc</span>
-        </div>
-        <div class="context-menu-item" data-action="rotate-180">
-            <span class="context-menu-icon">🔄</span>
-            <span>Xoay 180°</span>
-        </div>
-        <div class="context-menu-item" data-action="rotate-reset">
-            <span class="context-menu-icon">↩</span>
-            <span>Reset về gốc</span>
+        <div class="modal-footer">
+            <button id="confirm-print-cancel-btn" class="btn-outline">Huỷ</button>
+            <button id="confirm-print-ok-btn" class="btn-primary">✓ Xác Nhận In</button>
         </div>
     </div>
+</div>
 
-    <!-- Notification Toast Container -->
-    <div id="toast-container" class="toast-container"></div>
-    <div id="sr-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+<!-- ── Hover Preview Popup (J) ────────────────────────── -->
+<div id="hover-preview" hidden aria-label="Xem trước trang" role="tooltip">
+    <canvas id="hover-preview-canvas" width="280" height="360"></canvas>
+</div>
 
-    <!-- Print Confirmation Modal (7) -->
-    <div id="confirm-print-modal" class="modal hidden">
-        <div class="modal-overlay" id="confirm-modal-overlay"></div>
-        <div class="modal-content modal-confirm">
-            <div class="modal-header">
-                <h2>🖨️ Xác Nhận Lệnh In</h2>
-                <button class="modal-close" id="confirm-modal-close">✕</button>
-            </div>
-            <div class="modal-body">
-                <div id="confirm-print-summary" class="confirm-print-summary"></div>
-            </div>
-            <div class="modal-footer">
-                <button id="confirm-print-cancel-btn" class="btn-outline">Huỷ</button>
-                <button id="confirm-print-ok-btn" class="btn-primary">✓ Xác Nhận In</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Hover Preview Popup (J) -->
-    <div id="hover-preview" hidden aria-label="Xem trước trang" role="tooltip">
-        <canvas id="hover-preview-canvas" width="280" height="360"></canvas>
-    </div>
-
-    <script src="app.js"></script>
+<script src="app.js?v=15"></script>
 </body>
 
 </html>

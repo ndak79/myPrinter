@@ -369,8 +369,8 @@ public class PrintAlgorithmService
         // Use the first page size as the base. For an A4 portrait source this will
         // produce an A4 landscape sheet with two scaled pages side-by-side.
         var firstPage = sourceDoc.Pages[0];
-        double sourceWidth = firstPage.Width;
-        double sourceHeight = firstPage.Height;
+        double sourceWidth = firstPage.Width.Point;
+        double sourceHeight = firstPage.Height.Point;
 
         double bookletPageWidth = sourceHeight;   // e.g. 842 for A4 landscape
         double bookletPageHeight = sourceWidth;   // e.g. 595 for A4 landscape

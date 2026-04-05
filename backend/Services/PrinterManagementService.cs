@@ -1,8 +1,10 @@
 using System.Management;
+using System.Runtime.Versioning;
 using PrinterApp.Models;
 
 namespace PrinterApp.Services;
 
+[SupportedOSPlatform("windows")]
 public class PrinterManagementService
 {
     private DateTime _lastRefresh = DateTime.MinValue;

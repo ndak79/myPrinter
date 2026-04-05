@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MyPrinter</AssemblyName>
+    <RootNamespace>MyPrinter.Desktop</RootNamespace>
+
+    <!-- App manifest: request admin for WMI/printer access, DPI awareness -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- DPI: PerMonitorV2 (replaces manifest windowsSettings to avoid WFO0003) -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <!-- Suppress harmless WindowsBase version conflict from WebView2 WPF shim -->
+    <MSBuildWarningsAsErrors />
+    <NoWarn>MSB3277</NoWarn>
+  </PropertyGroup>
+
+  <!-- Publish-only: single self-contained exe (run: dotnet publish -c Release) -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WebView2 (WinForms only – the WPF shim causes a harmless WindowsBase version warning; suppress it) -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3065.39">
+      <ExcludeAssets>none</ExcludeAssets>
+    </PackageReference>
+
+    <!-- Backend API (same solution) -->
+    <ProjectReference Include="..\backend\PrinterApp.csproj" />
+  </ItemGroup>
+
+  <!-- Bundle frontend files into output directory -->
+  <ItemGroup>
+    <None Include="..\frontend\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>frontend\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+  </ItemGroup>
+
+</Project>

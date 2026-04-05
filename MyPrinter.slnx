@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/PrinterApp.csproj" />
+  </Folder>
+  <Folder Name="/desktop/">
+    <Project Path="desktop/MyPrinter.Desktop.csproj" />
+  </Folder>
+</Solution>

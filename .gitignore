@@ -3,6 +3,8 @@ backend/bin/
 backend/obj/
 backend.Tests/bin/
 backend.Tests/obj/
+desktop/bin/
+desktop/obj/
 
 # Log files
 backend/*.log
@@ -28,3 +30,9 @@ Thumbs.db
 
 # Git worktrees
 .worktrees/
+
+# Publish output
+publish/
+
+# OpenCode / dev tooling
+fix-*.bat
