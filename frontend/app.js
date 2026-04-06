@@ -1448,9 +1448,8 @@ const PageSelectModule = {
                     } else {
                         // R8 cleanup: remove SS status for pages no longer selected
                         if (AppState.activeFile) {
-                            for (const p of AppState.activeFile.singleSidedPages) {
-                                if (!parsed.has(p)) AppState.activeFile.singleSidedPages.delete(p);
-                            }
+                            const toUnset = [...AppState.activeFile.singleSidedPages].filter(p => !parsed.has(p));
+                            if (toUnset.length > 0) unsetSingleSided(AppState.activeFile, toUnset);
                         }
                         AppState.selectedPages = parsed;
                         input.style.borderColor = '';
@@ -1817,9 +1816,9 @@ const ContextMenu = {
                 PrintModule.updateButton();
                 showToast('Đã bỏ chọn tất cả', 'info'); break;
             case 'double-sided':
-                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.delete(n); showToast(`Trang ${n} sẽ in 2 mặt`, 'info'); } break;
+                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); if (AppState.activeFile) unsetSingleSided(AppState.activeFile, [n]); showToast(`Trang ${n} sẽ in 2 mặt`, 'info'); } break;
             case 'single-sided':
-                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.add(n); showToast(`Trang ${n} sẽ in 1 mặt`, 'info'); } break;
+                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); if (AppState.activeFile) setSingleSided(AppState.activeFile, n); showToast(`Trang ${n} sẽ in 1 mặt`, 'info'); } break;
             case 'rotate-cw90':     this._applyRotation(n, 'CW90'); break;
             case 'rotate-ccw90':    this._applyRotation(n, 'CCW90'); break;
             case 'rotate-fliph':    this._applyRotation(n, 'FlipHorizontal'); break;
