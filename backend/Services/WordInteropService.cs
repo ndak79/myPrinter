@@ -676,7 +676,29 @@ public class WordInteropService : IWordInteropService
 
             foreach (var pageNum in pageNumbers)
             {
-                if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)
+                if (pageNum == 0)
+                {
+                    PdfPage? template = targetDoc.PageCount > 0
+                        ? targetDoc.Pages[targetDoc.PageCount - 1]
+                        : null;
+
+                    if (template != null)
+                    {
+                        bool isLandscape = template.Width.Point > template.Height.Point;
+                        CreateNonSkippableBlankPage(targetDoc, template, isLandscape);
+                        Console.WriteLine($"[CreatePdfSubset] Added blank page (isLandscape={isLandscape})");
+                    }
+                    else
+                    {
+                        var blankPage = targetDoc.AddPage();
+                        blankPage.Width  = XUnit.FromPoint(595.28);
+                        blankPage.Height = XUnit.FromPoint(841.89);
+                        using var gfx = XGraphics.FromPdfPage(blankPage);
+                        gfx.DrawRectangle(XBrushes.White, 0, 0, 0.01, 0.01);
+                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, A4 portrait)");
+                    }
+                }
+                else if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)
                 {
                     Console.WriteLine($"[CreatePdfSubset] Adding page {pageNum} (Index {pageNum - 1}) to subset");
                     targetDoc.AddPage(sourceDoc.Pages[pageNum - 1]);
