@@ -251,6 +251,9 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
     } else {
         // ── Duplex: spec §4.1 algorithm ──────────────────────────────────
         // Invariant 8: landscapeMode must be 'separate' (coerced upstream in render())
+        if (landscapeMode !== 'separate') {
+            console.warn('[buildSheetLayout] landscapeMode must be "separate"; got', landscapeMode, '— treating as separate');
+        }
 
         // ── Bước 1: Group pages by orientation ──────────────────────────
         const groups = [];
@@ -273,7 +276,9 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
                 currentGroup.isLandscape = effectiveOrientation;
             }
             if (effectiveOrientation !== currentGroup.isLandscape) {
-                groups.push(currentGroup);
+        groups.push(currentGroup);
+        // Filter out ghost group from empty pages[] (isLandscape stays null, pages empty)
+        const nonEmptyGroups = groups.filter(g => g.pages.length > 0);
                 currentGroup = { isLandscape: effectiveOrientation, pages: [] };
             }
             currentGroup.pages.push({ pageNum: p });
@@ -283,7 +288,7 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
         // ── Bước 2: Process each group, handle single-sided + blank absorption ──
         const logicalPages = []; // { pageNum: N|null|0, isLandscape: bool }
 
-        for (const group of groups) {
+        for (const group of nonEmptyGroups) {
             const groupLogical = [];
             let i = 0;
             while (i < group.pages.length) {
@@ -300,7 +305,7 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
                     if (next === 0) {
                         // R6: absorb the blank immediately after as back of SS sheet
                         groupLogical.push({ pageNum: 0, isLandscape: group.isLandscape });
-                        blankAbsorbedBy.set(p, 0);
+                        blankAbsorbedBy.set(p, 0); // value 0 = sentinel for blank pageNum; map used as presence Set — only .has() matters
                         i += 2; // skip the blank
                     } else {
                         // No blank → auto-blank back
