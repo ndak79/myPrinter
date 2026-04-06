@@ -110,6 +110,101 @@ const AppState = {
     },
 };
 
+// ─── lookAheadOrientation ──────────────────────────────────────────
+// Determine effective orientation for a leading blank page (no group yet).
+// Scans forward past the blank to find the first real page, returns its orientation.
+function lookAheadOrientation(pages, blankIdx, orientationMap) {
+    for (let i = blankIdx + 1; i < pages.length; i++) {
+        if (pages[i] !== 0) return orientationMap.get(pages[i]) ?? false;
+    }
+    return false; // fallback: portrait
+}
+
+// ─── togglePageSelection ──────────────────────────────────────────
+// Centralized toggle for page selection. Handles singleSidedPages cleanup (R8).
+// CONTRACT: Caller MUST call rebuildSheetView(entry) / PreviewPanelModule.render(entry) after this returns.
+function togglePageSelection(entry, pageNum) {
+    if (entry.selectedPages.has(pageNum)) {
+        entry.selectedPages.delete(pageNum);
+        entry.singleSidedPages.delete(pageNum); // R8: deselect clears SS status
+    } else {
+        entry.selectedPages.add(pageNum);
+        // Do NOT auto-add to singleSidedPages — user must toggle explicitly
+    }
+}
+
+// ─── setSingleSided ───────────────────────────────────────────────
+// Mark pageNum as single-sided. Invariant 5: blank (0) cannot be SS.
+function setSingleSided(fileEntry, pageNum) {
+    if (pageNum === 0) return;
+    fileEntry.singleSidedPages.add(pageNum);
+    PreviewPanelModule.render(fileEntry); // Invariant 7
+}
+
+// ─── unsetSingleSided ─────────────────────────────────────────────
+// Remove single-sided status from one or more pages. If a page had absorbed
+// a user blank (R6), removes that blank from pageOrder first (R7).
+// pageNums: array of page numbers to unset.
+function unsetSingleSided(fileEntry, pageNums) {
+    // Phase 1: collect blank indices to remove (before splicing anything)
+    const blankIndicesToRemove = [];
+    for (const pageNum of pageNums) {
+        if (fileEntry.blankAbsorbedBy.has(pageNum)) {
+            // Forward scan: find blank (0) after pageNum in raw pageOrder,
+            // skipping deselected pages that may lie in between.
+            const rawIdx = fileEntry.pageOrder.indexOf(pageNum);
+            if (rawIdx >= 0) {
+                for (let k = rawIdx + 1; k < fileEntry.pageOrder.length; k++) {
+                    const v = fileEntry.pageOrder[k];
+                    if (v === 0) {
+                        blankIndicesToRemove.push(k);
+                        break;
+                    }
+                    if (fileEntry.selectedPages.has(v)) {
+                        break; // selected page encountered — blank not reachable
+                    }
+                    // deselected page — skip and continue forward
+                }
+            }
+        }
+        fileEntry.singleSidedPages.delete(pageNum);
+    }
+
+    // Phase 2: splice in DESCENDING order to avoid index shift (Invariant 4)
+    blankIndicesToRemove.sort((a, b) => b - a);
+    for (const idx of blankIndicesToRemove) {
+        fileEntry.pageOrder.splice(idx, 1);
+    }
+
+    PreviewPanelModule.render(fileEntry); // Invariant 7
+}
+
+// ─── buildEffectivePageOrder ──────────────────────────────────────
+// Derive the page order to send to backend — strips absorbed blanks so backend
+// does not double-blank (SS page already gets a system blank from ProcessMixedOrientation).
+// REQUIREMENT: fileEntry.blankAbsorbedBy must be populated (Invariant 7 guarantees this).
+function buildEffectivePageOrder(fileEntry) {
+    // Derive pages[] — same filtered view buildSheetLayout uses (deselected pages excluded).
+    // MUST use pages[] instead of raw pageOrder to correctly detect absorption adjacency
+    // when a deselected page sits between a SS page and its absorbed blank.
+    let pages = fileEntry.pageOrder.filter(
+        p => p === 0 || fileEntry.selectedPages.has(p)
+    );
+
+    // Fallback: if pageOrder is empty but selectedPages is not (rare edge case),
+    // derive from selectedPages to avoid mismatch between preview and print.
+    if (!pages.length && fileEntry.selectedPages.size > 0) {
+        pages = [...fileEntry.selectedPages].sort((a, b) => a - b);
+    }
+
+    // Strip blanks that were absorbed by SS pages; keep standalone blanks.
+    return pages.filter((p, i) => {
+        if (p !== 0) return true;          // non-blank: always keep
+        const prevPage = pages[i - 1];     // predecessor in filtered view
+        return !fileEntry.blankAbsorbedBy.has(prevPage); // strip if absorbed
+    });
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // buildSheetLayout — Compute physical sheet groups for sheet view
 // Returns array of sheet objects: { sheetIndex, front, back, ... }
