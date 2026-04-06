@@ -3133,9 +3133,17 @@ const PreviewPanelModule = {
 
     // Render all pages of active file
     render(fileEntry) {
+        // Invariant 3: reset blankAbsorbedBy before each rebuild
+        if (fileEntry) fileEntry.blankAbsorbedBy = new Map();
+
+        // Invariant 8: coerce unsupported landscapeMode at entry
+        if (fileEntry && fileEntry.landscapeMode === 'together') {
+            console.warn('[render] landscapeMode="together" unsupported — forcing "separate"');
+            fileEntry.landscapeMode = 'separate';
+        }
+
         if (this._viewMode === 'sheet') {
-            this._renderSheetView(fileEntry);
-            return;
+            return this._renderSheetView(fileEntry); // Invariant 10: return Promise
         }
         if (!this._container || !fileEntry?.pdfDoc) return;
 
