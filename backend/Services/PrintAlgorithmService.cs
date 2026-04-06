@@ -519,7 +519,8 @@ public class PrintAlgorithmService
             return selectedPages;
 
         var selectedSet = new HashSet<int>(selectedPages);
-        var reordered = pageOrder.Where(p => selectedSet.Contains(p)).ToList();
+        // Keep 0 as a blank page marker in addition to selected pages
+        var reordered = pageOrder.Where(p => p == 0 || selectedSet.Contains(p)).ToList();
         // Add any selected pages not in pageOrder at the end (safety)
         foreach (var p in selectedPages.Where(p => !reordered.Contains(p)))
             reordered.Add(p);
