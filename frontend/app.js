@@ -122,7 +122,7 @@ function lookAheadOrientation(pages, blankIdx, orientationMap) {
 
 // ─── togglePageSelection ──────────────────────────────────────────
 // Centralized toggle for page selection. Handles singleSidedPages cleanup (R8).
-// CONTRACT: Caller MUST call rebuildSheetView(entry) / PreviewPanelModule.render(entry) after this returns.
+// CONTRACT: Caller MUST call PreviewPanelModule.render(entry) after this returns.
 function togglePageSelection(entry, pageNum) {
     if (entry.selectedPages.has(pageNum)) {
         entry.selectedPages.delete(pageNum);
@@ -200,6 +200,7 @@ function buildEffectivePageOrder(fileEntry) {
     // Strip blanks that were absorbed by SS pages; keep standalone blanks.
     return pages.filter((p, i) => {
         if (p !== 0) return true;          // non-blank: always keep
+        if (i === 0) return true;          // blank at front — no preceding SS page, never absorbed
         const prevPage = pages[i - 1];     // predecessor in filtered view
         return !fileEntry.blankAbsorbedBy.has(prevPage); // strip if absorbed
     });
