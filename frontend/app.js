@@ -29,7 +29,9 @@ const AppState = {
     selectedPrinter:       null,
     currentJob:            null,
     isUserTypingPageRange: false,
-    printMode:             'duplex',   // 'duplex' | 'simplex' | 'booklet'
+    printMode:             'duplex',   // 'duplex' | 'booklet'
+    viewMode:              'page',     // 'page' | 'sheet'
+    landscapeMode:         'together', // 'together' | 'separate'
 
     // Multi-file
     files:           [],   // FileEntry[]
@@ -106,6 +108,145 @@ const AppState = {
         this.isUserTypingPageRange = false;
     },
 };
+
+// ═══════════════════════════════════════════════════════════════════
+// buildSheetLayout — Compute physical sheet groups for sheet view
+// Returns array of sheet objects: { sheetIndex, front, back, ... }
+// ═══════════════════════════════════════════════════════════════════
+function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscapeMode = 'separate') {
+    // pageOrder may contain 0 = user-inserted blank page
+    const ordered = fileEntry.pageOrder.length
+        ? fileEntry.pageOrder.filter(p => p === 0 || fileEntry.selectedPages.has(p))
+        : Array.from(fileEntry.selectedPages).sort((a, b) => a - b);
+
+    // If nothing selected, show all pages in order (blanks from pageOrder are preserved)
+    const hasBlanks = fileEntry.pageOrder.some(p => p === 0);
+    const pages = (ordered.length || hasBlanks)
+        ? (ordered.length ? ordered : fileEntry.pageOrder.filter(p => p === 0))
+        : Array.from({length: fileEntry.totalPageCount}, (_, i) => i + 1);
+
+    const sheets = [];
+
+    if (printMode === 'simplex') {
+        // Each page = its own sheet (front only)
+        pages.forEach((p, i) => {
+            sheets.push({ sheetIndex: i + 1, front: p, back: null });
+        });
+
+    } else if (printMode === 'booklet') {
+        // Booklet: pad to multiple of 4, then fold order
+        const padded = [...pages];
+        while (padded.length % 4 !== 0) padded.push(null); // null = blank
+        const n = padded.length;
+        const sheetCount = n / 4;
+        for (let s = 0; s < sheetCount; s++) {
+            sheets.push({
+                sheetIndex: s + 1,
+                front: padded[n - 1 - s * 2],  // left side of front
+                front2: padded[s * 2],           // right side of front
+                back: padded[s * 2 + 1],         // left side of back
+                back2: padded[n - 2 - s * 2],    // right side of back
+                isBooklet: true,
+            });
+        }
+
+    } else {
+        // duplex: group consecutive same-orientation pages, pair within group
+        // Rule: landscape pages never share a sheet with portrait pages
+        // Rule: singleSided page → blank immediately after (same orientation group)
+        // Rule: each orientation group must end on even count → pad blank if odd
+
+        if (orientationMap && landscapeMode === 'together') {
+            // 'together' mode: ignore orientation grouping — pair pages freely in order
+            // Landscape and portrait pages may share a sheet
+            const logicalPages = [];
+            for (const p of pages) {
+                const isLS = p === 0 ? false : (orientationMap.get(p) ?? false);
+                logicalPages.push({ pageNum: p, isLandscape: isLS });
+                if (p !== 0 && p !== null && fileEntry.singleSidedPages.has(p)) {
+                    logicalPages.push({ pageNum: null, isLandscape: isLS }); // blank after singleSided
+                }
+            }
+            // Pad to even count
+            if (logicalPages.length % 2 !== 0) {
+                logicalPages.push({ pageNum: null, isLandscape: false });
+            }
+            let sheetIdx = 1;
+            for (let j = 0; j < logicalPages.length; j += 2) {
+                const f = logicalPages[j];
+                const b = logicalPages[j + 1] ?? { pageNum: null, isLandscape: f.isLandscape };
+                sheets.push({
+                    sheetIndex: sheetIdx++,
+                    front: f.pageNum,
+                    back: b.pageNum,
+                    isLandscape: f.isLandscape && b.isLandscape,
+                    isSingleForced: f.pageNum !== null && b.pageNum === null && fileEntry.singleSidedPages.has(f.pageNum),
+                });
+            }
+        } else if (!orientationMap) {
+            // Fallback: no orientation data, use simple pairing (old behavior)
+            let i = 0, sheetIdx = 1;
+            while (i < pages.length) {
+                const frontPage = pages[i];
+                const isSingle = fileEntry.singleSidedPages.has(frontPage);
+                if (isSingle) {
+                    sheets.push({ sheetIndex: sheetIdx++, front: frontPage, back: null, isSingleForced: true, isLandscape: false });
+                    i++;
+                } else {
+                    sheets.push({ sheetIndex: sheetIdx++, front: frontPage, back: pages[i+1] ?? null, isLandscape: false });
+                    i += 2;
+                }
+            }
+        } else {
+            // Full orientation-aware grouping (matches backend ProcessMixedOrientation)
+            // Build "logical page list" with blanks inserted per rules
+            const logicalPages = []; // { pageNum: N|null, isLandscape: bool }
+
+            let i = 0;
+            while (i < pages.length) {
+                const p = pages[i];
+                const isLS = orientationMap.get(p) ?? false;
+
+                // Find the extent of this orientation group
+                const groupStart = i;
+                while (i < pages.length && (orientationMap.get(pages[i]) ?? false) === isLS) {
+                    i++;
+                }
+                const groupPages = pages.slice(groupStart, i);
+
+                // Process this group: insert blanks for singleSided
+                const groupLogical = [];
+                for (const gp of groupPages) {
+                    groupLogical.push({ pageNum: gp, isLandscape: isLS });
+                    if (fileEntry.singleSidedPages.has(gp)) {
+                        groupLogical.push({ pageNum: null, isLandscape: isLS }); // blank after singleSided
+                    }
+                }
+                // Pad group to even count
+                if (groupLogical.length % 2 !== 0) {
+                    groupLogical.push({ pageNum: null, isLandscape: isLS }); // padding blank
+                }
+
+                logicalPages.push(...groupLogical);
+            }
+
+            // Pair logical pages into sheets
+            let sheetIdx = 1;
+            for (let j = 0; j < logicalPages.length; j += 2) {
+                const frontEntry = logicalPages[j];
+                const backEntry  = logicalPages[j + 1] ?? { pageNum: null, isLandscape: frontEntry.isLandscape };
+                sheets.push({
+                    sheetIndex: sheetIdx++,
+                    front: frontEntry.pageNum,
+                    back:  backEntry.pageNum,
+                    isLandscape: frontEntry.isLandscape,
+                    isSingleForced: frontEntry.pageNum !== null && backEntry.pageNum === null && fileEntry.singleSidedPages.has(frontEntry.pageNum),
+                });
+            }
+        }
+    }
+    return sheets;
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // PrintPreviewModule — Full-screen preview modal with 2-panel layout
@@ -528,8 +669,7 @@ const PrintPreviewModule = {
         if (pages === 0) { el.innerHTML = ''; return; }
 
         let sheets;
-        if (mode === 'simplex') { sheets = pages * copies; }
-        else if (mode === 'booklet') { sheets = Math.ceil(pages / 4) * copies; }
+        if (mode === 'booklet') { sheets = Math.ceil(pages / 4) * copies; }
         else { const s = AppState.singleSidedPages.size; sheets = (Math.ceil((pages - s) / 2) + s) * copies; }
 
         el.innerHTML = `<span>📄 ${pages} trang</span><span>·</span><span>🗒️ ${sheets} tờ</span>${copies > 1 ? `<span>· ${copies} bản</span>` : ''}`;
@@ -699,45 +839,16 @@ const ToastModule = {
 const showToast = (msg, type = 'info') => ToastModule.show(msg, type);
 
 // ═══════════════════════════════════════════════════════════════════
-// ThemeModule — Dark / Light / Auto theme toggle
+// ThemeModule — always light (green theme)
 // ═══════════════════════════════════════════════════════════════════
 const ThemeModule = {
     init() {
-        const saved = localStorage.getItem('theme') || 'auto';
-        this._apply(saved);
-        this._updateButtons(saved);
-
-        const toggle = document.getElementById('theme-toggle');
-        if (!toggle) return;
-
-        toggle.addEventListener('click', (e) => {
-            const btn = e.target.closest('.theme-btn');
-            if (!btn) return;
-            const theme = btn.dataset.theme;
-            localStorage.setItem('theme', theme);
-            this._apply(theme);
-            this._updateButtons(theme);
-        });
-
-        window.matchMedia('(prefers-color-scheme: dark)')
-            .addEventListener('change', () => {
-                if (localStorage.getItem('theme') === 'auto') this._apply('auto');
-            });
+        // Force light theme — no dark mode
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('theme', 'light');
     },
-
-    _apply(theme) {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.setAttribute(
-            'data-theme',
-            theme === 'auto' ? (prefersDark ? 'dark' : 'light') : theme
-        );
-    },
-
-    _updateButtons(active) {
-        document.querySelectorAll('.theme-btn').forEach(btn =>
-            btn.classList.toggle('active', btn.dataset.theme === active)
-        );
-    },
+    _apply() {},
+    _updateButtons() {},
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -847,7 +958,7 @@ const UploadModule = {
 
     async _upload(file) {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
-        if (!['.doc', '.docx', '.pdf'].includes(ext)) {
+        if (!['.doc', '.docx', '.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.webp'].includes(ext)) {
             showToast('Loại file không được hỗ trợ: ' + file.name, 'error');
             return;
         }
@@ -1054,6 +1165,17 @@ const TabsModule = {
             PreviewPanelModule.render(AppState.activeFile);
         }
         PrintModule.updateButton();
+
+        // Instant scroll sideview to page 1 of the newly active file
+        requestAnimationFrame(() => {
+            const firstThumb = ThumbStripModule._container?.querySelector(
+                `.thumb-item[data-file-index="${idx}"][data-page="1"]`
+            );
+            if (firstThumb) {
+                firstThumb.scrollIntoView({ behavior: 'auto', block: 'start' });
+                ThumbStripModule._setActiveHighlight(idx, 1);
+            }
+        });
     },
 };
 
@@ -1302,12 +1424,16 @@ const ZoomModal = {
         document.getElementById('all-double-btn')?.addEventListener('click', () => {
             AppState.selectAllPages(); AppState.singleSidedPages.clear();
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay(); this._updateModalStyles();
+            if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
+            else PreviewPanelModule.onStateChanged();
             showToast('Da chon tat ca in 2 mat', 'success');
         });
 
         document.getElementById('all-single-btn')?.addEventListener('click', () => {
             AppState.selectAllPages(); AppState.singleSidedPages = new Set(AppState.selectedPages);
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay(); this._updateModalStyles();
+            if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
+            else PreviewPanelModule.onStateChanged();
             showToast('Da chon tat ca in 1 mat', 'success');
         });
 
@@ -1315,6 +1441,8 @@ const ZoomModal = {
         document.getElementById('deselect-all-btn')?.addEventListener('click', () => {
             AppState.selectedPages.clear(); AppState.singleSidedPages.clear();
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay(); this._updateModalStyles();
+            if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
+            else PreviewPanelModule.onStateChanged();
             PrintModule.updateButton();
             showToast('Da bo chon tat ca. Chon trang de in.', 'info');
         });
@@ -1424,70 +1552,220 @@ const ZoomModal = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// ContextMenu — Right-click per-page single/double-sided selection
+// ContextMenu — 2-level right-click menu for page actions
 // ═══════════════════════════════════════════════════════════════════
 const ContextMenu = {
     _currentPage: null,
+    _currentOpts: null,  // { isUserBlank: bool }
+    _hideTimer: null,
 
     init() {
-        document.addEventListener('click', e => { if (!e.target.closest('.context-menu')) this.hide(); });
-        document.querySelectorAll('.context-menu-item').forEach(item => {
-            item.addEventListener('click', e => { e.stopPropagation(); this._handleAction(item.dataset.action); });
+        const menu = document.getElementById('page-context-menu');
+        if (!menu) return;
+
+        // Close on outside click
+        document.addEventListener('click', e => {
+            if (!e.target.closest('#page-context-menu')) this.hide();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') this.hide();
+        });
+
+        // Wire all leaf action items (anywhere inside menu)
+        menu.querySelectorAll('.context-menu-item[data-action]').forEach(item => {
+            item.addEventListener('click', e => {
+                e.stopPropagation();
+                this._handleAction(item.dataset.action);
+            });
+        });
+
+        // Submenu hover logic for parent items
+        menu.querySelectorAll('.cm-has-sub').forEach(parent => {
+            const subId = parent.dataset.submenu;
+            const sub   = document.getElementById(subId);
+            if (!sub) return;
+
+            let leaveTimer = null;
+
+            const openSub = () => {
+                clearTimeout(leaveTimer);
+                // Close all other submenus first
+                menu.querySelectorAll('.context-submenu').forEach(s => {
+                    if (s !== sub) s.classList.add('hidden');
+                });
+                sub.classList.remove('hidden');
+                // Check overflow after browser has laid out the submenu
+                requestAnimationFrame(() => {
+                    const rect = sub.getBoundingClientRect();
+                    if (rect.right > window.innerWidth - 8) {
+                        sub.classList.add('flip-left');
+                    } else {
+                        sub.classList.remove('flip-left');
+                    }
+                });
+            };
+            const closeSub = () => {
+                leaveTimer = setTimeout(() => sub.classList.add('hidden'), 200);
+            };
+
+            parent.addEventListener('mouseenter', () => { clearTimeout(leaveTimer); openSub(); });
+            parent.addEventListener('mouseleave', () => closeSub());
+            sub.addEventListener('mouseenter',   () => clearTimeout(leaveTimer));
+            sub.addEventListener('mouseleave',   () => closeSub());
         });
     },
 
-    show(event, pageNum) {
+    show(event, pageNum, opts = {}) {
         this._currentPage = pageNum;
+        this._currentOpts = opts;
         const menu = document.getElementById('page-context-menu');
-        document.getElementById('context-menu-header').textContent = `Trang ${pageNum}`;
+
+        // Update header
+        const header = document.getElementById('context-menu-header');
+        if (header) {
+            header.textContent = (pageNum === 0) ? 'Trang trắng' : `Trang ${pageNum}`;
+        }
+
+        // Update single/double check marks
         const isSingle = AppState.singleSidedPages.has(pageNum);
-        document.getElementById('check-double').textContent = isSingle ? '' : '✓';
-        document.getElementById('check-single').textContent = isSingle ? '✓' : '';
+        const checkDouble = document.getElementById('check-double');
+        const checkSingle = document.getElementById('check-single');
+        if (checkDouble) checkDouble.textContent = isSingle ? '' : '✓';
+        if (checkSingle) checkSingle.textContent = isSingle ? '✓' : '';
+
+        // Show/hide "Chèn" group — only visible in sheet view
+        const insertItem = menu.querySelector('.cm-sheet-only');
+        if (insertItem) {
+            const inSheetView = AppState.viewMode === 'sheet';
+            insertItem.style.display = inSheetView ? '' : 'none';
+        }
+
+        // Hide "Mặt in" group when right-clicking a user blank
+        const sidesItem = menu.querySelector('[data-submenu="sub-sides"]');
+        if (sidesItem) {
+            sidesItem.style.display = (opts.isUserBlank) ? 'none' : '';
+        }
+
+        // Close any open submenus
+        menu.querySelectorAll('.context-submenu').forEach(s => s.classList.add('hidden'));
+
+        // Position
         menu.style.left = `${event.clientX}px`;
         menu.style.top  = `${event.clientY}px`;
         menu.classList.remove('hidden');
+        event.preventDefault();
+
+        // Adjust if overflowing viewport
         const rect = menu.getBoundingClientRect();
-        if (rect.right  > window.innerWidth)  menu.style.left = `${window.innerWidth  - rect.width  - 10}px`;
-        if (rect.bottom > window.innerHeight) menu.style.top  = `${window.innerHeight - rect.height - 10}px`;
+        if (rect.right  > window.innerWidth)  menu.style.left = `${window.innerWidth  - rect.width  - 8}px`;
+        if (rect.bottom > window.innerHeight) menu.style.top  = `${window.innerHeight - rect.height - 8}px`;
     },
 
-    hide() { document.getElementById('page-context-menu').classList.add('hidden'); this._currentPage = null; },
+    hide() {
+        const menu = document.getElementById('page-context-menu');
+        if (!menu) return;
+        menu.classList.add('hidden');
+        menu.querySelectorAll('.context-submenu').forEach(s => s.classList.add('hidden'));
+        this._currentPage = null;
+        this._currentOpts = null;
+    },
 
     _handleAction(action) {
         const n = this._currentPage;
+
+        // Snapshot rotation BEFORE _applyRotation mutates pageRotations.
+        // Used below to detect portrait↔landscape orientation change.
+        const prevRotation = AppState.pageRotations.get(n) ?? null;
+
         switch (action) {
             case 'all-double-sided':
                 AppState.selectAllPages(); AppState.singleSidedPages.clear();
-                showToast('Da chon tat ca in 2 mat', 'success'); break;
+                showToast('Đã chọn tất cả in 2 mặt', 'success'); break;
             case 'all-single-sided':
                 AppState.selectAllPages(); AppState.singleSidedPages = new Set(AppState.selectedPages);
-                showToast('Da chon tat ca in 1 mat', 'success'); break;
+                showToast('Đã chọn tất cả in 1 mặt', 'success'); break;
             case 'deselect-all':
-                // FIX: truly empties selection
                 AppState.selectedPages.clear(); AppState.singleSidedPages.clear();
                 PrintModule.updateButton();
-                showToast('Da bo chon tat ca', 'info'); break;
+                showToast('Đã bỏ chọn tất cả', 'info'); break;
             case 'double-sided':
-                if (n !== null) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.delete(n); showToast(`Trang ${n} se in 2 mat`, 'info'); } break;
+                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.delete(n); showToast(`Trang ${n} sẽ in 2 mặt`, 'info'); } break;
             case 'single-sided':
-                if (n !== null) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.add(n); showToast(`Trang ${n} se in 1 mat`, 'info'); } break;
+                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); AppState.singleSidedPages.add(n); showToast(`Trang ${n} sẽ in 1 mặt`, 'info'); } break;
             case 'rotate-cw90':     this._applyRotation(n, 'CW90'); break;
             case 'rotate-ccw90':    this._applyRotation(n, 'CCW90'); break;
             case 'rotate-fliph':    this._applyRotation(n, 'FlipHorizontal'); break;
             case 'rotate-flipv':    this._applyRotation(n, 'FlipVertical'); break;
             case 'rotate-180':      this._applyRotation(n, 'Rotate180'); break;
             case 'rotate-reset':    this._applyRotation(n, null); break;
+            case 'insert-blank-before': this._insertBlank(n, 'before'); return; // return to skip re-render below
+            case 'insert-blank-after':  this._insertBlank(n, 'after');  return;
+            case 'insert-image-before': this._pickImage('before'); return;
+            case 'insert-image-after':  this._pickImage('after');  return;
         }
         PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
         ZoomModal._updateModalStyles(); this.hide();
         PrintPreviewModule.onStateChanged();
-        PreviewPanelModule.onStateChanged();
+        if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+            // Smart branch: only CW90/CCW90 transpose width↔height (per PDF.js PageViewport).
+            // If orientation flips portrait↔landscape, the sheet pairing layout must rebuild.
+            // Otherwise (Rotate180, FlipH, FlipV, or same-axis 90° → 90°), patch image only (~15ms).
+            const newRotation  = AppState.pageRotations.get(n) ?? null;
+            const prevSwaps90  = prevRotation === 'CW90' || prevRotation === 'CCW90';
+            const newSwaps90   = newRotation  === 'CW90' || newRotation  === 'CCW90';
+            const orientationChanged = prevSwaps90 !== newSwaps90;
+
+            if (orientationChanged) {
+                // _orientationMap entry already deleted by _applyRotation — render() will
+                // re-fetch only this one page's orientation (O(1) async) then rebuild sheets.
+                PreviewPanelModule.render(AppState.activeFile);
+            } else {
+                // No sheet regrouping needed — just update the rotated page's image in place.
+                PreviewPanelModule._patchRotatedPage(AppState.activeFile.id, n);
+            }
+        } else {
+            PreviewPanelModule.onStateChanged();
+        }
         ThumbStripModule._syncSelectionHighlights?.();
     },
 
+    // Insert a blank (pageNum=0) before or after the target page in pageOrder
+    _insertBlank(targetPage, position) {
+        const file = AppState.activeFile;
+        if (!file) return;
+
+        // Materialise pageOrder if currently empty (default order)
+        if (!file.pageOrder.length) {
+            file.pageOrder = Array.from({ length: file.totalPageCount }, (_, i) => i + 1);
+        }
+
+        const idx = file.pageOrder.indexOf(targetPage);
+        if (idx === -1) {
+            // targetPage=0 is itself a blank; append at end
+            file.pageOrder.push(0);
+        } else {
+            const insertAt = position === 'before' ? idx : idx + 1;
+            file.pageOrder.splice(insertAt, 0, 0);
+        }
+
+        this.hide();
+        showToast('Đã chèn trang trắng', 'success');
+        if (AppState.viewMode === 'sheet' && file) {
+            PreviewPanelModule.render(file);
+        }
+    },
+
+    // Open file picker, upload image as new file
+    _pickImage(position) {
+        this._pendingImagePosition = position;
+        this._pendingImagePage     = this._currentPage;
+        this.hide();
+        const input = document.getElementById('insert-image-input');
+        if (input) { input.value = ''; input.click(); }
+    },
+
     _applyRotation(pageNum, rotation) {
-        if (pageNum === null) return;
-        const prevRotation = AppState.pageRotations.get(pageNum) ?? null;
+        if (pageNum === null || pageNum === 0) return;
         if (rotation === null) {
             AppState.pageRotations.delete(pageNum);
             showToast(`Trang ${pageNum}: đã reset xoay`, 'info');
@@ -1497,38 +1775,31 @@ const ContextMenu = {
             showToast(`Trang ${pageNum}: ${labels[rotation] || rotation}`, 'info');
         }
 
-        // Invalidate cached renders for this page (old + new rotation)
+        // Invalidate cached renders for this page
         const fileEntry = AppState.activeFile;
         if (fileEntry) {
             const fid = fileEntry.id;
-            // Remove ALL cached canvases for this page (any rotation, any scale)
             const prefix = `${fid}-${pageNum}-`;
             PreviewPanelModule._cache.deleteByPrefix(prefix);
             ThumbStripModule._cache.deleteByPrefix(prefix);
-            // Force re-render in PreviewPanelModule
-            const ppmKey = `${fid}-${pageNum}`;
-            const card = PreviewPanelModule._pageEls.get(ppmKey);
-            if (card) {
-                card.classList.remove('rendered');
-                PreviewPanelModule._enqueue(fid, pageNum, card);
-            }
-            // Force re-render in ThumbStripModule
-            const thumbEl = ThumbStripModule._container?.querySelector(
-                `.thumb-item[data-file-id="${fid}"][data-page="${pageNum}"]`
-            );
-            if (thumbEl) {
-                thumbEl.classList.remove('rendered');
-                ThumbStripModule._enqueue(fid, pageNum, thumbEl);
+            const card = PreviewPanelModule._pageEls.get(`${fid}-${pageNum}`);
+            if (card) { card.classList.remove('rendered'); PreviewPanelModule._enqueue(fid, pageNum, card); }
+            const thumbEl = ThumbStripModule._container?.querySelector(`.thumb-item[data-file-id="${fid}"][data-page="${pageNum}"]`);
+            if (thumbEl) { thumbEl.classList.remove('rendered'); ThumbStripModule._enqueue(fid, pageNum, thumbEl); }
+
+            // Update orientation cache for this page so sheet re-render skips the full getPage() loop.
+            // We clear just the one entry; _renderSheetView will re-fetch only missing entries.
+            if (fileEntry._orientationMap) {
+                fileEntry._orientationMap.delete(pageNum);
             }
         }
 
-        // Update data-rotation attribute on legacy thumbnail (for other modules)
+        // Update data-rotation on legacy thumbnail
         const thumb = document.querySelector(`.page-thumbnail[data-page-number="${pageNum}"]`);
         if (thumb) {
             if (rotation) thumb.dataset.rotation = rotation;
             else delete thumb.dataset.rotation;
         }
-        // Update zoom modal canvas if open
         ZoomModal._updateModalStyles();
     },
 };
@@ -1661,7 +1932,7 @@ const HistoryModule = {
             container.innerHTML = '<div class="history-empty">Chưa có lịch sử in</div>';
             return;
         }
-        const modeLabel = { normal: '2 mặt', booklet: 'Sách A5', simplex: '1 mặt' };
+        const modeLabel = { normal: 'In thông minh', duplex: 'In thông minh', booklet: 'Sách A5' };
         container.innerHTML = items.map((item, idx) => `
             <div class="history-item">
                 <div class="history-item-actions">
@@ -1765,7 +2036,7 @@ const PrintModule = {
         btn.style.opacity = '0.8';
 
         const mode = document.getElementById('mode-select')?.value || 'duplex';
-        const modeCode = (mode === 'duplex' || mode === 'normal') ? 0 : (mode === 'booklet' ? 1 : 2);
+        const modeCode = (mode === 'duplex' || mode === 'normal') ? 0 : 1;
 
         try {
             for (let i = 0; i < filesToPrint.length; i++) {
@@ -2057,12 +2328,10 @@ const SummaryModule = {
 
         // Estimate sheets
         let sheets;
-        if (mode === 'simplex') {
-            sheets = pages * copies;
-        } else if (mode === 'booklet') {
+        if (mode === 'booklet') {
             sheets = Math.ceil(pages / 4) * copies;
         } else {
-            // normal duplex
+            // duplex (in thông minh)
             const singleSided = AppState.singleSidedPages.size;
             const doubleSided = pages - singleSided;
             sheets = Math.ceil(doubleSided / 2) + singleSided;
@@ -2224,12 +2493,10 @@ const ConfirmPrintModal = {
         const pages   = AppState.selectedPages.size;
         const copies  = CopiesModule?.copies || 1;
         const printer = AppState.selectedPrinter;
-        const modeLabel = { duplex: 'In 2 Mặt Thường', normal: 'In 2 Mặt Thường', booklet: 'Sách A5 (Booklet)', simplex: 'In 1 Mặt' };
+        const modeLabel = { duplex: 'In thông minh', normal: 'In thông minh', booklet: 'Sách A5 (Booklet)' };
 
         let sheets;
-        if (mode === 'simplex') {
-            sheets = pages * copies;
-        } else if (mode === 'booklet') {
+        if (mode === 'booklet') {
             sheets = Math.ceil(pages / 4) * copies;
         } else {
             const singleSided = AppState.singleSidedPages.size;
@@ -2548,11 +2815,31 @@ const DragReorderModule = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// LRUCanvasCache — Memory-bounded LRU cache for rendered PDF canvases
+// CanvasPool — Reuse offscreen canvases to reduce GC pressure & GPU memory fragmentation
+// ═══════════════════════════════════════════════════════════════════
+const CanvasPool = {
+    _pool: [],
+    _MAX_POOL: 10,
+
+    acquire() {
+        return this._pool.pop() || document.createElement('canvas');
+    },
+
+    release(canvas) {
+        if (this._pool.length >= this._MAX_POOL) return; // drop if pool full
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
+        this._pool.push(canvas);
+    },
+};
+
+// LRUBlobCache — Memory-bounded LRU cache for rendered PDF canvases
 // Evicts oldest entries when total pixel memory exceeds MAX_BYTES.
 // ═══════════════════════════════════════════════════════════════════
-class LRUCanvasCache {
-    #map      = new Map();
+class LRUBlobCache {
+    #map        = new Map(); // key → { canvas: OffscreenCanvas, url: string }
     #totalBytes = 0;
     #maxBytes;
 
@@ -2563,49 +2850,60 @@ class LRUCanvasCache {
     has(key)  { return this.#map.has(key); }
     get size() { return this.#map.size; }
 
+    // Returns { canvas, url } or undefined
     get(key) {
         if (!this.#map.has(key)) return undefined;
-        // Move to end = most recently used
         const val = this.#map.get(key);
         this.#map.delete(key);
-        this.#map.set(key, val);
+        this.#map.set(key, val); // move to MRU position
         return val;
     }
 
-    set(key, canvas) {
-        const bytes = canvas.width * canvas.height * 4;
-        // Remove old entry if replacing
+    // entry = { canvas: OffscreenCanvas, url: string }
+    set(key, entry) {
+        const bytes = entry.canvas.width * entry.canvas.height * 4;
         if (this.#map.has(key)) {
             const old = this.#map.get(key);
-            this.#totalBytes -= old.width * old.height * 4;
+            this.#totalBytes -= old.canvas.width * old.canvas.height * 4;
+            URL.revokeObjectURL(old.url);
+            CanvasPool.release(old.canvas);
             this.#map.delete(key);
         }
-        // Evict oldest until under limit
         while (this.#totalBytes + bytes > this.#maxBytes && this.#map.size > 0) {
             const oldestKey = this.#map.keys().next().value;
             const oldest    = this.#map.get(oldestKey);
-            this.#totalBytes -= oldest.width * oldest.height * 4;
+            this.#totalBytes -= oldest.canvas.width * oldest.canvas.height * 4;
+            URL.revokeObjectURL(oldest.url);
+            CanvasPool.release(oldest.canvas);
             this.#map.delete(oldestKey);
         }
-        this.#map.set(key, canvas);
+        this.#map.set(key, entry);
         this.#totalBytes += bytes;
     }
 
     delete(key) {
         if (!this.#map.has(key)) return;
-        const old = this.#map.get(key);
-        this.#totalBytes -= old.width * old.height * 4;
+        const entry = this.#map.get(key);
+        this.#totalBytes -= entry.canvas.width * entry.canvas.height * 4;
+        URL.revokeObjectURL(entry.url);
+        CanvasPool.release(entry.canvas);
         this.#map.delete(key);
     }
 
-    /** Delete ALL entries whose key starts with `prefix` (e.g. "fileId-pageNum-") */
     deleteByPrefix(prefix) {
         for (const k of [...this.#map.keys()]) {
             if (k.startsWith(prefix)) this.delete(k);
         }
     }
 
-    clear() { this.#map.clear(); this.#totalBytes = 0; }
+    clear() {
+        for (const entry of this.#map.values()) {
+            URL.revokeObjectURL(entry.url);
+            CanvasPool.release(entry.canvas);
+        }
+        this.#map.clear();
+        this.#totalBytes = 0;
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2654,35 +2952,61 @@ const RotationHelper = {
 const PreviewPanelModule = {
     _container:   null,
     _renderTasks: new Map(),           // 'fileId-pageNum-rot-scale' → RenderTask
-    _cache:       new LRUCanvasCache(50), // 50 MB LRU — evicts oldest pages
+    _cache:       new LRUBlobCache(50), // 50 MB LRU — evicts oldest pages
     _pageEls:     new Map(),           // 'fileId-pageNum' → .preview-page-card el
     _renderQueue: [],
     _activeRenders: 0,
-    _MAX_CONCURRENT: 2,
-    _scrollTimer: null,
-    _hiResTimer:  null,                // Tier 2: fires high-res re-render after scroll stops
+    _MAX_CONCURRENT: 6,
+    _scrollRAF:   false,               // rAF guard for scroll-triggered renders
+    _scrollIdleTimer: null,            // fires cleanup after scroll stops
+    _scrollVelocity: 0,                // px/sec — for velocity-aware rendering
+    _lastScrollY: 0,
+    _lastScrollTime: 0,
     _currentFileId: null,
-    _isScrolling: false,
+    _viewMode: 'page',
+    _sheetEls: new Map(),              // sheetIndex → .sheet-card el
 
     init() {
         this._container = document.getElementById('preview-panel');
         this._container?.addEventListener('scroll', () => {
-            this._isScrolling = true;
+            // Track velocity for smart rendering
+            const now = performance.now();
+            const scrollY = this._container.scrollTop;
+            const dt = now - (this._lastScrollTime || now);
+            if (dt > 0) this._scrollVelocity = Math.abs(scrollY - this._lastScrollY) / dt * 1000;
+            this._lastScrollY = scrollY;
+            this._lastScrollTime = now;
+
             this._onScroll();
-            // Lazy-render new pages that scrolled into view (low-res while scrolling)
-            clearTimeout(this._scrollTimer);
-            this._scrollTimer = setTimeout(() => this._renderVisible(), 100);
-            // Tier 2: re-render visible pages at full quality after scroll stops
-            clearTimeout(this._hiResTimer);
-            this._hiResTimer = setTimeout(() => {
-                this._isScrolling = false;
-                this._reRenderHiRes();
-            }, 250);
+
+            // rAF-based render (replaces setTimeout debounce)
+            if (!this._scrollRAF) {
+                this._scrollRAF = true;
+                requestAnimationFrame(() => {
+                    this._scrollRAF = false;
+                    // Skip rendering if scrolling too fast (>3000px/s)
+                    if (this._scrollVelocity < 3000) {
+                        this._renderVisible();
+                    }
+                });
+            }
+
+            // After scroll stops: render anything missed + unmount off-screen
+            clearTimeout(this._scrollIdleTimer);
+            this._scrollIdleTimer = setTimeout(() => {
+                this._scrollVelocity = 0;
+                this._renderVisible();
+                this._unmountOffScreen();
+            }, 200);
         }, { passive: true });
     },
 
     // Render all pages of active file
     render(fileEntry) {
+        if (this._viewMode === 'sheet') {
+            this._renderSheetView(fileEntry);
+            return;
+        }
         if (!this._container || !fileEntry?.pdfDoc) return;
 
         // Cancel queue and in-flight tasks
@@ -2740,13 +3064,255 @@ const PreviewPanelModule = {
         requestAnimationFrame(() => this._renderVisible());
     },
 
-    // Render all pages currently visible (+ 1 page lookahead)
+    // Sheet view: render pages grouped as physical sheets (front + back)
+    async _renderSheetView(fileEntry) {
+        if (!this._container || !fileEntry?.pdfDoc) return;
+
+        this._renderQueue = [];
+        this._activeRenders = 0;
+        for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
+        this._renderTasks.clear();
+        this._currentFileId = fileEntry.id;
+        this._pageEls.clear();
+        this._sheetEls.clear();
+        this._container.innerHTML = '';
+
+        // Detect page orientations — use per-file cache to avoid O(n) getPage() on every re-render.
+        // Cache stored on fileEntry._orientationMap; individual entries deleted on rotation so only
+        // the rotated page(s) are re-fetched (O(1) after first load).
+        if (!fileEntry._orientationMap) {
+            fileEntry._orientationMap = new Map();
+        }
+        const orientationMap = fileEntry._orientationMap;
+        const totalPages = fileEntry.totalPageCount;
+        const pdfDoc = fileEntry.pdfDoc;
+
+        // Collect pages that are missing from the cache (first load = all; after rotation = 1)
+        const missingPages = [];
+        for (let p = 1; p <= totalPages; p++) {
+            if (!orientationMap.has(p)) missingPages.push(p);
+        }
+        if (missingPages.length > 0) {
+            const orientationPromises = missingPages.map(p =>
+                pdfDoc.getPage(p).then(page => {
+                    const rot = fileEntry.pageRotations?.get(p) ?? null;
+                    const rotDeg = rot ? ({ CW90: 90, CCW90: 270, Rotate180: 180, FlipH: 0, FlipV: 0 }[rot] ?? 0) : 0;
+                    const vp = page.getViewport({ scale: 1, rotation: rotDeg });
+                    return { p, isLandscape: vp.width > vp.height };
+                }).catch(() => ({ p, isLandscape: false }))
+            );
+            const results = await Promise.all(orientationPromises);
+            for (const { p, isLandscape } of results) {
+                orientationMap.set(p, isLandscape);
+            }
+        }
+        // Guard: user may have switched file during async detection
+        if (this._currentFileId !== fileEntry.id) return;
+
+        const printMode = AppState.printMode;
+        const sheets = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
+
+        // Build ordered queue of blank-page indices in pageOrder for X-button delete
+        const blankIndexQueue = [];
+        fileEntry.pageOrder.forEach((p, idx) => { if (p === 0) blankIndexQueue.push(idx); });
+        let blankQueuePos = 0;
+
+        sheets.forEach(sheet => {
+            const sheetCard = document.createElement('div');
+            sheetCard.className = 'sheet-card';
+            sheetCard.dataset.sheetIndex = sheet.sheetIndex;
+
+            const label = document.createElement('div');
+            label.className = 'sheet-label';
+            const totalSheets = sheets.length;
+
+            if (sheet.isBooklet) {
+                label.textContent = `Tờ ${sheet.sheetIndex}/${totalSheets} · Booklet`;
+            } else {
+                label.textContent = `Tờ ${sheet.sheetIndex}/${totalSheets}`;
+            }
+            sheetCard.appendChild(label);
+
+            const facesRow = document.createElement('div');
+            facesRow.className = sheet.isLandscape ? 'sheet-faces-col' : 'sheet-faces-row';
+
+            // Helper to create a page face (real page or blank)
+            const makeFace = (pageNum, faceLabel, isLandscapeHint = false) => {
+                const face = document.createElement('div');
+                face.className = 'sheet-face';
+
+                const fl = document.createElement('div');
+                fl.className = 'sheet-face-label';
+                fl.textContent = faceLabel;
+                face.appendChild(fl);
+
+                if (pageNum === null || pageNum === undefined || pageNum === 0) {
+                    // Blank page — render as a plain white sheet (no content)
+                    // pageNum === 0 means user-inserted blank
+                    const blank = document.createElement('div');
+                    blank.className = 'blank-page-card';
+                    blank.classList.toggle('landscape', isLandscapeHint);
+                    // Right-click on user blank → context menu with page=0 for remove action
+                    if (pageNum === 0) {
+                        blank.style.border = '2px solid #667eea';
+                        blank.addEventListener('contextmenu', (e) => {
+                            e.preventDefault();
+                            ContextMenu.show(e, 0, { isUserBlank: true });
+                        });
+                        const blankIdx = blankIndexQueue[blankQueuePos++] ?? -1;
+                        const xBtn = document.createElement('button');
+                        xBtn.className = 'blank-delete-btn';
+                        xBtn.textContent = '×';
+                        xBtn.title = 'Xóa trang trắng';
+                        xBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const entry = AppState.files.find(f => f.id === fileEntry.id);
+                            if (!entry) return;
+                            const idx = blankIdx >= 0 ? blankIdx : entry.pageOrder.indexOf(0);
+                            if (idx >= 0 && entry.pageOrder[idx] === 0) {
+                                entry.pageOrder.splice(idx, 1);
+                                PreviewPanelModule.render(entry);
+                            }
+                        });
+                        blank.appendChild(xBtn);
+                    }
+                    face.appendChild(blank);
+                } else {
+                    // Real page card
+                    const card = document.createElement('div');
+                    card.className = 'preview-page-card';
+                    card.dataset.fileId = fileEntry.id;
+                    card.dataset.page = pageNum;
+
+                    if (fileEntry.selectedPages?.has(pageNum)) card.classList.add('selected-for-print');
+                    if (fileEntry.singleSidedPages?.has(pageNum) && fileEntry.selectedPages?.has(pageNum))
+                        card.classList.add('single-sided-print');
+
+                    card.addEventListener('click', (e) => {
+                        if (e.button !== 0) return;
+                        const entry = AppState.files.find(f => f.id === card.dataset.fileId);
+                        if (!entry) return;
+                        const pn = parseInt(card.dataset.page);
+                        if (entry.selectedPages.has(pn)) entry.selectedPages.delete(pn);
+                        else entry.selectedPages.add(pn);
+                        this._syncSelectionUI();
+                        PrintModule.updateButton();
+                        PageSelectModule.updateDisplay();
+                    });
+
+                    card.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        ContextMenu.show(e, parseInt(card.dataset.page));
+                    });
+
+                    const img = document.createElement('img');
+                    img.className = 'sheet-page-img';
+                    img.alt       = '';
+                    img.draggable = false;
+                    card.appendChild(img);
+
+                    const key = `${fileEntry.id}-${pageNum}`;
+                    this._pageEls.set(key, card);
+                    face.appendChild(card);
+                }
+                return face;
+            };
+
+            if (sheet.isBooklet) {
+                // Booklet: show all 4 page slots: front-left, front-right | back-left, back-right
+                const frontGroup = document.createElement('div');
+                frontGroup.className = 'sheet-face-group';
+                const frontLabel = document.createElement('div');
+                frontLabel.className = 'sheet-face-group-label';
+                frontLabel.textContent = 'Mặt trước';
+                frontGroup.appendChild(frontLabel);
+                const frontRow = document.createElement('div');
+                frontRow.className = 'sheet-face-group-row';
+                frontRow.appendChild(makeFace(sheet.front, `Trang ${sheet.front ?? '—'}`));
+                frontRow.appendChild(makeFace(sheet.front2, `Trang ${sheet.front2 ?? '—'}`));
+                frontGroup.appendChild(frontRow);
+
+                const backGroup = document.createElement('div');
+                backGroup.className = 'sheet-face-group';
+                const backLabel2 = document.createElement('div');
+                backLabel2.className = 'sheet-face-group-label';
+                backLabel2.textContent = 'Mặt sau';
+                backGroup.appendChild(backLabel2);
+                const backRow = document.createElement('div');
+                backRow.className = 'sheet-face-group-row';
+                backRow.appendChild(makeFace(sheet.back, `Trang ${sheet.back ?? '—'}`));
+                backRow.appendChild(makeFace(sheet.back2, `Trang ${sheet.back2 ?? '—'}`));
+                backGroup.appendChild(backRow);
+
+                facesRow.appendChild(frontGroup);
+                facesRow.appendChild(backGroup);
+            } else {
+                // Duplex or Booklet: front face + optional back face
+                const frontFace = makeFace(sheet.front, `Mặt trước · Trang ${sheet.front}`);
+                // Add page-curl hint on front card (duplex always has back)
+                const frontCard = frontFace.querySelector('.preview-page-card');
+                if (frontCard) frontCard.classList.add('with-curl');
+                facesRow.appendChild(frontFace);
+                {
+                    const backPageNum = sheet.back;
+                    const backFaceLabel = backPageNum
+                        ? `Mặt sau · Trang ${backPageNum}`
+                        : sheet.isSingleForced ? 'Mặt sau · (in 1 mặt)' : 'Mặt sau · Trang trắng';
+                    const backIsLandscape = sheet.isLandscape ?? (orientationMap?.get(sheet.front) ?? false);
+                    facesRow.appendChild(makeFace(backPageNum, backFaceLabel, backIsLandscape));
+                }
+            }
+
+            sheetCard.appendChild(facesRow);
+            this._sheetEls.set(sheet.sheetIndex, sheetCard);
+            this._container.appendChild(sheetCard);
+        });
+
+        this._container.scrollTop = 0;
+        requestAnimationFrame(() => this._renderVisible());
+    },
+
+    // After sheet DOM is built, check each sheet's page orientations via pdf.js.
+    // If front or back page is landscape → switch facesRow to column layout.
+    async _applyLandscapeStacking(fileEntry, sheets) {
+        if (!fileEntry?.pdfDoc) return;
+        const pdfDoc   = fileEntry.pdfDoc;
+        const fileId   = fileEntry.id;
+
+        // Fetch orientations in parallel (was sequential await)
+        const sheetsToCheck = sheets.filter(s => !s.isBooklet && s.front);
+        const landscapeResults = await Promise.all(
+            sheetsToCheck.map(sheet =>
+                pdfDoc.getPage(sheet.front).then(page => {
+                    const rot = (fileEntry.pageRotations?.get(sheet.front) ?? null);
+                    const rotDeg = rot ? ({ CW90: 90, CCW90: 270, Rotate180: 180, FlipH: 0, FlipV: 0 }[rot] ?? 0) : 0;
+                    const vp = page.getViewport({ scale: 1, rotation: rotDeg });
+                    return { sheet, isLandscape: vp.width > vp.height };
+                }).catch(() => ({ sheet, isLandscape: false }))
+            )
+        );
+
+        // Guard: make sure we're still rendering the same file
+        if (this._currentFileId !== fileId) return;
+
+        for (const { sheet, isLandscape } of landscapeResults) {
+            if (!isLandscape) continue;
+            const sheetCard = this._sheetEls.get(sheet.sheetIndex);
+            if (!sheetCard) continue;
+            const facesRow = sheetCard.querySelector('.sheet-faces-row');
+            if (!facesRow) continue;
+            facesRow.classList.remove('sheet-faces-row');
+            facesRow.classList.add('sheet-faces-col');
+        }
+    },
+
+    // Render pages currently visible (+ 2 screens lookahead)
     _renderVisible() {
         if (!this._container || !this._currentFileId) return;
         const cRect     = this._container.getBoundingClientRect();
-        const lookahead = cRect.height; // 1 screen ahead
+        const lookahead = cRect.height * 2; // 2 screens ahead (was 1)
 
-        let enqueued = 0;
         this._pageEls.forEach((el, key) => {
             if (!key.startsWith(this._currentFileId + '-')) return;
             if (el.classList.contains('rendered')) return;
@@ -2755,63 +3321,140 @@ const PreviewPanelModule = {
             if (visible) {
                 const fileId  = el.dataset.fileId;
                 const pageNum = parseInt(el.dataset.page);
-                this._enqueue(fileId, pageNum, el);
-                enqueued++;
+                // Sheet-view cards use img blob path; page-view cards use canvas path
+                if (el.querySelector('img.sheet-page-img')) {
+                    this._enqueueBlob(fileId, pageNum, el);
+                } else {
+                    this._enqueue(fileId, pageNum, el);
+                }
             }
         });
     },
 
-    _enqueue(fileId, pageNum, el, hiRes = false) {
-        const key = `${fileId}-${pageNum}`;
-        // Skip if already rendering at same or higher quality
-        if (this._renderTasks.has(key)) return;
-        if (el.classList.contains('rendered') && !hiRes) return;
-        // Skip if already in queue
-        if (this._renderQueue.some(j => j.fileId === fileId && j.pageNum === pageNum && j.hiRes === hiRes)) return;
-        // If hi-res re-render, remove any pending low-res job
-        if (hiRes) {
-            const idx = this._renderQueue.findIndex(j => j.fileId === fileId && j.pageNum === pageNum && !j.hiRes);
-            if (idx >= 0) this._renderQueue.splice(idx, 1);
+    // ── Blob render queue (for sheet-view <img> cards) ────────────
+    _blobQueue: [],
+    _activeBlobRenders: 0,
+    _MAX_BLOB_CONCURRENT: 6,
+
+    _enqueueBlob(fileId, pageNum, el) {
+        if (el.classList.contains('rendered')) return;
+        if (this._blobQueue.some(j => j.fileId === fileId && j.pageNum === pageNum)) return;
+        this._blobQueue.push({ fileId, pageNum, el });
+        this._drainBlobQueue();
+    },
+
+    _drainBlobQueue() {
+        while (this._activeBlobRenders < this._MAX_BLOB_CONCURRENT && this._blobQueue.length > 0) {
+            const job = this._blobQueue.pop(); // LIFO
+            this._activeBlobRenders++;
+            this._renderSheetPage(job.fileId, job.pageNum, job.el).finally(() => {
+                this._activeBlobRenders--;
+                this._drainBlobQueue();
+            });
         }
-        this._renderQueue.push({ fileId, pageNum, el, hiRes });
+    },
+
+    async _renderSheetPage(fileId, pageNum, el) {
+        const SHEET_SCALE = 0.8; // reduced scale for sheet view thumbnails
+        const img = el.querySelector('img.sheet-page-img');
+        if (!img) return;
+
+        const fileEntry = AppState.files.find(f => f.id === fileId);
+        if (!fileEntry?.pdfDoc) return;
+
+        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        RotationHelper.updateBadge(el, rotation);
+
+        const entry = await this._renderBlobPage(fileId, pageNum, SHEET_SCALE, this._cache);
+        if (!entry) return;
+
+        // Check element still in DOM (user may have switched views)
+        if (!this._container?.contains(el)) return;
+
+        img.style.transform = ''; // clear any phase-1 CSS hint
+        img.src = entry.url;
+        el.classList.add('rendered');
+    },
+
+    _enqueue(fileId, pageNum, el) {
+        const key = `${fileId}-${pageNum}`;
+        // Skip if already rendering or rendered
+        if (this._renderTasks.has(key)) return;
+        if (el.classList.contains('rendered')) return;
+        // Skip if already in queue
+        if (this._renderQueue.some(j => j.fileId === fileId && j.pageNum === pageNum)) return;
+        this._renderQueue.push({ fileId, pageNum, el });
         this._drainQueue();
     },
 
+    // LIFO queue: prioritize most recently enqueued (= pages user just scrolled to)
     _drainQueue() {
         while (this._activeRenders < this._MAX_CONCURRENT && this._renderQueue.length > 0) {
-            const job = this._renderQueue.shift();
+            const job = this._renderQueue.pop(); // LIFO — pop, not shift
             this._activeRenders++;
-            this._renderPage(job.fileId, job.pageNum, job.el, job.hiRes).finally(() => {
+            this._renderPage(job.fileId, job.pageNum, job.el).finally(() => {
                 this._activeRenders--;
                 this._drainQueue();
             });
         }
     },
 
-    // Tier 2: re-render currently visible pages at full resolution
-    _reRenderHiRes() {
-        if (!this._container || !this._currentFileId) return;
-        const cRect = this._container.getBoundingClientRect();
-        this._pageEls.forEach((el, key) => {
-            if (!key.startsWith(this._currentFileId + '-')) return;
-            if (!el.classList.contains('hi-res')) { // not yet hi-res
-                const eRect = el.getBoundingClientRect();
-                if (eRect.bottom >= cRect.top && eRect.top <= cRect.bottom) {
-                    this._enqueue(el.dataset.fileId, parseInt(el.dataset.page), el, true);
-                }
-            }
+    // Render a page to blob URL + OffscreenCanvas, store in cache.
+    // Used by sheet view and thumb strip (NOT page view — that stays canvas-only).
+    // Returns { canvas: OffscreenCanvas, url: string } or null on error/cancel.
+    async _renderBlobPage(fileId, pageNum, scale, cacheRef) {
+        const fileEntry = AppState.files.find(f => f.id === fileId);
+        if (!fileEntry?.pdfDoc) return null;
+
+        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotDeg   = RotationHelper.toDeg(rotation);
+        const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
+
+        // Cache hit
+        if (cacheRef.has(key)) return cacheRef.get(key);
+
+        // Cancel stale task
+        const taskKey  = `${fileId}-${pageNum}-blob`;
+        const existing = this._renderTasks.get(taskKey);
+        if (existing) { try { existing.cancel(); } catch(_){} }
+
+        const page = await fileEntry.pdfDoc.getPage(pageNum);
+        const vp   = page.getViewport({ scale, rotation: rotDeg });
+        // OffscreenCanvas required for convertToBlob() — HTMLCanvasElement only has toBlob()
+        const off  = new OffscreenCanvas(vp.width, vp.height);
+
+        const task = page.render({
+            canvasContext: off.getContext('2d', { alpha: false }),
+            viewport:      vp,
+            intent:        'display',
         });
+        this._renderTasks.set(taskKey, task);
+
+        try {
+            await task.promise;
+            const blob = await off.convertToBlob({ type: 'image/jpeg', quality: 0.88 });
+            const url  = URL.createObjectURL(blob);
+            const entry = { canvas: off, url };
+            cacheRef.set(key, entry);
+            return entry;
+        } catch(err) {
+            if (err?.name !== 'RenderingCancelledException') console.warn(err);
+            return null;
+        } finally {
+            page.cleanup();
+            this._renderTasks.delete(taskKey);
+        }
     },
 
-    async _renderPage(fileId, pageNum, el, hiRes = false) {
+    // Single-pass rendering: always render at full quality (1.5 scale)
+    // Removes the old double-render pattern (0.8 while scrolling → 1.5 after scroll stops)
+    async _renderPage(fileId, pageNum, el) {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return;
 
         const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
         const rotDeg   = RotationHelper.toDeg(rotation);
-        // Tier 2: use low-res while scrolling, full-res when idle
-        // DPR is used for CSS sizing only — render scale stays sane for performance
-        const scale    = hiRes ? 1.5 : (this._isScrolling ? 0.8 : 1.5);
+        const scale    = 1.5; // single pass — always full quality
         const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
         const canvas   = el.querySelector('canvas');
         if (!canvas) return;
@@ -2821,14 +3464,13 @@ const PreviewPanelModule = {
         RotationHelper.updateBadge(el, rotation);
 
         if (this._cache.has(key)) {
-            const cached = this._cache.get(key);
-            canvas.width  = cached.width;
-            canvas.height = cached.height;
-            canvas.style.width  = `${cached.width}px`;
-            canvas.style.height = `${cached.height}px`;
-            canvas.getContext('2d').drawImage(cached, 0, 0);
+            const { canvas: off } = this._cache.get(key);
+            canvas.width  = off.width;
+            canvas.height = off.height;
+            canvas.style.width  = `${off.width}px`;
+            canvas.style.height = `${off.height}px`;
+            canvas.getContext('2d').drawImage(off, 0, 0);
             el.classList.add('rendered');
-            if (scale >= 1.5) el.classList.add('hi-res');
             return;
         }
 
@@ -2838,7 +3480,7 @@ const PreviewPanelModule = {
 
         const page = await fileEntry.pdfDoc.getPage(pageNum);
         const vp   = page.getViewport({ scale, rotation: rotDeg });
-        const off  = document.createElement('canvas');
+        const off  = CanvasPool.acquire();
         off.width  = vp.width;
         off.height = vp.height;
 
@@ -2851,20 +3493,51 @@ const PreviewPanelModule = {
 
         try {
             await task.promise;
-            this._cache.set(key, off);
+            this._cache.set(key, { canvas: off, url: '' });
             canvas.width  = vp.width;
             canvas.height = vp.height;
             canvas.style.width  = `${vp.width}px`;
             canvas.style.height = `${vp.height}px`;
             canvas.getContext('2d').drawImage(off, 0, 0);
             el.classList.add('rendered');
-            if (scale >= 1.5) el.classList.add('hi-res');
         } catch(err) {
             if (err?.name !== 'RenderingCancelledException') console.warn(err);
         } finally {
             page.cleanup();
             this._renderTasks.delete(taskKey);
         }
+    },
+
+    // Called after a single page is rotated in sheet view.
+    // Phase 1: instant CSS transform on existing img (~0ms).
+    // Phase 2: async re-render at new rotation, swap img.src (~3-7ms).
+    async _patchRotatedPage(fileId, pageNum) {
+        const key = `${fileId}-${pageNum}`;
+        const el  = this._pageEls.get(key);
+        if (!el) return;
+
+        const fileEntry = AppState.files.find(f => f.id === fileId);
+        if (!fileEntry) return;
+
+        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotDeg   = RotationHelper.toDeg(rotation);
+        const img      = el.querySelector('img.sheet-page-img');
+
+        if (!img) {
+            // Page-view canvas card — incremental canvas re-render
+            el.classList.remove('rendered');
+            this._enqueue(fileId, pageNum, el);
+            return;
+        }
+
+        // Phase 1: instant CSS hint (compositor, ~0ms)
+        if (rotDeg) img.style.transform = `rotate(${rotDeg}deg)`;
+
+        // Phase 2: invalidate old cache entry, re-render at new rotation
+        this._cache.deleteByPrefix(`${fileId}-${pageNum}-`);
+        el.classList.remove('rendered');
+        // _renderSheetPage will clear the CSS transform and set proper img.src
+        this._enqueueBlob(fileId, pageNum, el);
     },
 
     scrollToPage(pageNum) {
@@ -2919,6 +3592,36 @@ const PreviewPanelModule = {
         ThumbStripModule.onPreviewScroll(AppState.activeFileIndex, bestPage);
     },
 
+    // Virtual scrolling: release canvas memory for pages far off-screen
+    // Keeps placeholder div with correct height so scroll position is preserved
+    _unmountOffScreen() {
+        if (!this._container || !this._currentFileId) return;
+        const cRect = this._container.getBoundingClientRect();
+        const buffer = cRect.height * 3; // keep 3 screens worth of rendered canvases
+
+        this._pageEls.forEach((el, key) => {
+            if (!key.startsWith(this._currentFileId + '-')) return;
+            if (!el.classList.contains('rendered')) return;
+            const eRect = el.getBoundingClientRect();
+            const isFar = eRect.bottom < cRect.top - buffer || eRect.top > cRect.bottom + buffer;
+            if (isFar) {
+                // Sheet-view cards use <img>, page-view cards use <canvas>
+                const imgEl    = el.querySelector('img.sheet-page-img');
+                const canvasEl = el.querySelector('canvas');
+                if (imgEl && imgEl.src) {
+                    el.style.minHeight = `${el.offsetHeight}px`;
+                    imgEl.src = '';
+                    el.classList.remove('rendered');
+                } else if (canvasEl && (canvasEl.width > 0 || canvasEl.height > 0)) {
+                    el.style.minHeight = `${el.offsetHeight}px`;
+                    canvasEl.width = 0;
+                    canvasEl.height = 0;
+                    el.classList.remove('rendered');
+                }
+            }
+        });
+    },
+
     clear() {
         if (this._observer) { this._observer.disconnect(); this._observer = null; }
         if (this._container) {
@@ -2938,19 +3641,31 @@ const PreviewPanelModule = {
 // ═══════════════════════════════════════════════════════════════════
 const ThumbStripModule = {
     _container:    null,
-    _scrollTimer:  null,
+    _scrollRAF:    false,
+    _scrollIdleTimer: null,
     _renderTasks:  new Map(),
-    _cache:        new LRUCanvasCache(20), // 20 MB LRU for thumbnails
+    _cache:        new LRUBlobCache(20), // 20 MB LRU for thumbnails
     _renderQueue:  [],
     _activeRenders: 0,
-    _MAX_CONCURRENT: 4,
+    _MAX_CONCURRENT: 8,
 
     init() {
         this._container = document.getElementById('thumb-strip');
-        // thumb-strip is itself the scrollable element (overflow-y: auto)
+        // rAF-based scroll handler (replaces setTimeout debounce)
         this._container?.addEventListener('scroll', () => {
-            clearTimeout(this._scrollTimer);
-            this._scrollTimer = setTimeout(() => this._renderVisible(), 80);
+            if (!this._scrollRAF) {
+                this._scrollRAF = true;
+                requestAnimationFrame(() => {
+                    this._scrollRAF = false;
+                    this._renderVisible();
+                });
+            }
+            // After scroll stops: unmount far off-screen thumbs
+            clearTimeout(this._scrollIdleTimer);
+            this._scrollIdleTimer = setTimeout(() => {
+                this._renderVisible();
+                this._unmountOffScreen();
+            }, 200);
         }, { passive: true });
     },
 
@@ -2992,12 +3707,15 @@ const ThumbStripModule = {
                 item.setAttribute('role', 'button');
                 item.setAttribute('aria-label', `File ${f.name}, trang ${p}`);
 
-                const canvas  = document.createElement('canvas');
+                const img   = document.createElement('img');
+                img.className = 'thumb-img';
+                img.alt       = '';
+                img.draggable = false;
                 const label   = document.createElement('div');
                 label.className   = 'thumb-item-label';
                 label.textContent = p;
 
-                item.appendChild(canvas);
+                item.appendChild(img);
                 item.appendChild(label);
 
                 if (fileIndex === AppState.activeFileIndex && p === 1) {
@@ -3020,9 +3738,8 @@ const ThumbStripModule = {
     // Render thumbs currently in view of the scroll container
     _renderVisible() {
         if (!this._container) return;
-        // _container (#thumb-strip) is itself the scrollable element
         const cRect     = this._container.getBoundingClientRect();
-        const lookahead = cRect.height;
+        const lookahead = cRect.height * 2; // 2 screens ahead (was 1)
 
         this._container.querySelectorAll('.thumb-item:not(.rendered)').forEach(el => {
             const eRect = el.getBoundingClientRect();
@@ -3043,9 +3760,10 @@ const ThumbStripModule = {
         this._drainQueue();
     },
 
+    // LIFO queue: prioritize most recently enqueued thumbnails
     _drainQueue() {
         while (this._activeRenders < this._MAX_CONCURRENT && this._renderQueue.length > 0) {
-            const job = this._renderQueue.shift();
+            const job = this._renderQueue.pop(); // LIFO — pop, not shift
             this._activeRenders++;
             this._renderThumb(job.fileId, job.pageNum, job.el).finally(() => {
                 this._activeRenders--;
@@ -3058,59 +3776,32 @@ const ThumbStripModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return;
 
-        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
-        const rotDeg   = RotationHelper.toDeg(rotation);
-        const thumbScale = 0.26;    // fixed scale — fits 270px thumb panel
-        const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${thumbScale}`;
-        const canvas   = el.querySelector('canvas');
-        if (!canvas) return;
+        const rotation   = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const thumbScale = 0.26;
+        const key        = `${fileId}-${pageNum}-${rotation ?? '0'}-${thumbScale}`;
+        const img        = el.querySelector('img.thumb-img');
+        if (!img) return;
 
-        // Apply CSS flip transform + rotation badge
-        canvas.style.transform = RotationHelper.toCSS(rotation);
         RotationHelper.updateBadge(el, rotation);
 
+        // Cache hit — just set src (browser re-uses decoded bitmap if URL unchanged)
         if (this._cache.has(key)) {
-            const cached = this._cache.get(key);
-            canvas.width  = cached.width;
-            canvas.height = cached.height;
-            canvas.style.width  = `${cached.width}px`;
-            canvas.style.height = `${cached.height}px`;
-            canvas.getContext('2d').drawImage(cached, 0, 0);
+            const { url } = this._cache.get(key);
+            if (img.src !== url) img.src = url;
             el.classList.add('rendered');
             return;
         }
 
-        const existing = this._renderTasks.get(key);
-        if (existing) { try { existing.cancel(); } catch(_){} }
+        // Fresh render
+        const taskKey  = `${fileId}-${pageNum}`;
+        if (this._renderTasks.has(taskKey)) return;
+        if (this._renderQueue.some(j => j.fileId === fileId && j.pageNum === pageNum)) return;
 
-        const page = await fileEntry.pdfDoc.getPage(pageNum);
-        const vp   = page.getViewport({ scale: thumbScale, rotation: rotDeg });
-        const off  = document.createElement('canvas');
-        off.width  = vp.width;
-        off.height = vp.height;
+        const entry = await PreviewPanelModule._renderBlobPage(fileId, pageNum, thumbScale, this._cache);
+        if (!entry) return;
 
-        const task = page.render({
-            canvasContext: off.getContext('2d', { alpha: false }),
-            viewport:      vp,
-            intent:        'display',
-        });
-        this._renderTasks.set(key, task);
-
-        try {
-            await task.promise;
-            this._cache.set(key, off);
-            canvas.width  = vp.width;
-            canvas.height = vp.height;
-            canvas.style.width  = `${vp.width}px`;
-            canvas.style.height = `${vp.height}px`;
-            canvas.getContext('2d').drawImage(off, 0, 0);
-            el.classList.add('rendered');
-        } catch(err) {
-            if (err?.name !== 'RenderingCancelledException') console.warn(err);
-        } finally {
-            page.cleanup();
-            this._renderTasks.delete(key);
-        }
+        img.src = entry.url;
+        el.classList.add('rendered');
     },
 
     _onThumbClick(fileIndex, pageNum) {
@@ -3158,6 +3849,82 @@ const ThumbStripModule = {
             RotationHelper.updateBadge(el, rotation);
         });
     },
+
+    // Virtual scrolling: release canvas memory for thumbnails far off-screen
+    _unmountOffScreen() {
+        if (!this._container) return;
+        const cRect = this._container.getBoundingClientRect();
+        const buffer = cRect.height * 4; // keep 4 screens of thumbs
+
+        this._container.querySelectorAll('.thumb-item.rendered').forEach(el => {
+            const eRect = el.getBoundingClientRect();
+            const isFar = eRect.bottom < cRect.top - buffer || eRect.top > cRect.bottom + buffer;
+            if (isFar) {
+                const img = el.querySelector('img.thumb-img');
+                if (img && img.src) {
+                    el.style.minHeight = `${el.offsetHeight}px`;
+                    img.src = ''; // release decoded bitmap memory
+                    el.classList.remove('rendered');
+                }
+            }
+        });
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// ViewModeModule — Handles page/sheet view toggle
+// ═══════════════════════════════════════════════════════════════════
+const ViewModeModule = {
+    init() {
+        const group = document.getElementById('view-toggle-group');
+        if (!group) return;
+        group.addEventListener('click', e => {
+            const btn = e.target.closest('.view-toggle-btn');
+            if (!btn) return;
+            const newMode = btn.dataset.view; // 'page' | 'sheet'
+            if (newMode === AppState.viewMode) return;
+            AppState.viewMode = newMode;
+            // Update button active state
+            group.querySelectorAll('.view-toggle-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.view === newMode);
+            });
+            // Show/hide landscape mode bar
+            ViewModeModule._syncModeBar();
+            // Re-render current file
+            const file = AppState.activeFile;
+            if (file) {
+                PreviewPanelModule._viewMode = newMode;
+                PreviewPanelModule.render(file);
+            }
+        });
+
+        // Wire landscape-mode toggle bar
+        const modeBar = document.getElementById('sheet-view-modebar');
+        if (modeBar) {
+            modeBar.addEventListener('click', e => {
+                const btn = e.target.closest('[data-lsmode]');
+                if (!btn) return;
+                AppState.landscapeMode = btn.dataset.lsmode;
+                modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.lsmode === AppState.landscapeMode);
+                });
+                PreviewPanelModule.render(AppState.activeFile);
+            });
+        }
+    },
+
+    _syncModeBar() {
+        const modeBar = document.getElementById('sheet-view-modebar');
+        if (!modeBar) return;
+        modeBar.style.display = AppState.viewMode === 'sheet' ? '' : 'none';
+    },
+
+    // Call this when printMode changes while in sheet view
+    onPrintModeChange() {
+        if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+            PreviewPanelModule.render(AppState.activeFile);
+        }
+    },
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3180,6 +3947,7 @@ document.addEventListener('DOMContentLoaded', () => {
     PrintPreviewModule.init();
     ThumbStripModule.init();
     PreviewPanelModule.init();
+    ViewModeModule.init();
     SummaryModule.update();
     StepIndicatorModule.update();
 
@@ -3187,6 +3955,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('mode-select')?.addEventListener('change', e => {
         AppState.printMode = e.target.value;
         PrintModule.updateButton();
+        ViewModeModule.onPrintModeChange();
     });
 
     // ── Global drag-drop — anywhere on the window ─────────────
@@ -3205,5 +3974,14 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const file of e.dataTransfer.files) {
             await UploadModule._upload(file);
         }
+    });
+
+    // ── Insert-image file picker (from context menu) ──────────
+    document.getElementById('insert-image-input')?.addEventListener('change', async e => {
+        const files = Array.from(e.target.files || []);
+        for (const file of files) {
+            await UploadModule._upload(file);
+        }
+        e.target.value = '';
     });
 });

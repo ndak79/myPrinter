@@ -4,8 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ứng Dụng In Ấn Thông Minh</title>
-    <link rel="stylesheet" href="styles.css?v=11">
+    <title>Máy In Thông Minh</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M8 10h16v2H8zm0 4h16v2H8zm0 4h10v2H8z' fill='white'/%3E%3Crect x='20' y='18' width='6' height='6' rx='1' fill='white' opacity='.8'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="styles.css?v=17">
     <link rel="stylesheet" href="sidebar-styles.css?v=4">
     <link rel="stylesheet" href="zoom-toolbar-styles.css?v=4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,9 +31,8 @@
 
     <!-- Print mode selector -->
     <select id="mode-select" class="header-select" aria-label="Chế độ in">
-      <option value="duplex">2 mặt thường</option>
-      <option value="simplex">1 mặt</option>
-      <option value="booklet">Booklet A5</option>
+      <option value="duplex">In thông minh</option>
+      <option value="booklet">In Sách</option>
     </select>
 
     <!-- Page range -->
@@ -44,6 +44,19 @@
            style="width:110px; padding-right:8px; background-image:none;">
 
     <div class="header-spacer"></div>
+
+    <!-- View mode toggle -->
+    <div class="view-toggle-group" id="view-toggle-group" title="Chế độ xem">
+      <button class="view-toggle-btn active" id="view-btn-page" data-view="page">📄 Xem nội dung</button>
+      <button class="view-toggle-btn" id="view-btn-sheet" data-view="sheet">🖨 Xem trước khi in</button>
+    </div>
+
+    <!-- Landscape mode toggle (only visible in sheet view) -->
+    <div class="sheet-view-modebar" id="sheet-view-modebar" style="display:none">
+      <span class="sheet-modebar-label">Trang ngang:</span>
+      <button class="sheet-modebar-btn active" data-lsmode="together">🔀 In cùng trang dọc</button>
+      <button class="sheet-modebar-btn" data-lsmode="separate">⬜ In tờ riêng</button>
+    </div>
 
     <!-- Print button -->
     <button id="print-btn" class="btn-print" disabled>🖨 In</button>
@@ -174,56 +187,104 @@
 <!-- ── Page Context Menu ──────────────────────────────── -->
 <div id="page-context-menu" class="context-menu hidden">
     <div class="context-menu-header" id="context-menu-header">Trang 1</div>
-    <div class="context-menu-item" data-action="all-double-sided">
-        <span class="context-menu-icon">📑</span>
-        <span>Tất cả 2 mặt</span>
-    </div>
-    <div class="context-menu-item" data-action="all-single-sided">
-        <span class="context-menu-icon">📋</span>
-        <span>Tất cả 1 mặt</span>
-    </div>
-    <div class="context-menu-item" data-action="deselect-all">
-        <span class="context-menu-icon">✕</span>
-        <span>Bỏ chọn tất cả</span>
-    </div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-item" data-action="double-sided">
+
+    <!-- Mặt in: 2 mặt / 1 mặt -->
+    <div class="context-menu-item cm-has-sub" data-submenu="sub-sides">
         <span class="context-menu-icon">📄</span>
-        <span>Trang này: 2 mặt</span>
-        <span class="context-menu-check" id="check-double">✓</span>
+        <span>Mặt in</span>
+        <span class="context-menu-arrow">›</span>
+        <div class="context-submenu hidden" id="sub-sides">
+            <div class="context-menu-item" data-action="double-sided">
+                <span class="context-menu-icon">📄</span>
+                <span>2 mặt</span>
+                <span class="context-menu-check" id="check-double">✓</span>
+            </div>
+            <div class="context-menu-item" data-action="single-sided">
+                <span class="context-menu-icon">📃</span>
+                <span>1 mặt</span>
+                <span class="context-menu-check" id="check-single"></span>
+            </div>
+            <div class="context-menu-separator"></div>
+            <div class="context-menu-item" data-action="all-double-sided">
+                <span class="context-menu-icon">📑</span>
+                <span>Tất cả: 2 mặt</span>
+            </div>
+            <div class="context-menu-item" data-action="all-single-sided">
+                <span class="context-menu-icon">📋</span>
+                <span>Tất cả: 1 mặt</span>
+            </div>
+            <div class="context-menu-separator"></div>
+            <div class="context-menu-item" data-action="deselect-all">
+                <span class="context-menu-icon">✕</span>
+                <span>Bỏ chọn tất cả</span>
+            </div>
+        </div>
     </div>
-    <div class="context-menu-item" data-action="single-sided">
-        <span class="context-menu-icon">📃</span>
-        <span>Trang này: 1 mặt</span>
-        <span class="context-menu-check" id="check-single"></span>
-    </div>
-    <div class="context-menu-separator"></div>
-    <div class="context-menu-header-sub">Xoay trang</div>
-    <div class="context-menu-item" data-action="rotate-cw90">
-        <span class="context-menu-icon">↻</span>
-        <span>Xoay phải 90°</span>
-    </div>
-    <div class="context-menu-item" data-action="rotate-ccw90">
-        <span class="context-menu-icon">↺</span>
-        <span>Xoay trái 90°</span>
-    </div>
-    <div class="context-menu-item" data-action="rotate-fliph">
-        <span class="context-menu-icon">↔</span>
-        <span>Lật ngang</span>
-    </div>
-    <div class="context-menu-item" data-action="rotate-flipv">
-        <span class="context-menu-icon">↕</span>
-        <span>Lật dọc</span>
-    </div>
-    <div class="context-menu-item" data-action="rotate-180">
+
+    <!-- Xoay -->
+    <div class="context-menu-item cm-has-sub" data-submenu="sub-rotate">
         <span class="context-menu-icon">🔄</span>
-        <span>Xoay 180°</span>
+        <span>Xoay trang</span>
+        <span class="context-menu-arrow">›</span>
+        <div class="context-submenu hidden" id="sub-rotate">
+            <div class="context-menu-item" data-action="rotate-cw90">
+                <span class="context-menu-icon">↻</span>
+                <span>Xoay phải 90°</span>
+            </div>
+            <div class="context-menu-item" data-action="rotate-ccw90">
+                <span class="context-menu-icon">↺</span>
+                <span>Xoay trái 90°</span>
+            </div>
+            <div class="context-menu-item" data-action="rotate-180">
+                <span class="context-menu-icon">🔃</span>
+                <span>Xoay 180°</span>
+            </div>
+            <div class="context-menu-separator"></div>
+            <div class="context-menu-item" data-action="rotate-fliph">
+                <span class="context-menu-icon">↔</span>
+                <span>Lật ngang</span>
+            </div>
+            <div class="context-menu-item" data-action="rotate-flipv">
+                <span class="context-menu-icon">↕</span>
+                <span>Lật dọc</span>
+            </div>
+            <div class="context-menu-separator"></div>
+            <div class="context-menu-item" data-action="rotate-reset">
+                <span class="context-menu-icon">↩</span>
+                <span>Reset về gốc</span>
+            </div>
+        </div>
     </div>
-    <div class="context-menu-item" data-action="rotate-reset">
-        <span class="context-menu-icon">↩</span>
-        <span>Reset về gốc</span>
+
+    <!-- Chèn — chỉ hiện trong sheet view -->
+    <div class="context-menu-item cm-has-sub cm-sheet-only" data-submenu="sub-insert">
+        <span class="context-menu-icon">➕</span>
+        <span>Chèn</span>
+        <span class="context-menu-arrow">›</span>
+        <div class="context-submenu hidden" id="sub-insert">
+            <div class="context-menu-item" data-action="insert-blank-before">
+                <span class="context-menu-icon">📄</span>
+                <span>Trang trắng trước</span>
+            </div>
+            <div class="context-menu-item" data-action="insert-blank-after">
+                <span class="context-menu-icon">📄</span>
+                <span>Trang trắng sau</span>
+            </div>
+            <div class="context-menu-separator"></div>
+            <div class="context-menu-item" data-action="insert-image-before">
+                <span class="context-menu-icon">🖼</span>
+                <span>Ảnh trước</span>
+            </div>
+            <div class="context-menu-item" data-action="insert-image-after">
+                <span class="context-menu-icon">🖼</span>
+                <span>Ảnh sau</span>
+            </div>
+        </div>
     </div>
 </div>
+
+<!-- Hidden file input for image insert -->
+<input type="file" id="insert-image-input" accept="image/*" style="display:none">
 
 <!-- ── Screen reader live region ──────────────────────── -->
 <div id="sr-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
@@ -251,7 +312,7 @@
     <canvas id="hover-preview-canvas" width="280" height="360"></canvas>
 </div>
 
-<script src="app.js?v=15"></script>
+<script src="app.js?v=19"></script>
 </body>
 
 </html>

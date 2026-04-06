@@ -70,7 +70,7 @@ public static class BackendStartup
                 var file = request.Form.Files[0];
                 var extension = Path.GetExtension(file.FileName).ToLower();
 
-                var allowedExtensions = new[] { ".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png" };
+                var allowedExtensions = new[] { ".doc", ".docx", ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp" };
                 if (!allowedExtensions.Contains(extension))
                     return Results.BadRequest(new UploadResponse
                     {
