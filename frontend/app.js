@@ -3095,6 +3095,7 @@ const PreviewPanelModule = {
     _currentFileId: null,
     _viewMode: 'page',
     _sheetEls: new Map(),              // sheetIndex → .sheet-card el
+    _isDeleting: false,
 
     init() {
         this._container = document.getElementById('preview-panel');
@@ -3251,9 +3252,6 @@ const PreviewPanelModule = {
         const { sheets, blankAbsorbedBy } = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
         fileEntry.blankAbsorbedBy = blankAbsorbedBy; // Invariant 9
 
-        // Build ordered queue of blank-page indices in pageOrder for X-button delete
-        const blankIndexQueue = [];
-        fileEntry.pageOrder.forEach((p, idx) => { if (p === 0) blankIndexQueue.push(idx); });
         let blankQueuePos = 0;
 
         sheets.forEach(sheet => {
@@ -3298,7 +3296,8 @@ const PreviewPanelModule = {
                             e.preventDefault();
                             ContextMenu.show(e, 0, { isUserBlank: true });
                         });
-                        const blankIdx = blankIndexQueue[blankQueuePos++] ?? -1;
+                        const renderPos = blankQueuePos++;
+                        blank.dataset.blankRenderPos = renderPos; // stable position on DOM node
                         const xBtn = document.createElement('button');
                         xBtn.className = 'blank-delete-btn';
                         xBtn.textContent = '×';
@@ -3306,12 +3305,37 @@ const PreviewPanelModule = {
                         xBtn.addEventListener('click', (e) => {
                             e.stopPropagation();
                             e.preventDefault();
+                            if (PreviewPanelModule._isDeleting) return; // drop second click
+                            PreviewPanelModule._isDeleting = true;
+
                             const entry = AppState.files.find(f => f.id === fileEntry.id);
-                            if (!entry) return;
-                            const idx = blankIdx >= 0 ? blankIdx : entry.pageOrder.indexOf(0);
-                            if (idx >= 0 && entry.pageOrder[idx] === 0) {
-                                entry.pageOrder.splice(idx, 1);
-                                PreviewPanelModule.render(entry);
+                            if (!entry) {
+                                PreviewPanelModule._isDeleting = false;
+                                return;
+                            }
+
+                            // Re-derive index at click time — avoid stale closure
+                            const rPos = parseInt(blank.dataset.blankRenderPos);
+                            const allBlanks = entry.pageOrder
+                                .map((p, i) => p === 0 ? i : -1)
+                                .filter(i => i >= 0);
+                            const currentIdx = allBlanks[rPos];
+
+                            try {
+                                if (currentIdx >= 0 && entry.pageOrder[currentIdx] === 0) {
+                                    entry.pageOrder.splice(currentIdx, 1);
+                                    const result = PreviewPanelModule.render(entry);
+                                    if (result && typeof result.finally === 'function') {
+                                        result.finally(() => { PreviewPanelModule._isDeleting = false; });
+                                    } else {
+                                        PreviewPanelModule._isDeleting = false;
+                                    }
+                                } else {
+                                    PreviewPanelModule._isDeleting = false;
+                                }
+                            } catch (ex) {
+                                PreviewPanelModule._isDeleting = false;
+                                throw ex;
                             }
                         });
                         blank.appendChild(xBtn);
