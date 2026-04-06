@@ -31,7 +31,7 @@ const AppState = {
     isUserTypingPageRange: false,
     printMode:             'duplex',   // 'duplex' | 'booklet'
     viewMode:              'page',     // 'page' | 'sheet'
-    landscapeMode:         'together', // 'together' | 'separate'
+    landscapeMode:         'separate', // 'separate' | 'together' ('together' not backend-supported — see §4.8)
 
     // Multi-file
     files:           [],   // FileEntry[]
@@ -65,6 +65,7 @@ const AppState = {
             singleSidedPages: new Set(),
             pageOrder:        [],
             pageRotations:    new Map(),
+            blankAbsorbedBy:  new Map(), // populated by buildSheetLayout; reset each render cycle
         };
     },
 
@@ -649,6 +650,12 @@ const PrintPreviewModule = {
         // Also keep old thumbnail grid in sync (for other modules that reference it)
         PreviewModule.updateThumbnails();
         PageSelectModule.updateDisplay();
+        // Rebuild SheetView immediately if active
+        if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+            PreviewPanelModule.render(AppState.activeFile);
+        } else {
+            PreviewPanelModule.onStateChanged();
+        }
     },
 
     _updateCounts() {
@@ -1342,6 +1349,12 @@ const PageSelectModule = {
                 this._updateTexts();
                 PrintModule.updateButton();
                 StepIndicatorModule.update();
+                // Rebuild SheetView immediately if active (page selection changes sheet grouping)
+                if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+                    PreviewPanelModule.render(AppState.activeFile);
+                } else {
+                    PreviewPanelModule.onStateChanged();
+                }
             }, 200);
         });
     },
@@ -1362,6 +1375,12 @@ const PageSelectModule = {
         PreviewModule.updateThumbnails();
         this.updateDisplay();
         PrintModule.updateButton();
+        // Rebuild SheetView immediately if active (toggle changes which pages appear on sheets)
+        if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+            PreviewPanelModule.render(AppState.activeFile);
+        } else {
+            PreviewPanelModule.onStateChanged();
+        }
     },
 
     updateDisplay() {
@@ -1707,21 +1726,26 @@ const ContextMenu = {
         ZoomModal._updateModalStyles(); this.hide();
         PrintPreviewModule.onStateChanged();
         if (AppState.viewMode === 'sheet' && AppState.activeFile) {
-            // Smart branch: only CW90/CCW90 transpose width↔height (per PDF.js PageViewport).
-            // If orientation flips portrait↔landscape, the sheet pairing layout must rebuild.
-            // Otherwise (Rotate180, FlipH, FlipV, or same-axis 90° → 90°), patch image only (~15ms).
-            const newRotation  = AppState.pageRotations.get(n) ?? null;
-            const prevSwaps90  = prevRotation === 'CW90' || prevRotation === 'CCW90';
-            const newSwaps90   = newRotation  === 'CW90' || newRotation  === 'CCW90';
-            const orientationChanged = prevSwaps90 !== newSwaps90;
-
-            if (orientationChanged) {
-                // _orientationMap entry already deleted by _applyRotation — render() will
-                // re-fetch only this one page's orientation (O(1) async) then rebuild sheets.
-                PreviewPanelModule.render(AppState.activeFile);
+            // Selection/side actions (double-sided, single-sided, deselect-all, etc.) change which
+            // pages appear on each sheet → must fully rebuild the sheet layout immediately.
+            // Rotation actions use smart branch: only CW90/CCW90 transpose width↔height.
+            const isRotationAction = ['rotate-cw90','rotate-ccw90','rotate-fliph','rotate-flipv','rotate-180','rotate-reset'].includes(action);
+            if (isRotationAction) {
+                // Smart branch: only CW90/CCW90 transpose width↔height (per PDF.js PageViewport).
+                // If orientation flips portrait↔landscape, the sheet pairing layout must rebuild.
+                // Otherwise (Rotate180, FlipH, FlipV, or same-axis 90° → 90°), patch image only (~15ms).
+                const newRotation  = AppState.pageRotations.get(n) ?? null;
+                const prevSwaps90  = prevRotation === 'CW90' || prevRotation === 'CCW90';
+                const newSwaps90   = newRotation  === 'CW90' || newRotation  === 'CCW90';
+                const orientationChanged = prevSwaps90 !== newSwaps90;
+                if (orientationChanged) {
+                    PreviewPanelModule.render(AppState.activeFile);
+                } else {
+                    PreviewPanelModule._patchRotatedPage(AppState.activeFile.id, n);
+                }
             } else {
-                // No sheet regrouping needed — just update the rotated page's image in place.
-                PreviewPanelModule._patchRotatedPage(AppState.activeFile.id, n);
+                // Selection/side change → sheet grouping may change → full rebuild
+                PreviewPanelModule.render(AppState.activeFile);
             }
         } else {
             PreviewPanelModule.onStateChanged();
@@ -3568,7 +3592,12 @@ const PreviewPanelModule = {
 
     // Called externally when selection state changes (e.g. from ContextMenu, select-all)
     onStateChanged() {
-        this._syncSelectionUI();
+        if (this._viewMode === 'sheet' && AppState.activeFile) {
+            // Sheet layout depends on which pages are selected/single-sided → rebuild immediately
+            this._renderSheetView(AppState.activeFile);
+        } else {
+            this._syncSelectionUI();
+        }
     },
 
     _onScroll() {
