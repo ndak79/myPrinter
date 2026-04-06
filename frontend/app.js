@@ -223,6 +223,7 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
         : Array.from({length: fileEntry.totalPageCount}, (_, i) => i + 1);
 
     const sheets = [];
+    let blankAbsorbedBy = new Map(); // overwritten by duplex branch; empty for simplex/booklet
 
     if (printMode === 'simplex') {
         // Each page = its own sheet (front only)
@@ -248,101 +249,105 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
         }
 
     } else {
-        // duplex: group consecutive same-orientation pages, pair within group
-        // Rule: landscape pages never share a sheet with portrait pages
-        // Rule: singleSided page → blank immediately after (same orientation group)
-        // Rule: each orientation group must end on even count → pad blank if odd
+        // ── Duplex: spec §4.1 algorithm ──────────────────────────────────
+        // Invariant 8: landscapeMode must be 'separate' (coerced upstream in render())
 
-        if (orientationMap && landscapeMode === 'together') {
-            // 'together' mode: ignore orientation grouping — pair pages freely in order
-            // Landscape and portrait pages may share a sheet
-            const logicalPages = [];
-            for (const p of pages) {
-                const isLS = p === 0 ? false : (orientationMap.get(p) ?? false);
-                logicalPages.push({ pageNum: p, isLandscape: isLS });
-                if (p !== 0 && p !== null && fileEntry.singleSidedPages.has(p)) {
-                    logicalPages.push({ pageNum: null, isLandscape: isLS }); // blank after singleSided
-                }
-            }
-            // Pad to even count
-            if (logicalPages.length % 2 !== 0) {
-                logicalPages.push({ pageNum: null, isLandscape: false });
-            }
-            let sheetIdx = 1;
-            for (let j = 0; j < logicalPages.length; j += 2) {
-                const f = logicalPages[j];
-                const b = logicalPages[j + 1] ?? { pageNum: null, isLandscape: f.isLandscape };
-                sheets.push({
-                    sheetIndex: sheetIdx++,
-                    front: f.pageNum,
-                    back: b.pageNum,
-                    isLandscape: f.isLandscape && b.isLandscape,
-                    isSingleForced: f.pageNum !== null && b.pageNum === null && fileEntry.singleSidedPages.has(f.pageNum),
-                });
-            }
-        } else if (!orientationMap) {
-            // Fallback: no orientation data, use simple pairing (old behavior)
-            let i = 0, sheetIdx = 1;
-            while (i < pages.length) {
-                const frontPage = pages[i];
-                const isSingle = fileEntry.singleSidedPages.has(frontPage);
-                if (isSingle) {
-                    sheets.push({ sheetIndex: sheetIdx++, front: frontPage, back: null, isSingleForced: true, isLandscape: false });
-                    i++;
-                } else {
-                    sheets.push({ sheetIndex: sheetIdx++, front: frontPage, back: pages[i+1] ?? null, isLandscape: false });
-                    i += 2;
-                }
-            }
-        } else {
-            // Full orientation-aware grouping (matches backend ProcessMixedOrientation)
-            // Build "logical page list" with blanks inserted per rules
-            const logicalPages = []; // { pageNum: N|null, isLandscape: bool }
+        // ── Bước 1: Group pages by orientation ──────────────────────────
+        const groups = [];
+        let currentGroup = { isLandscape: null, pages: [] };
 
+        for (let gi = 0; gi < pages.length; gi++) {
+            const p = pages[gi];
+            let effectiveOrientation;
+            if (p === 0) {
+                // Blank inherits orientation of current group;
+                // if no group started yet, look ahead to first real page.
+                effectiveOrientation = currentGroup.isLandscape !== null
+                    ? currentGroup.isLandscape
+                    : lookAheadOrientation(pages, gi, orientationMap ?? new Map());
+            } else {
+                effectiveOrientation = orientationMap ? (orientationMap.get(p) ?? false) : false;
+            }
+
+            if (currentGroup.isLandscape === null) {
+                currentGroup.isLandscape = effectiveOrientation;
+            }
+            if (effectiveOrientation !== currentGroup.isLandscape) {
+                groups.push(currentGroup);
+                currentGroup = { isLandscape: effectiveOrientation, pages: [] };
+            }
+            currentGroup.pages.push({ pageNum: p });
+        }
+        groups.push(currentGroup);
+
+        // ── Bước 2: Process each group, handle single-sided + blank absorption ──
+        const logicalPages = []; // { pageNum: N|null|0, isLandscape: bool }
+
+        for (const group of groups) {
+            const groupLogical = [];
             let i = 0;
-            while (i < pages.length) {
-                const p = pages[i];
-                const isLS = orientationMap.get(p) ?? false;
+            while (i < group.pages.length) {
+                const p    = group.pages[i].pageNum;
+                const next = group.pages[i + 1]?.pageNum; // undefined if last
 
-                // Find the extent of this orientation group
-                const groupStart = i;
-                while (i < pages.length && (orientationMap.get(pages[i]) ?? false) === isLS) {
-                    i++;
-                }
-                const groupPages = pages.slice(groupStart, i);
-
-                // Process this group: insert blanks for singleSided
-                const groupLogical = [];
-                for (const gp of groupPages) {
-                    groupLogical.push({ pageNum: gp, isLandscape: isLS });
-                    if (fileEntry.singleSidedPages.has(gp)) {
-                        groupLogical.push({ pageNum: null, isLandscape: isLS }); // blank after singleSided
+                if (fileEntry.singleSidedPages.has(p)) {
+                    // R2: close current sheet if in odd position
+                    if (groupLogical.length % 2 === 1) {
+                        groupLogical.push({ pageNum: null, isLandscape: group.isLandscape });
                     }
-                }
-                // Pad group to even count
-                if (groupLogical.length % 2 !== 0) {
-                    groupLogical.push({ pageNum: null, isLandscape: isLS }); // padding blank
-                }
+                    groupLogical.push({ pageNum: p, isLandscape: group.isLandscape });
 
-                logicalPages.push(...groupLogical);
+                    if (next === 0) {
+                        // R6: absorb the blank immediately after as back of SS sheet
+                        groupLogical.push({ pageNum: 0, isLandscape: group.isLandscape });
+                        blankAbsorbedBy.set(p, 0);
+                        i += 2; // skip the blank
+                    } else {
+                        // No blank → auto-blank back
+                        groupLogical.push({ pageNum: null, isLandscape: group.isLandscape });
+                        i += 1;
+                    }
+                } else {
+                    groupLogical.push({ pageNum: p, isLandscape: group.isLandscape });
+                    i += 1;
+                }
             }
 
-            // Pair logical pages into sheets
-            let sheetIdx = 1;
-            for (let j = 0; j < logicalPages.length; j += 2) {
-                const frontEntry = logicalPages[j];
-                const backEntry  = logicalPages[j + 1] ?? { pageNum: null, isLandscape: frontEntry.isLandscape };
-                sheets.push({
-                    sheetIndex: sheetIdx++,
-                    front: frontEntry.pageNum,
-                    back:  backEntry.pageNum,
-                    isLandscape: frontEntry.isLandscape,
-                    isSingleForced: frontEntry.pageNum !== null && backEntry.pageNum === null && fileEntry.singleSidedPages.has(frontEntry.pageNum),
-                });
+            // R4: pad each orientation group to even count independently
+            if (groupLogical.length % 2 === 1) {
+                groupLogical.push({ pageNum: null, isLandscape: group.isLandscape });
             }
+            logicalPages.push(...groupLogical);
+        }
+
+        // ── Bước 3: Pair logical pages into sheets ────────────────────
+        let sheetIdx = 1;
+        for (let j = 0; j < logicalPages.length; j += 2) {
+            const f = logicalPages[j];
+            const b = logicalPages[j + 1];
+
+            if (!b) {
+                // Should never happen — Bước 2 ensures even count per group
+                console.error(`[buildSheetLayout] BUG: odd logicalPages at j=${j}. Bước 2 padding failed.`);
+                break;
+            }
+
+            const isSingleForced = f.pageNum !== null
+                && f.pageNum !== 0
+                && (b.pageNum === null || b.pageNum === 0)
+                && fileEntry.singleSidedPages.has(f.pageNum);
+
+            sheets.push({
+                sheetIndex:      sheetIdx++,
+                front:           f.pageNum,
+                back:            b.pageNum,
+                isLandscape:     f.isLandscape,
+                isSingleForced:  isSingleForced,
+                backIsUserBlank: b.pageNum === 0,
+            });
         }
     }
-    return sheets;
+    return { sheets, blankAbsorbedBy };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3230,7 +3235,8 @@ const PreviewPanelModule = {
         if (this._currentFileId !== fileEntry.id) return;
 
         const printMode = AppState.printMode;
-        const sheets = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
+        const { sheets, blankAbsorbedBy } = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
+        fileEntry.blankAbsorbedBy = blankAbsorbedBy; // Invariant 9
 
         // Build ordered queue of blank-page indices in pageOrder for X-button delete
         const blankIndexQueue = [];
