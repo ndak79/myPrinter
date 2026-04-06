@@ -604,8 +604,7 @@ const PrintPreviewModule = {
         // Click = toggle selection (in main view)
         div.addEventListener('click', (e) => {
             if (e.button !== 0) return;
-            if (AppState.selectedPages.has(pageNum)) AppState.selectedPages.delete(pageNum);
-            else AppState.selectedPages.add(pageNum);
+            if (AppState.activeFile) togglePageSelection(AppState.activeFile, pageNum);
             this._syncAll();
             PrintModule.updateButton();
         });
@@ -1447,6 +1446,12 @@ const PageSelectModule = {
                         // Invalid range — show red border, don't change selection
                         input.style.borderColor = 'rgba(239, 68, 68, 0.6)';
                     } else {
+                        // R8 cleanup: remove SS status for pages no longer selected
+                        if (AppState.activeFile) {
+                            for (const p of AppState.activeFile.singleSidedPages) {
+                                if (!parsed.has(p)) AppState.activeFile.singleSidedPages.delete(p);
+                            }
+                        }
                         AppState.selectedPages = parsed;
                         input.style.borderColor = '';
                     }
@@ -1466,8 +1471,7 @@ const PageSelectModule = {
     },
 
     toggle(pageNum) {
-        if (AppState.selectedPages.has(pageNum)) AppState.selectedPages.delete(pageNum);
-        else AppState.selectedPages.add(pageNum);
+        if (AppState.activeFile) togglePageSelection(AppState.activeFile, pageNum);
 
         // Pop animation (O)
         const thumb = document.querySelector(`.page-thumbnail[data-page-number="${pageNum}"]`);
@@ -1655,8 +1659,7 @@ const ZoomModal = {
 
         div.addEventListener('click', e => {
             if (e.button !== 0) return;
-            if (AppState.selectedPages.has(n)) AppState.selectedPages.delete(n);
-            else AppState.selectedPages.add(n);
+            if (AppState.activeFile) togglePageSelection(AppState.activeFile, n);
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
             PrintModule.updateButton(); this._updateModalStyles();
         });
@@ -2190,7 +2193,10 @@ const PrintModule = {
                     singleSidedPages: file.singleSidedPages.size > 0 ? Array.from(file.singleSidedPages) : null,
                     copies:           CopiesModule.copies,
                     collate:          CopiesModule.collate,
-                    pageOrder:        file.pageOrder.length > 0 ? file.pageOrder : null,
+                    pageOrder:        (() => {
+                        const effective = buildEffectivePageOrder(file);
+                        return effective.length > 0 ? effective : null;
+                    })(),
                     pageRotations:    file.pageRotations.size > 0
                         ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
                         : null,
@@ -2922,6 +2928,10 @@ const DragReorderModule = {
             PrintPreviewModule._reorderMainView(newOrder);
 
             showToast('Đã đổi thứ tự trang', 'info');
+            // Rebuild SheetView if active — pageOrder changed (Invariant 7)
+            if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+                PreviewPanelModule.render(AppState.activeFile);
+            }
         }
 
         this._dragging    = null;
@@ -2931,15 +2941,19 @@ const DragReorderModule = {
     },
 
     _reRenderGrid(order) {
-        const grid   = document.getElementById('preview-thumb-grid');
+        const grid = document.getElementById('preview-thumb-grid');
         if (!grid) return;
         const thumbs = Array.from(grid.querySelectorAll('.preview-thumb-item'));
-        const byPage = new Map(thumbs.map(t => [parseInt(t.dataset.pageNumber), t]));
-        // Reorder DOM
+        // Use render-index as key — pageNum=0 (blank) may appear multiple times
+        // Each thumb consumed only once via _used flag to handle duplicates
         order.forEach(pageNum => {
-            const t = byPage.get(pageNum);
-            if (t) grid.appendChild(t);
+            const t = thumbs.find(el => parseInt(el.dataset.pageNumber) === pageNum && !el._used);
+            if (t) {
+                t._used = true;
+                grid.appendChild(t);
+            }
         });
+        thumbs.forEach(t => delete t._used); // cleanup
         PreviewModule.updateThumbnails();
     },
 };
@@ -3176,8 +3190,7 @@ const PreviewPanelModule = {
                 const pageNum = parseInt(card.dataset.page);
                 const entry   = AppState.files.find(f => f.id === card.dataset.fileId);
                 if (!entry) return;
-                if (entry.selectedPages.has(pageNum)) entry.selectedPages.delete(pageNum);
-                else entry.selectedPages.add(pageNum);
+                togglePageSelection(entry, pageNum);
                 this._syncSelectionUI();
                 PrintModule.updateButton();
                 PageSelectModule.updateDisplay();
@@ -3357,8 +3370,7 @@ const PreviewPanelModule = {
                         const entry = AppState.files.find(f => f.id === card.dataset.fileId);
                         if (!entry) return;
                         const pn = parseInt(card.dataset.page);
-                        if (entry.selectedPages.has(pn)) entry.selectedPages.delete(pn);
-                        else entry.selectedPages.add(pn);
+                        togglePageSelection(entry, pn);
                         this._syncSelectionUI();
                         PrintModule.updateButton();
                         PageSelectModule.updateDisplay();
