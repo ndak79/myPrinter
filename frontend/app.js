@@ -3594,7 +3594,7 @@ const PreviewPanelModule = {
     onStateChanged() {
         if (this._viewMode === 'sheet' && AppState.activeFile) {
             // Sheet layout depends on which pages are selected/single-sided → rebuild immediately
-            this._renderSheetView(AppState.activeFile);
+            this.render(AppState.activeFile); // routes through blankAbsorbedBy reset + landscapeMode coerce (Invariants 3, 8)
         } else {
             this._syncSelectionUI();
         }
