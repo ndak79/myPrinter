@@ -1381,10 +1381,11 @@ const TabsModule = {
             tab.addEventListener('drop', (e) => {
                 e.preventDefault();
                 tab.classList.remove('drag-over');
-                if (this._dragSourceIdx !== null && this._dragSourceIdx !== idx) {
-                    this._reorderFiles(this._dragSourceIdx, idx);
-                }
+                const from = this._dragSourceIdx;
                 this._dragSourceIdx = null;
+                if (from !== null && from !== idx) {
+                    this._reorderFiles(from, idx);
+                }
             });
             tab.addEventListener('dragend', () => {
                 this._dragSourceIdx = null;
@@ -2168,6 +2169,8 @@ const CopiesModule = {
     reset() {
         const f = AppState.activeFile;
         if (f) { f.copies = 1; f.collate = true; }
+        const chk = document.getElementById('collate-check');
+        if (chk) chk.checked = true;
         this._update();
     },
 };
