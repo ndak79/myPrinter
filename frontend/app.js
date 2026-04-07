@@ -1251,6 +1251,7 @@ const UploadModule = {
                 PreviewPanelModule.clear();
             }
             CopiesModule.reset();   // reset widget to defaults — no files remain
+            TabsModule.render();    // clear stale tab DOM (ghost tab fix)
             TabsModule._dragSourceIdx = null; // clear stale drag state
         } else {
             const active = AppState.activeFile;
@@ -2890,15 +2891,15 @@ const ConfirmPrintModal = {
         const timeStr  = totalSec < 60 ? '< 1 phút'
             : `~${Math.ceil(totalSec / 60)} phút`;
 
-        // File label
+        // File label — use filesToPrint[0].name (not AppState.uploadedFile which proxies activeFile)
         const fileLabel = multiFile
             ? `${filesToPrint.length} file`
-            : (AppState.uploadedFile?.name || '—');
+            : (filesToPrint[0]?.name || '—');
 
         // Page range label (only meaningful for single-file)
         const sel = multiFile ? null : Array.from(filesToPrint[0]?.selectedPages ?? []).sort((a,b)=>a-b);
         const rangeStr = multiFile ? 'Tất cả các file'
-            : sel?.length === AppState.totalPageCount ? 'Tất cả'
+            : sel?.length === filesToPrint[0]?.totalPageCount ? 'Tất cả'
             : sel?.join(', ').replace(/,\s/g, ', ') ?? 'Tất cả';
 
         const copiesStr = copies !== null ? `${sheets} tờ × ${copies} bản` : `${sheets} tờ (mỗi file khác nhau)`;
