@@ -1972,6 +1972,14 @@ const ContextMenu = {
         // Invalidate cached renders for this page
         const fileEntry = AppState.activeFile;
         if (fileEntry) {
+            // §5.7 (I3 invariant): If page was auto-rotated by together mode, evict it from
+            // _togetherRotations. It is now "owned" by the user — teardown will not touch it.
+            // Edge case: user resets rotation to null on a landscape page → p evicted,
+            // pageRotations deleted → next _renderSheetView re-injects CCW90 (correct behavior).
+            if (fileEntry._togetherRotations?.has(pageNum)) {
+                fileEntry._togetherRotations.delete(pageNum);
+            }
+
             const fid = fileEntry.id;
             const prefix = `${fid}-${pageNum}-`;
             PreviewPanelModule._cache.deleteByPrefix(prefix);
