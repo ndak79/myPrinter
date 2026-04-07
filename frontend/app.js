@@ -1713,7 +1713,8 @@ const ZoomModal = {
 
         // CSS flip only (viewport handles CW/CCW/180)
         canvas.style.transform = RotationHelper.toCSS(rotation);
-        RotationHelper.updateBadge(div, rotation);
+        const badgeRotation = AppState.activeFile?._togetherRotations?.has(n) ? null : rotation;
+        RotationHelper.updateBadge(div, badgeRotation);
 
         div.appendChild(header); div.appendChild(badge); div.appendChild(canvas);
 
@@ -3686,8 +3687,9 @@ const PreviewPanelModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return;
 
-        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
-        RotationHelper.updateBadge(el, rotation);
+        const rotation      = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const badgeRotation = fileEntry._togetherRotations?.has(pageNum) ? null : rotation;
+        RotationHelper.updateBadge(el, badgeRotation);
 
         const entry = await this._renderBlobPage(fileId, pageNum, SHEET_SCALE, this._cache);
         if (!entry) return;
@@ -3885,8 +3887,9 @@ const PreviewPanelModule = {
             card.classList.toggle('selected-for-print', isSel);
             card.classList.toggle('single-sided-print', !!(isSingle && isSel));
             // Update rotation badge
-            const rotation = activeFile.pageRotations?.get(pageNum) ?? null;
-            RotationHelper.updateBadge(card, rotation);
+            const rotation      = activeFile.pageRotations?.get(pageNum) ?? null;
+            const badgeRotation = activeFile._togetherRotations?.has(pageNum) ? null : rotation;
+            RotationHelper.updateBadge(card, badgeRotation);
         });
     },
 
@@ -4111,7 +4114,8 @@ const ThumbStripModule = {
         const img        = el.querySelector('img.thumb-img');
         if (!img) return;
 
-        RotationHelper.updateBadge(el, rotation);
+        const badgeRotation = fileEntry._togetherRotations?.has(pageNum) ? null : rotation;
+        RotationHelper.updateBadge(el, badgeRotation);
 
         // Cache hit — just set src (browser re-uses decoded bitmap if URL unchanged)
         if (this._cache.has(key)) {
@@ -4174,8 +4178,9 @@ const ThumbStripModule = {
             el.classList.toggle('selected-for-print', isSel);
             el.classList.toggle('single-sided-print', !!(isSingle && isSel));
             // Update rotation badge
-            const rotation = entry.pageRotations?.get(pageNum) ?? null;
-            RotationHelper.updateBadge(el, rotation);
+            const rotation      = entry.pageRotations?.get(pageNum) ?? null;
+            const badgeRotation = entry._togetherRotations?.has(pageNum) ? null : rotation;
+            RotationHelper.updateBadge(el, badgeRotation);
         });
     },
 
