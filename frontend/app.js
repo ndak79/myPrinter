@@ -276,14 +276,15 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
                 currentGroup.isLandscape = effectiveOrientation;
             }
             if (effectiveOrientation !== currentGroup.isLandscape) {
-        groups.push(currentGroup);
-        // Filter out ghost group from empty pages[] (isLandscape stays null, pages empty)
-        const nonEmptyGroups = groups.filter(g => g.pages.length > 0);
+                groups.push(currentGroup);
                 currentGroup = { isLandscape: effectiveOrientation, pages: [] };
             }
             currentGroup.pages.push({ pageNum: p });
         }
         groups.push(currentGroup);
+
+        // Filter out ghost group from empty pages[] (isLandscape stays null, pages empty)
+        const nonEmptyGroups = groups.filter(g => g.pages.length > 0);
 
         // ── Bước 2: Process each group, handle single-sided + blank absorption ──
         const logicalPages = []; // { pageNum: N|null|0, isLandscape: bool }
