@@ -94,9 +94,14 @@ const AppState = {
         this.files.splice(index, 1);
         if (this.files.length === 0) {
             this.activeFileIndex = -1;
-        } else {
+        } else if (index < this.activeFileIndex) {
+            // Removed a file before the active file — shift index down
+            this.activeFileIndex--;
+        } else if (index === this.activeFileIndex) {
+            // Removed the active file — stay at same position or clamp to last
             this.activeFileIndex = Math.min(index, this.files.length - 1);
         }
+        // else: removed after active — no index change needed
     },
 
     setActiveFile(index) {
@@ -1261,6 +1266,7 @@ const UploadModule = {
             }
             // Sync copies widget + modebar to new active file
             CopiesModule.sync();
+            TabsModule.render(); // rebuild tabs to remove the closed file's tab
             const modeBarRemove = document.getElementById('sheet-view-modebar');
             if (modeBarRemove) {
                 const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
@@ -1448,6 +1454,8 @@ const TabsModule = {
 
         // Sync copies widget (§10)
         CopiesModule.sync();
+        // Sync page-range input to new file's selection (prevents stale text causing accidental re-selection)
+        if (typeof PageSelectModule !== 'undefined') PageSelectModule.updateDisplay();
 
         this.render();
         ThumbStripModule.render();
@@ -4436,13 +4444,18 @@ const ViewModeModule = {
     // Call this when printMode changes while in sheet view
     onPrintModeChange() {
         if (AppState.viewMode === 'sheet' && AppState.activeFile) {
-            // §5.4b: Teardown together-mode state for ALL files before switching print mode.
-            // _renderBookletSheetView has no step [0] defensive teardown, so stale CCW90
-            // injected by _renderSheetView would persist into the booklet render.
-            // Unconditional: any file with together-mode rotations must be cleaned regardless
-            // of whether the active file is in together mode.
+            // §5.4b: Teardown together-mode state before switching print mode.
+            // Only tear down files that are NOT in together-mode (their CCW90 is stale/unintended).
+            // Files still in together-mode keep their rotations — they are correct for printing
+            // and will be re-rendered correctly by _renderSheetView on next view.
             for (const f of AppState.files) {
-                if (f._togetherRotations?.size > 0) _teardownTogether(f);
+                if (f._togetherRotations?.size > 0 && f.landscapeMode !== 'together') {
+                    _teardownTogether(f);
+                }
+            }
+            // Also teardown the active file unconditionally (it will be immediately re-rendered)
+            if (AppState.activeFile._togetherRotations?.size > 0) {
+                _teardownTogether(AppState.activeFile);
             }
             PreviewPanelModule.render(AppState.activeFile);
         }
