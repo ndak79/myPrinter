@@ -1246,8 +1246,8 @@ const UploadModule = {
                 PreviewPanelModule.clear();
             }
             CopiesModule.reset();   // reset widget to defaults — no files remain
+            TabsModule._dragSourceIdx = null; // clear stale drag state
         } else {
-            // Still have files — refresh UI to show new active file
             const active = AppState.activeFile;
             if (active) {
                 const fnEl = document.getElementById('file-name');
@@ -1288,6 +1288,7 @@ const UploadModule = {
             PreviewPanelModule.clear();
         }
         CopiesModule.reset();   // clear widget — no files remain
+        TabsModule._dragSourceIdx = null; // clear stale drag state
         PrintModule.updateButton();
         StepIndicatorModule.update();
     },
@@ -2673,6 +2674,7 @@ const SummaryModule = {
 
         const pages   = AppState.selectedPages.size;
         const copies  = CopiesModule?.copies || 1;
+        const multiFile = AppState.files.length > 1;
         const mode    = document.getElementById('mode-select')?.value || 'duplex';
         const printer = AppState.selectedPrinter;
 
@@ -2706,6 +2708,7 @@ const SummaryModule = {
             <span>·</span>
             <span>⏱ ${timeStr}</span>
             ${copies > 1 ? `<span>· ${copies} bản</span>` : ''}
+            ${multiFile ? `<span>· (file hiện tại)</span>` : ''}
             ${printer ? `<span>· 🖨️ ${printer.name}</span>` : ''}
         `;
     },
@@ -2846,6 +2849,10 @@ const ConfirmPrintModal = {
         const copies  = CopiesModule?.copies || 1;
         const printer = AppState.selectedPrinter;
         const modeLabel = { duplex: 'In thông minh', normal: 'In thông minh', booklet: 'Sách A5 (Booklet)' };
+        const multiFile = AppState.files.length > 1;
+        const fileLabel = multiFile
+            ? `${AppState.uploadedFile?.name || '—'} (+${AppState.files.length - 1} file khác)`
+            : (AppState.uploadedFile?.name || '—');
 
         let sheets;
         if (mode === 'booklet') {
@@ -2868,7 +2875,7 @@ const ConfirmPrintModal = {
             <div class="confirm-row">
                 <span class="confirm-row-icon">📄</span>
                 <span class="confirm-row-label">File:</span>
-                <span class="confirm-row-value">${AppState.uploadedFile?.name || '—'}</span>
+                <span class="confirm-row-value">${fileLabel}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">🖨️</span>
@@ -3441,7 +3448,7 @@ const PreviewPanelModule = {
 
         // [0] DEFENSIVE TEARDOWN: clean up stale together-mode state if mode was switched
         // while a different file was being viewed.
-        if (AppState.landscapeMode !== 'together' && fileEntry._togetherRotations?.size > 0) {
+        if (fileEntry.landscapeMode !== 'together' && fileEntry._togetherRotations?.size > 0) {
             _teardownTogether(fileEntry);
         }
 
@@ -3491,7 +3498,7 @@ const PreviewPanelModule = {
         if (this._currentFileId !== fileEntry.id) return;
 
         // ── TOGETHER MODE: snapshot → inject CCW90 → invalidate cache ──────────
-        if (AppState.landscapeMode === 'together') {
+        if (fileEntry.landscapeMode === 'together') {
             // [3] SNAPSHOT — taken once per file (null-guard prevents re-render overwrite)
             if (fileEntry._originalOrientationMap == null) {  // == catches both null and undefined
                 // Detect INTRINSIC orientation (rotation=0, ignoring user pageRotations).
@@ -3520,7 +3527,7 @@ const PreviewPanelModule = {
             // 2. Mode switch: landscapeMode changed to 'separate' during await.
             //    Without check 2, step [4] would inject CCW90 in separate mode.
             if (this._currentFileId !== fileEntry.id) return;
-            if (AppState.landscapeMode !== 'together') return;
+            if (fileEntry.landscapeMode !== 'together') return;
 
             // [4] INJECT CCW90 for intrinsically landscape pages not already manually rotated
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
@@ -3549,7 +3556,7 @@ const PreviewPanelModule = {
         // ── END TOGETHER MODE ────────────────────────────────────────────────────
 
         const printMode = AppState.printMode;
-        const { sheets, blankAbsorbedBy, deselectedPages } = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
+        const { sheets, blankAbsorbedBy, deselectedPages } = buildSheetLayout(fileEntry, printMode, orientationMap, fileEntry.landscapeMode);
         fileEntry.blankAbsorbedBy = blankAbsorbedBy; // Invariant 9
 
         let blankQueuePos = 0;
@@ -4424,7 +4431,7 @@ const ViewModeModule = {
             // §5.4b: Teardown together-mode state when switching away from duplex.
             // _renderBookletSheetView has no step [0] defensive teardown, so stale CCW90
             // injected by _renderSheetView would persist into the booklet render.
-            if (AppState.landscapeMode === 'together') {
+        if (fileEntry.landscapeMode === 'together') {
                 for (const f of AppState.files) {
                     if (f._togetherRotations?.size > 0) _teardownTogether(f);
                 }
