@@ -287,11 +287,6 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
 
     } else {
         // ── Duplex: spec §4.1 algorithm ──────────────────────────────────
-        // Invariant 8: landscapeMode must be 'separate' (coerced upstream in render())
-        if (landscapeMode !== 'separate') {
-            console.warn('[buildSheetLayout] landscapeMode must be "separate"; got', landscapeMode, '— treating as separate');
-        }
-
         // ── Bước 1: Group pages by orientation ──────────────────────────
         const groups = [];
         let currentGroup = { isLandscape: null, pages: [] };
