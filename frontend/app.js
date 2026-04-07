@@ -3211,6 +3211,15 @@ const PreviewPanelModule = {
         // Invariant 3: reset blankAbsorbedBy before each rebuild
         if (fileEntry) fileEntry.blankAbsorbedBy = new Map();
 
+        // §5.0: Teardown together-mode CCW90 when leaving sheet view.
+        // Loop ALL files (not just fileEntry) — non-active files can also hold stale
+        // CCW90 from a previous together-mode render.
+        if (this._viewMode !== 'sheet') {
+            for (const f of AppState.files) {
+                if (f._togetherRotations?.size > 0) _teardownTogether(f);
+            }
+        }
+
         if (this._viewMode === 'sheet') {
             return this._renderSheetView(fileEntry); // Invariant 10: return Promise
         }
@@ -4224,7 +4233,17 @@ const ViewModeModule = {
             modeBar.addEventListener('click', e => {
                 const btn = e.target.closest('[data-lsmode]');
                 if (!btn) return;
-                AppState.landscapeMode = btn.dataset.lsmode;
+                const newMode = btn.dataset.lsmode;
+
+                // §5.4: Teardown together-mode state for ALL files before switching away.
+                // Non-active files can also hold stale CCW90 from a previous render.
+                if (AppState.landscapeMode === 'together' && newMode !== 'together') {
+                    for (const f of AppState.files) {
+                        _teardownTogether(f);
+                    }
+                }
+
+                AppState.landscapeMode = newMode;
                 modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
                     b.classList.toggle('active', b.dataset.lsmode === AppState.landscapeMode);
                 });
@@ -4242,6 +4261,14 @@ const ViewModeModule = {
     // Call this when printMode changes while in sheet view
     onPrintModeChange() {
         if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+            // §5.4b: Teardown together-mode state when switching away from duplex.
+            // _renderBookletSheetView has no step [0] defensive teardown, so stale CCW90
+            // injected by _renderSheetView would persist into the booklet render.
+            if (AppState.landscapeMode === 'together') {
+                for (const f of AppState.files) {
+                    if (f._togetherRotations?.size > 0) _teardownTogether(f);
+                }
+            }
             PreviewPanelModule.render(AppState.activeFile);
         }
     },
