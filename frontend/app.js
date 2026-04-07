@@ -2865,6 +2865,10 @@ const ConfirmPrintModal = {
         const printer = AppState.selectedPrinter;
         const modeLabel = { duplex: 'In thông minh', normal: 'In thông minh', booklet: 'Sách A5 (Booklet)' };
         const filesToPrint = AppState.files.filter(f => f.selectedPages.size > 0);
+        if (filesToPrint.length === 0) {
+            container.innerHTML = '<div class="confirm-row"><span>Không có trang nào để in.</span></div>';
+            return;
+        }
         const multiFile = filesToPrint.length > 1;
 
         // Aggregate totals across ALL files to be printed (not just active file)
@@ -2900,7 +2904,7 @@ const ConfirmPrintModal = {
         const sel = multiFile ? null : Array.from(filesToPrint[0]?.selectedPages ?? []).sort((a,b)=>a-b);
         const rangeStr = multiFile ? 'Tất cả các file'
             : sel?.length === filesToPrint[0]?.totalPageCount ? 'Tất cả'
-            : sel?.join(', ').replace(/,\s/g, ', ') ?? 'Tất cả';
+            : sel?.join(', ').replace(/,\s/g, ', ') || 'Tất cả';
 
         const copiesStr = copies !== null ? `${sheets} tờ × ${copies} bản` : `${sheets} tờ (mỗi file khác nhau)`;
 
