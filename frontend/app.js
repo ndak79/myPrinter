@@ -31,7 +31,7 @@ const AppState = {
     isUserTypingPageRange: false,
     printMode:             'duplex',   // 'duplex' | 'booklet'
     viewMode:              'page',     // 'page' | 'sheet'
-    landscapeMode:         'separate', // 'separate' | 'together' ('together' not backend-supported — see §4.8)
+    landscapeMode:         'together', // 'separate' | 'together'
 
     // Multi-file
     files:           [],   // FileEntry[]
