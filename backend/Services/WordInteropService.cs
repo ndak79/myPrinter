@@ -417,18 +417,18 @@ public class WordInteropService : IWordInteropService
         return result;
     }
 
-    public void PrintPdf(string pdfPath, string printerName, string? pageRange = null)
+    public void PrintPdf(string pdfPath, string printerName, string? pageRange = null, string? duplexSide = null)
     {
         Console.WriteLine($"[PrintPdf] Printing PDF: {pdfPath}");
         Console.WriteLine($"[PrintPdf] Printer: {printerName}");
         Console.WriteLine($"[PrintPdf] Page range: {pageRange ?? "all"}");
+        Console.WriteLine($"[PrintPdf] DuplexSide: {duplexSide ?? "default"}");
 
         string fileToPrint = pdfPath;
         bool isTempFile = false;
 
         try
         {
-            // If pageRange is specified, create a temp PDF with ONLY those pages
             if (!string.IsNullOrEmpty(pageRange))
             {
                 Console.WriteLine($"[PrintPdf] Splitting PDF for page range: {pageRange}");
@@ -437,14 +437,14 @@ public class WordInteropService : IWordInteropService
                 Console.WriteLine($"[PrintPdf] Created temp PDF for printing: {fileToPrint}");
             }
 
-            // Try using the "print" shell verb first (opens default PDF viewer's print dialog)
-            bool printSuccess = TryShellPrint(fileToPrint, printerName);
-            
+            // Pass duplexSide through to TryShellPrint
+            bool printSuccess = TryShellPrint(fileToPrint, printerName, duplexSide);
+
             if (!printSuccess)
             {
-                // Fallback: Try using PowerShell's Out-Printer
                 Console.WriteLine($"[PrintPdf] Shell print failed, trying PowerShell fallback...");
                 TryPowerShellPrint(fileToPrint, printerName);
+                // NOTE: TryPowerShellPrint does NOT support duplexSide — acceptable degraded behavior
             }
 
             Console.WriteLine($"[PrintPdf] Print job sent successfully");
@@ -455,7 +455,6 @@ public class WordInteropService : IWordInteropService
         }
         finally
         {
-            // Wait before deleting temp file to allow print spooler to read it
             if (isTempFile)
             {
                 System.Threading.Thread.Sleep(5000);
@@ -472,19 +471,18 @@ public class WordInteropService : IWordInteropService
         }
     }
 
-    private bool TryShellPrint(string filePath, string printerName)
+    private bool TryShellPrint(string filePath, string printerName, string? duplexSide = null)
     {
         try
         {
-            // Strategy 1: Use SumatraPDF if available — it supports -print-to <printerName>
             var sumatraPath = FindSumatraPdf();
             if (sumatraPath != null)
             {
                 Console.WriteLine($"[TryShellPrint] Found SumatraPDF at: {sumatraPath}");
-                return PrintWithSumatra(sumatraPath, filePath, printerName);
+                return PrintWithSumatra(sumatraPath, filePath, printerName, duplexSide);
             }
 
-            // Strategy 2: Temporarily set default printer, shell print, then restore
+            // Strategy 2: PrintBySwappingDefaultPrinter does NOT support duplexSide — acceptable degraded behavior
             Console.WriteLine($"[TryShellPrint] SumatraPDF not found. Using default-printer swap strategy.");
             return PrintBySwappingDefaultPrinter(filePath, printerName);
         }
@@ -507,11 +505,19 @@ public class WordInteropService : IWordInteropService
         return candidates.FirstOrDefault(File.Exists);
     }
 
-    private bool PrintWithSumatra(string sumatraPath, string pdfPath, string printerName)
+    private bool PrintWithSumatra(string sumatraPath, string pdfPath, string printerName, string? duplexSide = null)
     {
         try
         {
-            var args = $"-print-to \"{printerName}\" \"{pdfPath}\"";
+            // Only emit -print-settings when duplexSide is explicitly set.
+            // null → no arg → preserve existing printer behavior (no regression for simplex/booklet/manual-duplex).
+            // CORRECT SumatraPDF syntax: "duplexshort" and "duplexlong" (NOT "short"/"long").
+            var settingsPart = duplexSide switch {
+                "ShortEdge" => "-print-settings \"duplexshort\" ",
+                "LongEdge"  => "-print-settings \"duplexlong\" ",
+                _           => ""   // null or unknown → no override
+            };
+            var args = $"-print-to \"{printerName}\" {settingsPart}\"{pdfPath}\"";
             Console.WriteLine($"[PrintWithSumatra] Args: {args}");
 
             var psi = new System.Diagnostics.ProcessStartInfo(sumatraPath, args)
