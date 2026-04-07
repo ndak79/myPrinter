@@ -191,7 +191,9 @@ public static class BackendStartup
 
                 if (request.Mode == PrintMode.NormalDuplex)
                     jobState = printAlgorithm.CreateNormalDuplexJob(filePath, request.PrinterName, printer.IsDuplex,
-                        request.PageRange, request.SingleSidedPages, request.Watermark, request.PageOrder, request.PageRotations);
+                        request.PageRange, request.SingleSidedPages, request.Watermark, request.PageOrder, request.PageRotations,
+                        duplexSide:    request.DuplexSide,      // NEW §6.3
+                        manualFlipDir: request.ManualFlipDir);  // NEW §6.6
                 else if (request.Mode == PrintMode.Simplex)
                     jobState = printAlgorithm.CreateSimplexJob(filePath, request.PrinterName,
                         request.PageRange, request.Watermark, request.PageOrder, request.PageRotations);

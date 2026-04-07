@@ -28,7 +28,9 @@ public class PrintAlgorithmService
     int[]? singleSidedPages = null,
     WatermarkOptions? watermark = null,
     int[]? pageOrder = null,
-    List<PageRotation>? pageRotations = null)
+    List<PageRotation>? pageRotations = null,
+    string? duplexSide = null,      // NEW: "LongEdge" | "ShortEdge" | null
+    string? manualFlipDir = null)   // NEW: "LongEdge" | "ShortEdge" | null => auto-detect
     {
         // Apply watermark if requested
         if (watermark != null)
@@ -39,7 +41,19 @@ public class PrintAlgorithmService
 
         // Đọc metadata PDF gốc
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
-        var flipDirection = pdfInfo.IsLandscape ? FlipDirection.ShortEdge : FlipDirection.LongEdge;
+        // Use frontend-provided manualFlipDir when available (overrides first-page heuristic).
+        // In together mode the output PDF is all-portrait after CCW90, so pdfInfo.IsLandscape
+        // would return false even for all-landscape docs => wrong LongEdge flip.
+        FlipDirection flipDirection;
+        if (!string.IsNullOrEmpty(manualFlipDir) &&
+            Enum.TryParse<FlipDirection>(manualFlipDir, out var parsedFlip))
+        {
+            flipDirection = parsedFlip;
+        }
+        else
+        {
+            flipDirection = pdfInfo.IsLandscape ? FlipDirection.ShortEdge : FlipDirection.LongEdge;
+        }
 
         var jobState = new PrintJobState
         {
@@ -47,6 +61,10 @@ public class PrintAlgorithmService
             PrinterName = printerName,
             IsManualDuplex = !isDuplexPrinter
         };
+
+        // Store duplexSide (nullable — do NOT coalesce to "LongEdge").
+        // null means "no explicit override" => PrintWithSumatra will emit no -print-settings arg.
+        jobState.DuplexSide = duplexSide;
 
         if (isDuplexPrinter)
         {
@@ -577,7 +595,8 @@ public class PrintAlgorithmService
             _wordService.PrintPdf(
                 jobState.TempPdfPath,
                 jobState.PrinterName,
-                pageRange: null // In toàn bộ file (page range – nếu có – đã được xử lý trước đó)
+                pageRange: null, // In toàn bộ file (page range – nếu có – đã được xử lý trước đó)
+                duplexSide: jobState.DuplexSide   // NEW: null for booklet/default, "ShortEdge" for all-landscape
             );
         }
         else
