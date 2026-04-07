@@ -3274,6 +3274,12 @@ const PreviewPanelModule = {
     async _renderSheetView(fileEntry) {
         if (!this._container || !fileEntry?.pdfDoc) return;
 
+        // [0] DEFENSIVE TEARDOWN: clean up stale together-mode state if mode was switched
+        // while a different file was being viewed.
+        if (AppState.landscapeMode !== 'together' && fileEntry._togetherRotations?.size > 0) {
+            _teardownTogether(fileEntry);
+        }
+
         this._renderQueue = [];
         this._activeRenders = 0;
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
@@ -3282,6 +3288,10 @@ const PreviewPanelModule = {
         this._pageEls.clear();
         this._sheetEls.clear();
         this._container.innerHTML = '';
+
+        // NEW: reset blob pipeline to prevent stale renders draining into new cycle
+        this._blobQueue = [];
+        this._activeBlobRenders = 0;
 
         // Detect page orientations — use per-file cache to avoid O(n) getPage() on every re-render.
         // Cache stored on fileEntry._orientationMap; individual entries deleted on rotation so only
@@ -3314,6 +3324,58 @@ const PreviewPanelModule = {
         }
         // Guard: user may have switched file during async detection
         if (this._currentFileId !== fileEntry.id) return;
+
+        // ── TOGETHER MODE: snapshot → inject CCW90 → invalidate cache ──────────
+        if (AppState.landscapeMode === 'together') {
+            // [3] SNAPSHOT — taken once per file (null-guard prevents re-render overwrite)
+            if (fileEntry._originalOrientationMap == null) {  // == catches both null and undefined
+                // Detect INTRINSIC orientation (rotation=0, ignoring user pageRotations).
+                // Step [2]'s cache-fill applies current pageRotations, so a user-rotated
+                // portrait page could appear as landscape. The allLandscape check in _startPrint
+                // must use physical PDF dimensions only.
+                const intrinsicPromises = [];
+                for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+                    intrinsicPromises.push(
+                        pdfDoc.getPage(p).then(page => {
+                            const vp = page.getViewport({ scale: 1, rotation: 0 });
+                            return { p, isLandscape: vp.width > vp.height };
+                        }).catch(() => ({ p, isLandscape: false }))
+                    );
+                }
+                const intrinsicResults = await Promise.all(intrinsicPromises);
+                const intrinsicMap = new Map();
+                for (const { p, isLandscape } of intrinsicResults) {
+                    intrinsicMap.set(p, isLandscape);
+                }
+                fileEntry._originalOrientationMap = intrinsicMap;
+            }
+
+            // [6] Guard after intrinsic detection await — two checks required:
+            // 1. File switch: another file became active during await
+            // 2. Mode switch: landscapeMode changed to 'separate' during await.
+            //    Without check 2, step [4] would inject CCW90 in separate mode.
+            if (this._currentFileId !== fileEntry.id) return;
+            if (AppState.landscapeMode !== 'together') return;
+
+            // [4] INJECT CCW90 for intrinsically landscape pages not already manually rotated
+            for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+                if (fileEntry._originalOrientationMap.get(p) === true) {  // intrinsically landscape
+                    if (!fileEntry.pageRotations.has(p)) {                // not manually rotated
+                        fileEntry.pageRotations.set(p, 'CCW90');
+                        fileEntry._togetherRotations.add(p);
+                    }
+                }
+            }
+
+            // [5] INVALIDATE STALE CACHE — synchronous, result is deterministic
+            for (const p of fileEntry._togetherRotations) {
+                orientationMap.delete(p);
+            }
+            for (const p of fileEntry._togetherRotations) {
+                orientationMap.set(p, false);  // CCW90 makes landscape pages portrait-sized
+            }
+        }
+        // ── END TOGETHER MODE ────────────────────────────────────────────────────
 
         const printMode = AppState.printMode;
         const { sheets, blankAbsorbedBy, deselectedPages } = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
