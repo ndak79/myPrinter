@@ -2254,6 +2254,20 @@ const PrintModule = {
                     ? Array.from(sel).sort((a,b) => a-b).join(',')
                     : null;
 
+                // Compute duplexSide for together mode (spec §5.8)
+                let duplexSide = null;  // default: null = no override → backend uses printer default
+                // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for all non-together cases)
+                if (AppState.landscapeMode === 'together' && file._originalOrientationMap != null) {
+                    let allLandscape = true;
+                    for (let p = 1; p <= file.totalPageCount; p++) {
+                        if (file._originalOrientationMap.get(p) !== true) {
+                            allLandscape = false;
+                            break;
+                        }
+                    }
+                    if (allLandscape) duplexSide = 'ShortEdge';
+                }
+
                 const body = {
                     fileId:           file.id,
                     printerName:      AppState.selectedPrinter.name,
@@ -2269,6 +2283,8 @@ const PrintModule = {
                     pageRotations:    file.pageRotations.size > 0
                         ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
                         : null,
+                    duplexSide,           // null | 'ShortEdge'  (null = no override; 'LongEdge' is never sent explicitly)
+                    manualFlipDir: duplexSide,  // same value; maps to PrintRequest.ManualFlipDir on backend
                 };
 
                 showToast(`Đang gửi lệnh in: ${file.name}...`, 'info');
