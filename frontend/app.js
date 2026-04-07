@@ -1264,8 +1264,9 @@ const UploadModule = {
             if (typeof PreviewPanelModule !== 'undefined') {
                 PreviewPanelModule.render(AppState.activeFile);
             }
-            // Sync copies widget + modebar to new active file
+            // Sync copies widget + modebar + page-range to new active file
             CopiesModule.sync();
+            if (typeof PageSelectModule !== 'undefined') PageSelectModule.updateDisplay();
             TabsModule.render(); // rebuild tabs to remove the closed file's tab
             const modeBarRemove = document.getElementById('sheet-view-modebar');
             if (modeBarRemove) {
@@ -1363,8 +1364,7 @@ const TabsModule = {
             closeBtn.title       = 'Đóng file';
             closeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                UploadModule.removeFile(idx);
-                this.render();
+                UploadModule.removeFile(idx); // self-contained: renders tabs internally
             });
             tab.appendChild(closeBtn);
 
@@ -2861,31 +2861,47 @@ const ConfirmPrintModal = {
         if (!container) return;
 
         const mode    = document.getElementById('mode-select')?.value || 'duplex';
-        const pages   = AppState.selectedPages.size;
-        const copies  = CopiesModule?.copies || 1;
         const printer = AppState.selectedPrinter;
         const modeLabel = { duplex: 'In thông minh', normal: 'In thông minh', booklet: 'Sách A5 (Booklet)' };
-        const multiFile = AppState.files.length > 1;
-        const fileLabel = multiFile
-            ? `${AppState.uploadedFile?.name || '—'} (+${AppState.files.length - 1} file khác)`
-            : (AppState.uploadedFile?.name || '—');
+        const filesToPrint = AppState.files.filter(f => f.selectedPages.size > 0);
+        const multiFile = filesToPrint.length > 1;
 
-        let sheets;
-        if (mode === 'booklet') {
-            sheets = Math.ceil(pages / 4) * copies;
-        } else {
-            const singleSided = AppState.singleSidedPages.size;
-            sheets = (Math.ceil((pages - singleSided) / 2) + singleSided) * copies;
+        // Aggregate totals across ALL files to be printed (not just active file)
+        let totalSheets = 0;
+        let totalPages  = 0;
+        for (const f of filesToPrint) {
+            const fPages = f.selectedPages.size;
+            const fCopies = f.copies ?? 1;
+            let fSheets;
+            if (mode === 'booklet') {
+                fSheets = Math.ceil(fPages / 4) * fCopies;
+            } else {
+                const fSingle = f.singleSidedPages?.size ?? 0;
+                fSheets = (Math.ceil((fPages - fSingle) / 2) + fSingle) * fCopies;
+            }
+            totalSheets += fSheets;
+            totalPages  += fPages;
         }
+        const pages  = totalPages;
+        const sheets = totalSheets;
+        const copies = filesToPrint.length === 1 ? (filesToPrint[0]?.copies ?? 1) : null; // null = mixed
 
         const totalSec = sheets * 15;
         const timeStr  = totalSec < 60 ? '< 1 phút'
             : `~${Math.ceil(totalSec / 60)} phút`;
 
-        const sel = Array.from(AppState.selectedPages).sort((a,b)=>a-b);
-        const rangeStr = sel.length === AppState.totalPageCount
-            ? 'Tất cả'
-            : sel.join(', ').replace(/,\s/g, ', ');
+        // File label
+        const fileLabel = multiFile
+            ? `${filesToPrint.length} file`
+            : (AppState.uploadedFile?.name || '—');
+
+        // Page range label (only meaningful for single-file)
+        const sel = multiFile ? null : Array.from(filesToPrint[0]?.selectedPages ?? []).sort((a,b)=>a-b);
+        const rangeStr = multiFile ? 'Tất cả các file'
+            : sel?.length === AppState.totalPageCount ? 'Tất cả'
+            : sel?.join(', ').replace(/,\s/g, ', ') ?? 'Tất cả';
+
+        const copiesStr = copies !== null ? `${sheets} tờ × ${copies} bản` : `${sheets} tờ (mỗi file khác nhau)`;
 
         container.innerHTML = `
             <div class="confirm-row">
@@ -2911,7 +2927,7 @@ const ConfirmPrintModal = {
             <div class="confirm-row highlight">
                 <span class="confirm-row-icon">🗒️</span>
                 <span class="confirm-row-label">Số tờ:</span>
-                <span class="confirm-row-value">${sheets} tờ × ${copies} bản</span>
+                <span class="confirm-row-value">${copiesStr}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">⏱️</span>
