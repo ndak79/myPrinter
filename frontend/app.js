@@ -66,6 +66,8 @@ const AppState = {
             pageOrder:        [],
             pageRotations:    new Map(),
             blankAbsorbedBy:  new Map(), // populated by buildSheetLayout; reset each render cycle
+            _togetherRotations:      new Set(), // Set<pageNum> — pages auto-rotated by together mode
+            _originalOrientationMap: null,      // Map<pageNum, bool> | null — pre-injection snapshot
         };
     },
 
@@ -109,6 +111,20 @@ const AppState = {
         this.isUserTypingPageRange = false;
     },
 };
+
+// ─── _teardownTogether ────────────────────────────────────────────
+// Restores fileEntry to pre-together-mode state. Idempotent.
+// Removes only auto-injected CCW90 rotations (tracked in _togetherRotations).
+// User-set rotations (not in _togetherRotations) are never touched.
+function _teardownTogether(fileEntry) {
+    if (!fileEntry) return;
+    for (const p of fileEntry._togetherRotations) {
+        fileEntry.pageRotations.delete(p);
+        fileEntry._orientationMap?.delete(p);  // force re-detect at original orientation
+    }
+    fileEntry._togetherRotations.clear();
+    fileEntry._originalOrientationMap = null;
+}
 
 // ─── lookAheadOrientation ──────────────────────────────────────────
 // Determine effective orientation for a leading blank page (no group yet).
