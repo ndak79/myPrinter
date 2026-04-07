@@ -121,15 +121,35 @@ function lookAheadOrientation(pages, blankIdx, orientationMap) {
 }
 
 // ─── togglePageSelection ──────────────────────────────────────────
-// Centralized toggle for page selection. Handles singleSidedPages cleanup (R8).
+// Centralized toggle for page selection. Handles singleSidedPages cleanup (R8)
+// and absorbed-blank cleanup (R7) when deselecting a single-sided page.
 // CONTRACT: Caller MUST call PreviewPanelModule.render(entry) after this returns.
 function togglePageSelection(entry, pageNum) {
     if (entry.selectedPages.has(pageNum)) {
+        // R8: deselect clears SS status
         entry.selectedPages.delete(pageNum);
-        entry.singleSidedPages.delete(pageNum); // R8: deselect clears SS status
+        entry.singleSidedPages.delete(pageNum);
+
+        // R7: if this page had absorbed a blank (R6), splice that blank out of pageOrder.
+        // blankAbsorbedBy is populated by buildSheetLayout at last render.
+        // Forward scan runs AFTER selectedPages.delete() so has(v) checks are accurate.
+        if (entry.blankAbsorbedBy && entry.blankAbsorbedBy.has(pageNum)) {
+            const rawIdx = entry.pageOrder.indexOf(pageNum);
+            if (rawIdx >= 0) {
+                for (let k = rawIdx + 1; k < entry.pageOrder.length; k++) {
+                    const v = entry.pageOrder[k];
+                    if (v === 0) {
+                        entry.pageOrder.splice(k, 1);
+                        break;
+                    }
+                    if (entry.selectedPages.has(v)) break; // selected page — stop
+                    // deselected page — skip, continue forward
+                }
+            }
+        }
     } else {
         entry.selectedPages.add(pageNum);
-        // Do NOT auto-add to singleSidedPages — user must toggle explicitly
+        // Do NOT auto-add to singleSidedPages — R11: re-select starts as duplex
     }
 }
 
@@ -353,7 +373,35 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
             });
         }
     }
-    return { sheets, blankAbsorbedBy };
+    // R15: deselectedPages = real pages that are not selected, in pageOrder sequence, no duplicates
+    const seenDeselected = new Set();
+    const deselectedPages = [];
+
+    if (fileEntry.pageOrder.length > 0) {
+        for (const p of fileEntry.pageOrder) {
+            if (p !== 0 && !fileEntry.selectedPages.has(p) && !seenDeselected.has(p)) {
+                seenDeselected.add(p);
+                deselectedPages.push(p);
+            }
+        }
+        // W3 fallback: pageOrder exists but contains only blanks (p===0)
+        if (deselectedPages.length === 0 && fileEntry.selectedPages.size < fileEntry.totalPageCount) {
+            for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+                if (!fileEntry.selectedPages.has(p)) {
+                    deselectedPages.push(p);
+                }
+            }
+        }
+    } else {
+        // Fallback: pageOrder empty → derive from totalPageCount
+        for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+            if (!fileEntry.selectedPages.has(p)) {
+                deselectedPages.push(p);
+            }
+        }
+    }
+
+    return { sheets, blankAbsorbedBy, deselectedPages };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -3262,10 +3310,17 @@ const PreviewPanelModule = {
         if (this._currentFileId !== fileEntry.id) return;
 
         const printMode = AppState.printMode;
-        const { sheets, blankAbsorbedBy } = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
+        const { sheets, blankAbsorbedBy, deselectedPages } = buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode);
         fileEntry.blankAbsorbedBy = blankAbsorbedBy; // Invariant 9
 
         let blankQueuePos = 0;
+
+        // ── Layout wrapper: sheets-column + ejected-column inside sheet-view-inner ──
+        const inner = document.createElement('div');
+        inner.className = 'sheet-view-inner';
+
+        const sheetsCol = document.createElement('div');
+        sheetsCol.className = 'sheets-column';
 
         sheets.forEach(sheet => {
             const sheetCard = document.createElement('div');
@@ -3371,7 +3426,7 @@ const PreviewPanelModule = {
                         if (!entry) return;
                         const pn = parseInt(card.dataset.page);
                         togglePageSelection(entry, pn);
-                        this._syncSelectionUI();
+                        PreviewPanelModule.render(entry); // B3 fix: rebuild layout + ejected-column
                         PrintModule.updateButton();
                         PageSelectModule.updateDisplay();
                     });
@@ -3441,8 +3496,56 @@ const PreviewPanelModule = {
 
             sheetCard.appendChild(facesRow);
             this._sheetEls.set(sheet.sheetIndex, sheetCard);
-            this._container.appendChild(sheetCard);
+            sheetsCol.appendChild(sheetCard);
         });
+
+        // ── Ejected column: deselected pages (R9–R12) ────────────────
+        const ejectedCol = document.createElement('div');
+        ejectedCol.className = 'ejected-column';
+        ejectedCol.hidden = (deselectedPages.length === 0);
+
+        if (deselectedPages.length > 0) {
+            const header = document.createElement('div');
+            header.className = 'ejected-column-header';
+            header.textContent = 'Không in';
+            ejectedCol.appendChild(header);
+
+            deselectedPages.forEach(pageNum => {
+                const card = document.createElement('div');
+                card.className = 'ejected-card';
+                card.dataset.fileId = fileEntry.id;   // required for _renderSheetPage
+                card.dataset.page = pageNum;           // required for _renderSheetPage
+                card.title = `Trang ${pageNum} — nhấn để thêm vào bản in`;
+
+                const lbl = document.createElement('div');
+                lbl.className = 'ejected-card-label';
+                lbl.textContent = `Trang ${pageNum}`;
+                card.appendChild(lbl);
+
+                const img = document.createElement('img');
+                img.className = 'sheet-page-img';    // same class as sheet cards → _renderVisible picks it up
+                img.alt = '';
+                img.draggable = false;
+                card.appendChild(img);
+
+                card.addEventListener('click', () => {
+                    const entry = AppState.files.find(f => f.id === fileEntry.id);
+                    if (!entry) return;
+                    togglePageSelection(entry, pageNum); // else branch: add to selectedPages
+                    PreviewPanelModule.render(entry);
+                    PrintModule.updateButton();
+                    PageSelectModule.updateDisplay();
+                });
+
+                const key = `${fileEntry.id}-${pageNum}`;
+                this._pageEls.set(key, card);
+                ejectedCol.appendChild(card);
+            });
+        }
+
+        inner.appendChild(sheetsCol);
+        inner.appendChild(ejectedCol);
+        this._container.appendChild(inner);
 
         this._container.scrollTop = 0;
         requestAnimationFrame(() => this._renderVisible());

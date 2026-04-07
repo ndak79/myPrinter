@@ -2871,3 +2871,81 @@ kbd {
   object-fit: contain;
   will-change: transform; /* promote to compositor layer for instant CSS rotation */
 }
+
+/* ── Sheet view 2-column wrapper (ejected-column feature) ─────────── */
+.sheet-view-inner {
+  display:          flex;
+  flex-direction:   row;
+  align-items:      flex-start;
+  gap:              24px;
+  width:            100%;
+}
+
+.sheets-column {
+  flex:             1;
+  min-width:        0;
+  display:          flex;
+  flex-direction:   column;
+  gap:              24px;
+}
+
+/* W1 fix: .sheet-card has margin-bottom:24px + .sheets-column gap:24px = 48px double-spacing */
+.sheets-column .sheet-card {
+  margin-bottom:    0;
+}
+
+/* ── Ejected column ────────────────────────────────────────────────── */
+.ejected-column {
+  width:            180px;
+  flex-shrink:      0;
+  display:          flex;
+  flex-direction:   column;
+  gap:              12px;
+  padding-top:      4px;
+}
+
+/* Fix: author display:flex defeats UA [hidden]{display:none} — must override explicitly */
+.ejected-column[hidden] { display: none; }
+
+.ejected-column-header {
+  font-size:        11px;
+  font-weight:      600;
+  color:            var(--color-text-muted, #9ca3af);
+  text-transform:   uppercase;
+  letter-spacing:   0.06em;
+  padding:          0 2px 4px;
+  border-bottom:    1px solid rgba(255,255,255,0.08);
+}
+
+.ejected-card {
+  display:          flex;
+  flex-direction:   column;
+  align-items:      center;
+  gap:              6px;
+  cursor:           pointer;
+  border-radius:    8px;
+  padding:          8px;
+  background:       rgba(255,255,255,0.02);
+  border:           1px solid rgba(255,255,255,0.06);
+  transition:       background 0.15s, border-color 0.15s;
+}
+
+.ejected-card:hover {
+  background:       rgba(102,126,234,0.10);
+  border-color:     rgba(102,126,234,0.35);
+}
+
+/* B2 fix: ejected card uses img.sheet-page-img — override opacity only */
+.ejected-card img.sheet-page-img {
+  width:            100%;
+  height:           auto;
+  border-radius:    4px;
+  opacity:          0.55;
+}
+
+.ejected-card-label {
+  font-size:        10px;
+  color:            var(--color-text-muted, #9ca3af);
+  text-align:       center;
+  white-space:      nowrap;
+}
