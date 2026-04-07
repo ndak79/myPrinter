@@ -66,6 +66,18 @@
   <div id="file-tabs" class="file-tabs-bar" role="tablist" aria-label="Các file đang mở">
     <div id="file-tab-list" class="file-tab-list"></div>
     <button id="file-tab-add-btn" class="file-tab-add" type="button" title="Thêm file">+ Thêm file</button>
+    <!-- Copies widget (per-file) -->
+    <div class="copies-widget" id="copies-widget">
+      <span class="copies-label">Số bản:</span>
+      <div class="copies-control">
+        <button class="copies-btn" id="copies-dec" title="Giảm số bản">−</button>
+        <span class="copies-val" id="copies-display">1</span>
+        <button class="copies-btn" id="copies-inc" title="Tăng số bản">+</button>
+      </div>
+      <label class="collate-label" id="collate-label" style="display:none">
+        <input type="checkbox" id="collate-check" checked> Ghép bộ
+      </label>
+    </div>
   </div>
 
   <!-- ── Body ──────────────────────────────────────────── -->

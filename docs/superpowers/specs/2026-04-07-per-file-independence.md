@@ -1,7 +1,7 @@
 # Spec: Per-File Independence — Independent Tabs, Thumbstrip, landscapeMode, Copies + Landscape Badge
 
 **Date:** 2026-04-07
-**Status:** Draft (Round 1 review pending)
+**Status:** Draft (Round 1 review complete — fixes applied)
 **Scope:** `frontend/app.js`, `frontend/index.html`, `frontend/styles.css`
 
 ---
@@ -29,7 +29,7 @@ This spec makes each file tab fully independent:
 - §7 — `TabsModule`: drag-to-reorder + landscape badge
 - §8 — `_startPrint`: use per-file `copies`/`collate` + per-file `landscapeMode`
 - §9 — Modebar sync on tab switch
-- §10 — Copies UI sync on tab switch
+- §10 — Copies UI sync on tab switch + §10.1 sync on upload/remove/reset
 - §11 — CSS for landscape badge
 
 ### Out of scope
@@ -67,7 +67,7 @@ set landscapeMode(value) {
 ```
 
 **Why this works without touching downstream code:**
-All 9 existing read sites (`_renderSheetView` lines 3313, 3363, 3392, 3415; `_startPrint` line 2260; modebar handler lines 4269, 4277, 4296; `onPrintModeChange` line 4296) read `AppState.landscapeMode` — they will transparently get the active file's value. The single write site (modebar handler line 4275 `AppState.landscapeMode = newMode`) will transparently write to the active file.
+All 8 existing read sites (`_renderSheetView` lines 3313, 3363, 3392, 3415; `_startPrint` line 2260; modebar handler lines 4269, 4277; `onPrintModeChange` line 4296) read `AppState.landscapeMode` — they will transparently get the active file's value. The single write site (modebar handler line 4275 `AppState.landscapeMode = newMode`) will transparently write to the active file.
 
 **Edge case — no active file:** The getter returns `'together'` as fallback (matching the original default). The setter silently no-ops when `activeFile` is null. This is safe because `landscapeMode` is only meaningful when a file is loaded.
 
@@ -128,20 +128,35 @@ reset() {
 // Add to CopiesModule:
 setCopies(n) {
     const f = AppState.activeFile;
-    if (f) { f.copies = Math.min(99, Math.max(1, n)); this._update(); }
+    if (f) { f.copies = Math.min(99, Math.max(1, n || 1)); this._update(); }
+    // NOTE: `n || 1` guards against undefined/null/0 from legacy history items
+    // that were saved before per-file copies existed (item.copies may be undefined).
 },
 ```
 
 History restore becomes: `CopiesModule.setCopies(item.copies);` (and remove the `CopiesModule._update()` call on the next line — it is now inside `setCopies`).
 
-### 5.5 `_update()` — unchanged logic, new sync method
+### 5.5 `_update()` — change backing field reads to use proxied getters
 
-`_update()` reads `this.copies` (via getter → `activeFile.copies`) and `#copies-display`, `#collate-label`. No change to the method body needed — the getter already proxies correctly.
-
-Add a public `sync()` method that other code can call when the active file changes:
+`_update()` currently reads `this._copies` (lines 2038, 2041). After §5.1 removes the `_copies` backing field, these reads would return `undefined`. Replace `this._copies` with `this.copies` (which uses the proxy getter → `activeFile.copies`):
 
 ```javascript
-sync() { this._update(); },
+_update() {
+    const el = document.getElementById('copies-display');
+    if (el) el.textContent = this.copies;           // was: this._copies
+    const collateLabel = document.getElementById('collate-label');
+    if (collateLabel) collateLabel.style.display = this.copies > 1 ? 'flex' : 'none';  // was: this._copies
+},
+```
+
+Add a public `sync()` method that other code can call when the active file changes (see §12.4 for the full implementation that also syncs the collate checkbox):
+
+```javascript
+sync() {
+    const chk = document.getElementById('collate-check');
+    if (chk) chk.checked = AppState.activeFile?.collate ?? true;
+    this._update();
+},
 ```
 
 ### 5.6 Copies widget HTML — add to `index.html`
@@ -272,12 +287,22 @@ Use HTML5 drag-and-drop on the tab `div` elements.
 ```javascript
 _reorderFiles(fromIdx, toIdx) {
     const files = AppState.files;
+    const activeFile = AppState.activeFile;  // capture BEFORE splice — index still valid
     const [moved] = files.splice(fromIdx, 1);
     files.splice(toIdx, 0, moved);
 
     // Keep active file pointing to the same file object
-    const activeFile = AppState.activeFile;  // read before index changes
     AppState.activeFileIndex = files.indexOf(activeFile);
+
+    // Sync copies widget + modebar to (possibly moved) active file
+    CopiesModule.sync();
+    const modeBar = document.getElementById('sheet-view-modebar');
+    if (modeBar) {
+        const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+        modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.lsmode === lsMode);
+        });
+    }
 
     this.render();
     ThumbStripModule.render();
@@ -285,7 +310,7 @@ _reorderFiles(fromIdx, toIdx) {
 },
 ```
 
-**Why `files.indexOf(activeFile)`:** After splicing, the object reference is the same; `indexOf` finds it in O(n). This correctly updates `activeFileIndex` even when the active tab itself is dragged.
+**Why `activeFile` is captured before splice:** After `files.splice(fromIdx, 1)`, the array has shifted and `AppState.activeFileIndex` points to a potentially different element. Capturing the object reference first ensures `indexOf` finds the correct file.
 
 ### 7.2 All-landscape badge on tab
 
@@ -319,14 +344,26 @@ if (isAllLandscape) {
 - The badge appears automatically after the first together-mode sheet render of the file.
 - `TabsModule.render()` is called from `TabsModule.setActive()` and after print/upload events, so the badge updates naturally.
 
-**Re-render trigger after snapshot:** When `_renderSheetView` finishes the snapshot step [3] and sets `fileEntry._originalOrientationMap`, it does NOT explicitly call `TabsModule.render()`. The badge will appear the next time `TabsModule.render()` is called (e.g., user switches tab or uploads another file). To show the badge immediately after detection, add one call at the end of the together-mode block in `_renderSheetView`:
+**Re-render trigger after snapshot:** When `_renderSheetView` finishes the snapshot step [3] and sets `fileEntry._originalOrientationMap`, it does NOT explicitly call `TabsModule.render()`. The badge will appear the next time `TabsModule.render()` is called (e.g., user switches tab or uploads another file). To show the badge immediately after detection, add one call at the end of the together-mode block in `_renderSheetView`, **after step [5] cache invalidation and before the `// ── END TOGETHER MODE ──` comment** (i.e., immediately before line 3412 in the current codebase):
 
 ```javascript
-// At end of together-mode block (after step [5] cache invalidation):
-TabsModule.render();   // update landscape badge if just detected
+// [7] Update tab badge immediately if snapshot was just taken
+if (fileEntry._originalOrientationMap != null) {
+    TabsModule.render();   // update landscape badge — idempotent, cheap (DOM only, no PDF)
+}
 ```
 
-This call is idempotent and cheap (only rebuilds the tab DOM, not PDF rendering).
+**Placement:** This goes inside the `if (AppState.landscapeMode === 'together')` block, after the `orientationMap.set(p, false)` loop (step [5]), just before the closing `}` of that block.
+
+**Drag guard:** If a drag-to-reorder operation is in progress (`TabsModule._dragSourceIdx !== null`), `TabsModule.render()` must NOT be called — it would destroy the drag source element mid-drag, causing `dragend` to never fire and leaving stale `drag-over` highlights. Add a guard:
+
+```javascript
+if (fileEntry._originalOrientationMap != null && TabsModule._dragSourceIdx == null) {
+    TabsModule.render();
+}
+```
+
+This guard also applies to the `TabsModule.render()` call added by §7.1 inside `_reorderFiles` — but that call is safe because `_dragSourceIdx` is reset to `null` in the `drop` handler before `_reorderFiles` is invoked.
 
 ---
 
@@ -399,6 +436,47 @@ CopiesModule.sync();
 
 `CopiesModule.sync()` calls `this._update()`, which reads `this.copies` (→ proxy → `activeFile.copies`) and updates `#copies-display` and `#collate-label` visibility.
 
+### 10.1 Sync on Upload, Remove, and Reset
+
+Tab switch is not the only event that changes the active file. These additional call sites must also sync the copies widget and modebar:
+
+**`UploadModule._upload()`** (line ~1205, after `TabsModule.render()`): The newly uploaded file becomes active via `AppState.addFile(entry)`. Add sync calls:
+
+```javascript
+// After TabsModule.render() in _upload():
+CopiesModule.sync();
+const modeBar = document.getElementById('sheet-view-modebar');
+if (modeBar) {
+    const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+    modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.lsmode === lsMode);
+    });
+}
+```
+
+**`UploadModule.removeFile()`** (line ~1244, after `ThumbStripModule.render()`): After removing a file, the new active file's copies/modebar may differ. Add sync calls in both the `files.length === 0` branch (reset widget to defaults) and the else branch:
+
+```javascript
+// In the else branch (still have files), after ThumbStripModule.render():
+CopiesModule.sync();
+const modeBar = document.getElementById('sheet-view-modebar');
+if (modeBar) {
+    const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+    modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.lsmode === lsMode);
+    });
+}
+
+// In the files.length === 0 branch, after clearing thumbs/preview:
+CopiesModule.reset();   // reset widget to defaults (copies=1, collate=true)
+```
+
+**`UploadModule._remove()`** (line ~1249): Calls `AppState.reset()` which clears all files. Add after `ThumbStripModule.render()`:
+
+```javascript
+CopiesModule.reset();   // clear widget — no files remain
+```
+
 ---
 
 ## 11. CSS — Landscape Badge Styling
@@ -438,15 +516,7 @@ Add to `styles.css`:
 When the active tab is dragged, `_reorderFiles` uses `files.indexOf(activeFile)` to recompute `activeFileIndex`. This correctly handles both cases: dragging the active tab and dragging a non-active tab.
 
 ### 12.4 `collate` checkbox state on tab switch
-`CopiesModule.sync()` calls `_update()` which updates `#copies-display` and `#collate-label` visibility. The `#collate-check` checkbox `checked` state is NOT updated by `_update()`. Add to `sync()`:
-
-```javascript
-sync() {
-    const chk = document.getElementById('collate-check');
-    if (chk) chk.checked = AppState.activeFile?.collate ?? true;
-    this._update();
-},
-```
+`CopiesModule._update()` updates `#copies-display` and `#collate-label` visibility but does NOT sync the `#collate-check` checkbox `checked` state. The `sync()` method defined in §5.5 handles this — it sets `chk.checked` before calling `_update()`. No additional work needed beyond §5.5.
 
 ### 12.5 `_syncSelectionHighlights` after thumbstrip single-file change
 `_syncSelectionHighlights` queries ALL `.thumb-item` elements in the container and resolves each by `data-file-id`. Since the container now only holds the active file's thumbs, this is effectively scoped to one file. No correctness issue.
@@ -461,17 +531,18 @@ Both read `CopiesModule?.copies` (lines 2544, 2715). After the proxy re-wire, `C
 
 ## 13. Implementation Tasks
 
-| Task | Files | Description |
-|------|-------|-------------|
-| T1 | `app.js` | Add `landscapeMode`, `copies`, `collate` to `createFileEntry` |
-| T2 | `app.js` | Convert `AppState.landscapeMode` to getter/setter proxy |
-| T3 | `app.js` | Re-wire `CopiesModule` to use per-file fields; add `setCopies()` + `sync()` |
-| T4 | `index.html` | Add copies widget HTML inside `#file-tabs` |
-| T5 | `styles.css` | Add `.copies-widget` layout + `.file-tab-landscape-badge` CSS |
-| T6 | `app.js` | `ThumbStripModule.render()` — single-file only, remove divider |
-| T7 | `app.js` | `TabsModule`: drag-to-reorder + landscape badge + modebar/copies sync on setActive |
-| T8 | `app.js` | `_startPrint`: use `file.copies`, `file.collate`, `file.landscapeMode` |
-| T9 | `app.js` | `_renderSheetView`: call `TabsModule.render()` after snapshot to trigger badge |
+| Task | Files | Description | Depends on |
+|------|-------|-------------|------------|
+| T1 | `app.js` | Add `landscapeMode`, `copies`, `collate` to `createFileEntry` | — |
+| T2 | `app.js` | Convert `AppState.landscapeMode` to getter/setter proxy | T1 |
+| T3 | `app.js` | Re-wire `CopiesModule` to use per-file fields; add `setCopies()` + `sync()` | T1 |
+| T4 | `index.html` | Add copies widget HTML inside `#file-tabs` | — |
+| T5 | `styles.css` | Add `.copies-widget` layout + `.file-tab-landscape-badge` CSS | — |
+| T6 | `app.js` | `ThumbStripModule.render()` — single-file only, remove divider | — |
+| T7 | `app.js` | `TabsModule`: drag-to-reorder + landscape badge + `_dragSourceIdx` state + modebar/copies sync on `setActive` | T3 |
+| T8 | `app.js` | `_startPrint`: use `file.copies`, `file.collate`, `file.landscapeMode` | T1 |
+| T9 | `app.js` | `_renderSheetView`: call `TabsModule.render()` after snapshot to trigger badge (with `_dragSourceIdx` guard) | T7 |
+| T10 | `app.js` | `UploadModule._upload` / `removeFile` / `_remove`: add `CopiesModule.sync()` / `reset()` + modebar sync (§10.1) | T3 |
 
 ---
 

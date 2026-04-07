@@ -2296,6 +2296,35 @@ kbd {
   color:            var(--color-accent);
 }
 
+/* ── Copies widget (inside tab bar) ────────────────────────── */
+.copies-widget {
+  display:     flex;
+  align-items: center;
+  gap:         6px;
+  margin-left: auto;   /* push to right side of tab bar */
+  padding:     0 8px;
+  flex-shrink: 0;
+}
+
+/* ── Landscape tab badge ───────────────────────────────────── */
+.file-tab-landscape-badge {
+    font-size:      14px;
+    line-height:    1;
+    flex-shrink:    0;
+    cursor:         default;
+    filter:         saturate(1.2);
+    transition:     transform 0.15s ease;
+}
+.file-tab-landscape-badge:hover {
+    transform: scale(1.25);
+}
+
+/* ── Drag-over highlight for tab reorder ───────────────────── */
+.file-tab.drag-over {
+    border-color:     var(--color-accent);
+    background:       rgba(99, 102, 241, 0.15);
+}
+
 /* ── Body: thumb panel + preview panel ─────────────────────── */
 .app-body {
   display:          flex;

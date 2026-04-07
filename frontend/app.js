@@ -31,7 +31,12 @@ const AppState = {
     isUserTypingPageRange: false,
     printMode:             'duplex',   // 'duplex' | 'booklet'
     viewMode:              'page',     // 'page' | 'sheet'
-    landscapeMode:         'together', // 'separate' | 'together'
+    get landscapeMode() {
+        return this.activeFile?.landscapeMode ?? 'together';
+    },
+    set landscapeMode(value) {
+        if (this.activeFile) this.activeFile.landscapeMode = value;
+    },
 
     // Multi-file
     files:           [],   // FileEntry[]
@@ -68,6 +73,9 @@ const AppState = {
             blankAbsorbedBy:  new Map(), // populated by buildSheetLayout; reset each render cycle
             _togetherRotations:      new Set(), // Set<pageNum> — pages auto-rotated by together mode
             _originalOrientationMap: null,      // Map<pageNum, bool> | null — pre-injection snapshot
+            landscapeMode: 'together',   // 'separate' | 'together' — per-file, default matches current global default
+            copies:        1,            // int 1–99 — per-file copy count
+            collate:       true,         // bool — per-file collate setting
         };
     },
 
@@ -1203,6 +1211,15 @@ const UploadModule = {
             document.getElementById('page-range-section')?.classList.remove('hidden');
             PrintModule.updateButton();
             TabsModule.render();
+            // Sync copies widget + modebar to newly active (uploaded) file
+            CopiesModule.sync();
+            const modeBarUpload = document.getElementById('sheet-view-modebar');
+            if (modeBarUpload) {
+                const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+                modeBarUpload.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.lsmode === lsMode);
+                });
+            }
             showToast(`Đã tải: ${entry.name} (${entry.totalPageCount} trang)`, 'success');
             StepIndicatorModule.update();
             SRModule.announce(`Đã tải file ${entry.name}, ${entry.totalPageCount} trang`);
@@ -1228,6 +1245,7 @@ const UploadModule = {
             if (typeof PreviewPanelModule !== 'undefined') {
                 PreviewPanelModule.clear();
             }
+            CopiesModule.reset();   // reset widget to defaults — no files remain
         } else {
             // Still have files — refresh UI to show new active file
             const active = AppState.activeFile;
@@ -1240,6 +1258,15 @@ const UploadModule = {
             ThumbStripModule.render();
             if (typeof PreviewPanelModule !== 'undefined') {
                 PreviewPanelModule.render(AppState.activeFile);
+            }
+            // Sync copies widget + modebar to new active file
+            CopiesModule.sync();
+            const modeBarRemove = document.getElementById('sheet-view-modebar');
+            if (modeBarRemove) {
+                const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+                modeBarRemove.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.lsmode === lsMode);
+                });
             }
         }
         PrintModule.updateButton();
@@ -1260,6 +1287,7 @@ const UploadModule = {
         if (typeof PreviewPanelModule !== 'undefined') {
             PreviewPanelModule.clear();
         }
+        CopiesModule.reset();   // clear widget — no files remain
         PrintModule.updateButton();
         StepIndicatorModule.update();
     },
@@ -1269,6 +1297,8 @@ const UploadModule = {
 // TabsModule — File tab strip for multi-file support
 // ═══════════════════════════════════════════════════════════════════
 const TabsModule = {
+    _dragSourceIdx: null,   // index of tab being dragged (null = no drag)
+
     init() {
         const addBtn = document.getElementById('file-tab-add-btn');
         if (addBtn) {
@@ -1293,10 +1323,31 @@ const TabsModule = {
             const tab = document.createElement('div');
             tab.className = 'file-tab' + (idx === AppState.activeFileIndex ? ' active' : '');
             tab.title = file.name;
+            tab.draggable = true;
+
+            // ── Landscape badge ──
+            const isAllLandscape = (
+                file._originalOrientationMap != null &&
+                file.totalPageCount > 0 &&
+                (() => {
+                    for (let p = 1; p <= file.totalPageCount; p++) {
+                        if (file._originalOrientationMap.get(p) !== true) return false;
+                    }
+                    return true;
+                })()
+            );
 
             const name = document.createElement('span');
             name.className   = 'file-tab-name';
             name.textContent = file.name.length > 20 ? file.name.slice(0, 18) + '…' : file.name;
+
+            if (isAllLandscape) {
+                const badge = document.createElement('span');
+                badge.className = 'file-tab-landscape-badge';
+                badge.textContent = '🌄';
+                badge.title = 'File này toàn trang ngang — tự động lật theo cạnh ngắn khi in 2 mặt';
+                tab.appendChild(badge);
+            }
             tab.appendChild(name);
 
             const closeBtn = document.createElement('button');
@@ -1314,8 +1365,58 @@ const TabsModule = {
                 this.setActive(idx);
             });
 
+            // ── Drag-to-reorder handlers ──
+            tab.addEventListener('dragstart', (e) => {
+                this._dragSourceIdx = idx;
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            tab.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                tab.classList.add('drag-over');
+            });
+            tab.addEventListener('dragleave', () => {
+                tab.classList.remove('drag-over');
+            });
+            tab.addEventListener('drop', (e) => {
+                e.preventDefault();
+                tab.classList.remove('drag-over');
+                if (this._dragSourceIdx !== null && this._dragSourceIdx !== idx) {
+                    this._reorderFiles(this._dragSourceIdx, idx);
+                }
+                this._dragSourceIdx = null;
+            });
+            tab.addEventListener('dragend', () => {
+                this._dragSourceIdx = null;
+                document.querySelectorAll('.file-tab').forEach(t => t.classList.remove('drag-over'));
+            });
+
             tabList.appendChild(tab);
         });
+    },
+
+    _reorderFiles(fromIdx, toIdx) {
+        const files = AppState.files;
+        const activeFile = AppState.activeFile;  // capture BEFORE splice — index still valid
+        const [moved] = files.splice(fromIdx, 1);
+        files.splice(toIdx, 0, moved);
+
+        // Keep active file pointing to the same file object
+        AppState.activeFileIndex = files.indexOf(activeFile);
+
+        // Sync copies widget + modebar to (possibly moved) active file
+        CopiesModule.sync();
+        const modeBar = document.getElementById('sheet-view-modebar');
+        if (modeBar) {
+            const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+            modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.lsmode === lsMode);
+            });
+        }
+
+        this.render();
+        ThumbStripModule.render();
+        PreviewPanelModule.render(AppState.activeFile);
     },
 
     // Switch to file at given index — updates tabs, thumbs, and preview panel
@@ -1331,6 +1432,18 @@ const TabsModule = {
             if (fnEl) fnEl.textContent = active.name;
             if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
         }
+
+        // Sync modebar to new active file's landscapeMode (§9)
+        const modeBar = document.getElementById('sheet-view-modebar');
+        if (modeBar) {
+            const lsMode = AppState.activeFile?.landscapeMode ?? 'together';
+            modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.lsmode === lsMode);
+            });
+        }
+
+        // Sync copies widget (§10)
+        CopiesModule.sync();
 
         this.render();
         ThumbStripModule.render();
@@ -2010,11 +2123,8 @@ const ContextMenu = {
 // CopiesModule — Copies counter + collate toggle
 // ═══════════════════════════════════════════════════════════════════
 const CopiesModule = {
-    _copies: 1,
-    _collate: true,
-
-    get copies() { return this._copies; },
-    get collate() { return this._collate; },
+    get copies()  { return AppState.activeFile?.copies  ?? 1;    },
+    get collate() { return AppState.activeFile?.collate ?? true;  },
 
     init() {
         const dec = document.getElementById('copies-dec');
@@ -2023,25 +2133,43 @@ const CopiesModule = {
         if (!dec || !inc) return;
 
         dec.addEventListener('click', () => {
-            if (this._copies > 1) { this._copies--; this._update(); }
+            const f = AppState.activeFile;
+            if (f && f.copies > 1) { f.copies--; this._update(); }
         });
         inc.addEventListener('click', () => {
-            if (this._copies < 99) { this._copies++; this._update(); }
+            const f = AppState.activeFile;
+            if (f && f.copies < 99) { f.copies++; this._update(); }
         });
         chk?.addEventListener('change', (e) => {
-            this._collate = e.target.checked;
+            const f = AppState.activeFile;
+            if (f) f.collate = e.target.checked;
         });
     },
 
     _update() {
         const el = document.getElementById('copies-display');
-        if (el) el.textContent = this._copies;
+        if (el) el.textContent = this.copies;
         // Show collate option only when copies > 1
         const collateLabel = document.getElementById('collate-label');
-        if (collateLabel) collateLabel.style.display = this._copies > 1 ? 'flex' : 'none';
+        if (collateLabel) collateLabel.style.display = this.copies > 1 ? 'flex' : 'none';
     },
 
-    reset() { this._copies = 1; this._collate = true; this._update(); },
+    setCopies(n) {
+        const f = AppState.activeFile;
+        if (f) { f.copies = Math.min(99, Math.max(1, n || 1)); this._update(); }
+    },
+
+    sync() {
+        const chk = document.getElementById('collate-check');
+        if (chk) chk.checked = AppState.activeFile?.collate ?? true;
+        this._update();
+    },
+
+    reset() {
+        const f = AppState.activeFile;
+        if (f) { f.copies = 1; f.collate = true; }
+        this._update();
+    },
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2109,8 +2237,8 @@ const HistoryModule = {
 
         // Restore copies
         if (item.copies) {
-            CopiesModule._copies = item.copies;
-            CopiesModule._update();
+            CopiesModule.setCopies(item.copies);
+            // _update() is called inside setCopies — no extra call needed
         }
 
         // Restore page range
@@ -2257,7 +2385,7 @@ const PrintModule = {
                 // Compute duplexSide for together mode (spec §5.8)
                 let duplexSide = null;  // default: null = no override → backend uses printer default
                 // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for all non-together cases)
-                if (AppState.landscapeMode === 'together' && file._originalOrientationMap != null) {
+                if (file.landscapeMode === 'together' && file._originalOrientationMap != null) {
                     let allLandscape = true;
                     for (let p = 1; p <= file.totalPageCount; p++) {
                         if (file._originalOrientationMap.get(p) !== true) {
@@ -2274,8 +2402,8 @@ const PrintModule = {
                     mode:             modeCode,
                     pageRange,
                     singleSidedPages: file.singleSidedPages.size > 0 ? Array.from(file.singleSidedPages) : null,
-                    copies:           CopiesModule.copies,
-                    collate:          CopiesModule.collate,
+                    copies:           file.copies,
+                    collate:          file.collate,
                     pageOrder:        (() => {
                         const effective = buildEffectivePageOrder(file);
                         return effective.length > 0 ? effective : null;
@@ -2324,8 +2452,8 @@ const PrintModule = {
                     pages:       file.selectedPages.size,
                     pageRange,
                     mode:        mode,
-                    copies:      CopiesModule.copies,
-                    collate:     CopiesModule.collate,
+                    copies:      file.copies,
+                    collate:     file.collate,
                 });
 
                 if (!isLast) {
@@ -3408,6 +3536,12 @@ const PreviewPanelModule = {
             for (const p of fileEntry._togetherRotations) {
                 orientationMap.set(p, false);  // CCW90 makes landscape pages portrait-sized
             }
+
+            // [7] Update tab badge immediately if snapshot was just taken (drag guard: never
+            // rebuild tabs mid-drag — it would destroy the dragged element).
+            if (fileEntry._originalOrientationMap != null && TabsModule._dragSourceIdx == null) {
+                TabsModule.render();
+            }
         }
         // ── END TOGETHER MODE ────────────────────────────────────────────────────
 
@@ -4045,47 +4179,41 @@ const ThumbStripModule = {
             return;
         }
 
-        // Render all files — build DOM first, then render visible
-        AppState.files.forEach((f, fileIndex) => {
-            const divider = document.createElement('div');
-            divider.className   = 'thumb-file-divider';
-            divider.textContent = f.name;
-            divider.title       = f.name;
-            this._container.appendChild(divider);
+        // Render only the active file — single-file thumbstrip
+        const f = AppState.activeFile;
+        if (!f) return;
 
-            for (let p = 1; p <= f.totalPageCount; p++) {
-                const item = document.createElement('div');
-                item.className        = 'thumb-item';
-                item.dataset.fileId   = f.id;
-                item.dataset.page     = p;
-                item.dataset.fileIndex = fileIndex;
-                item.setAttribute('tabindex', '0');
-                item.setAttribute('role', 'button');
-                item.setAttribute('aria-label', `File ${f.name}, trang ${p}`);
+        // No file-name divider — single file only
+        for (let p = 1; p <= f.totalPageCount; p++) {
+            const item = document.createElement('div');
+            item.className        = 'thumb-item';
+            item.dataset.fileId   = f.id;
+            item.dataset.page     = p;
+            item.dataset.fileIndex = AppState.activeFileIndex;
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('role', 'button');
+            item.setAttribute('aria-label', `Trang ${p}`);
 
-                const img   = document.createElement('img');
-                img.className = 'thumb-img';
-                img.alt       = '';
-                img.draggable = false;
-                const label   = document.createElement('div');
-                label.className   = 'thumb-item-label';
-                label.textContent = p;
+            const img   = document.createElement('img');
+            img.className = 'thumb-img';
+            img.alt       = '';
+            img.draggable = false;
+            const label   = document.createElement('div');
+            label.className   = 'thumb-item-label';
+            label.textContent = p;
 
-                item.appendChild(img);
-                item.appendChild(label);
+            item.appendChild(img);
+            item.appendChild(label);
 
-                if (fileIndex === AppState.activeFileIndex && p === 1) {
-                    item.classList.add('active');
-                }
+            if (p === 1) item.classList.add('active');
 
-                item.addEventListener('click', () => this._onThumbClick(fileIndex, p));
-                item.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    ContextMenu.show(e, p);
-                });
-                this._container.appendChild(item);
-            }
-        });
+            item.addEventListener('click', () => this._onThumbClick(AppState.activeFileIndex, p));
+            item.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                ContextMenu.show(e, p);
+            });
+            this._container.appendChild(item);
+        }
 
         // rAF to ensure layout, then render visible thumbs
         requestAnimationFrame(() => this._renderVisible());
