@@ -1399,6 +1399,8 @@ const TabsModule = {
 
     _reorderFiles(fromIdx, toIdx) {
         const files = AppState.files;
+        // Bounds guard: indices must be valid after any async/removal that could shift them
+        if (fromIdx < 0 || fromIdx >= files.length || toIdx < 0 || toIdx >= files.length) return;
         const activeFile = AppState.activeFile;  // capture BEFORE splice — index still valid
         const [moved] = files.splice(fromIdx, 1);
         files.splice(toIdx, 0, moved);
@@ -2243,6 +2245,12 @@ const HistoryModule = {
         if (item.copies) {
             CopiesModule.setCopies(item.copies);
             // _update() is called inside setCopies — no extra call needed
+        }
+
+        // Restore collate (per-file, stored in history since 70336ce)
+        if (item.collate !== undefined) {
+            const f = AppState.activeFile;
+            if (f) { f.collate = item.collate; CopiesModule.sync(); }
         }
 
         // Restore page range
@@ -4402,12 +4410,12 @@ const ViewModeModule = {
                 if (!btn) return;
                 const newMode = btn.dataset.lsmode;
 
-                // §5.4: Teardown together-mode state for ALL files before switching away.
-                // Non-active files can also hold stale CCW90 from a previous render.
+                // §5.4: Teardown together-mode state for the ACTIVE file only before switching.
+                // Only this file's landscapeMode is changing — non-active files keep their own
+                // state. Their step [0] defensive teardown handles cleanup when they next render.
                 if (AppState.landscapeMode === 'together' && newMode !== 'together') {
-                    for (const f of AppState.files) {
-                        _teardownTogether(f);
-                    }
+                    const activeFile = AppState.activeFile;
+                    if (activeFile) _teardownTogether(activeFile);
                 }
 
                 AppState.landscapeMode = newMode;
@@ -4428,13 +4436,13 @@ const ViewModeModule = {
     // Call this when printMode changes while in sheet view
     onPrintModeChange() {
         if (AppState.viewMode === 'sheet' && AppState.activeFile) {
-            // §5.4b: Teardown together-mode state when switching away from duplex.
+            // §5.4b: Teardown together-mode state for ALL files before switching print mode.
             // _renderBookletSheetView has no step [0] defensive teardown, so stale CCW90
             // injected by _renderSheetView would persist into the booklet render.
-        if (fileEntry.landscapeMode === 'together') {
-                for (const f of AppState.files) {
-                    if (f._togetherRotations?.size > 0) _teardownTogether(f);
-                }
+            // Unconditional: any file with together-mode rotations must be cleaned regardless
+            // of whether the active file is in together mode.
+            for (const f of AppState.files) {
+                if (f._togetherRotations?.size > 0) _teardownTogether(f);
             }
             PreviewPanelModule.render(AppState.activeFile);
         }
