@@ -247,8 +247,9 @@ function buildSheetLayout(fileEntry, printMode, orientationMap = null, landscape
 
     if (printMode === 'simplex') {
         // Each page = its own sheet (front only)
+        // BUG-6 fix: include isLandscape so _renderSheetView uses sheet-faces-col for landscape pages
         pages.forEach((p, i) => {
-            sheets.push({ sheetIndex: i + 1, front: p, back: null });
+            sheets.push({ sheetIndex: i + 1, front: p, back: null, isLandscape: orientationMap?.get(p) ?? false });
         });
 
     } else if (printMode === 'booklet') {
@@ -3199,12 +3200,6 @@ const PreviewPanelModule = {
         // Invariant 3: reset blankAbsorbedBy before each rebuild
         if (fileEntry) fileEntry.blankAbsorbedBy = new Map();
 
-        // Invariant 8: coerce unsupported landscapeMode at entry
-        if (fileEntry && fileEntry.landscapeMode === 'together') {
-            console.warn('[render] landscapeMode="together" unsupported — forcing "separate"');
-            fileEntry.landscapeMode = 'separate';
-        }
-
         if (this._viewMode === 'sheet') {
             return this._renderSheetView(fileEntry); // Invariant 10: return Promise
         }
@@ -3478,8 +3473,11 @@ const PreviewPanelModule = {
                 facesRow.appendChild(frontGroup);
                 facesRow.appendChild(backGroup);
             } else {
-                // Duplex or Booklet: front face + optional back face
-                const frontFace = makeFace(sheet.front, `Mặt trước · Trang ${sheet.front}`);
+                // Duplex or simplex: front face + optional back face
+                // BUG-3 fix: pass isLandscapeHint to front face so user-blank fronts (front===0)
+                // get correct landscape aspect-ratio when the sheet is landscape
+                const frontIsLandscape = sheet.isLandscape ?? (orientationMap?.get(sheet.front) ?? false);
+                const frontFace = makeFace(sheet.front, `Mặt trước · Trang ${sheet.front}`, frontIsLandscape);
                 // Add page-curl hint on front card (duplex always has back)
                 const frontCard = frontFace.querySelector('.preview-page-card');
                 if (frontCard) frontCard.classList.add('with-curl');
@@ -3549,40 +3547,6 @@ const PreviewPanelModule = {
 
         this._container.scrollTop = 0;
         requestAnimationFrame(() => this._renderVisible());
-    },
-
-    // After sheet DOM is built, check each sheet's page orientations via pdf.js.
-    // If front or back page is landscape → switch facesRow to column layout.
-    async _applyLandscapeStacking(fileEntry, sheets) {
-        if (!fileEntry?.pdfDoc) return;
-        const pdfDoc   = fileEntry.pdfDoc;
-        const fileId   = fileEntry.id;
-
-        // Fetch orientations in parallel (was sequential await)
-        const sheetsToCheck = sheets.filter(s => !s.isBooklet && s.front);
-        const landscapeResults = await Promise.all(
-            sheetsToCheck.map(sheet =>
-                pdfDoc.getPage(sheet.front).then(page => {
-                    const rot = (fileEntry.pageRotations?.get(sheet.front) ?? null);
-                    const rotDeg = rot ? ({ CW90: 90, CCW90: 270, Rotate180: 180, FlipH: 0, FlipV: 0 }[rot] ?? 0) : 0;
-                    const vp = page.getViewport({ scale: 1, rotation: rotDeg });
-                    return { sheet, isLandscape: vp.width > vp.height };
-                }).catch(() => ({ sheet, isLandscape: false }))
-            )
-        );
-
-        // Guard: make sure we're still rendering the same file
-        if (this._currentFileId !== fileId) return;
-
-        for (const { sheet, isLandscape } of landscapeResults) {
-            if (!isLandscape) continue;
-            const sheetCard = this._sheetEls.get(sheet.sheetIndex);
-            if (!sheetCard) continue;
-            const facesRow = sheetCard.querySelector('.sheet-faces-row');
-            if (!facesRow) continue;
-            facesRow.classList.remove('sheet-faces-row');
-            facesRow.classList.add('sheet-faces-col');
-        }
     },
 
     // Render pages currently visible (+ 2 screens lookahead)
