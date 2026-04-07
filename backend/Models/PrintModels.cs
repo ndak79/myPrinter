@@ -45,6 +45,8 @@ namespace PrinterApp.Models
         /// Null or empty means no rotations.
         /// </summary>
         public List<PageRotation>? PageRotations { get; set; }
+        public string? DuplexSide    { get; set; }  // null | "ShortEdge" — null = no override (printer default); "LongEdge" is never sent explicitly
+        public string? ManualFlipDir { get; set; }  // null | "ShortEdge" — null = use backend heuristic
     }
 
     public enum RotationDirection
@@ -120,6 +122,12 @@ namespace PrinterApp.Models
         /// Không bắt buộc, nhưng rất hữu ích cho debug & UI.
         /// </summary>
         public ManualDuplexPlan? ManualPlan { get; set; }
+
+        /// <summary>
+        /// Duplex side to use for auto-duplex print. null = use printer default.
+        /// "LongEdge" (flip along long edge, standard portrait) or "ShortEdge" (flip along short edge, landscape booklets).
+        /// </summary>
+        public string? DuplexSide { get; set; }  // null = no override → PrintWithSumatra emits no -print-settings arg
     }
 
     public class FlipInstruction
