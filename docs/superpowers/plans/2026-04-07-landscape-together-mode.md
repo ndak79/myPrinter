@@ -37,8 +37,8 @@ In `backend/Models/PrintModels.cs`, inside the `PrintRequest` class, add two nul
 
 ```csharp
 // After line 47 (List<PageRotation>? PageRotations ...)
-public string? DuplexSide    { get; set; }  // "LongEdge" | "ShortEdge" | null => LongEdge
-public string? ManualFlipDir { get; set; }  // "LongEdge" | "ShortEdge" | null => auto-detect
+public string? DuplexSide    { get; set; }  // null | "ShortEdge" — null = no override (printer default); "LongEdge" is never sent explicitly
+public string? ManualFlipDir { get; set; }  // null | "ShortEdge" — null = use backend heuristic
 ```
 
 - [ ] **Step 2: Add `DuplexSide` nullable property to `PrintJobState`**
@@ -604,10 +604,14 @@ render(fileEntry) {
     if (fileEntry) fileEntry.blankAbsorbedBy = new Map();
 
     // §5.0: Teardown together-mode CCW90 when leaving sheet view.
-    // _renderSheetView is never called in page view, so its defensive teardown (step [0])
-    // would not fire — stale CCW90 rotations would show as badges in page view.
-    if (this._viewMode !== 'sheet' && fileEntry?._togetherRotations?.size > 0) {
-        _teardownTogether(fileEntry);
+    // Loop ALL files (not just fileEntry) — non-active files can also hold stale
+    // CCW90 from a previous together-mode render (e.g. user viewed two files in
+    // sheet+together, then switched to page view). Tearing down only fileEntry
+    // leaves the other file with stale rotations sent to backend on next print.
+    if (this._viewMode !== 'sheet') {
+        for (const f of AppState.files) {
+            if (f._togetherRotations?.size > 0) _teardownTogether(f);
+        }
     }
 
     if (this._viewMode === 'sheet') {
@@ -842,7 +846,7 @@ In `frontend/app.js`, in the `_startPrint` method, update the `body` object cons
 
 ```javascript
 // Compute duplexSide for together mode
-let duplexSide = 'LongEdge';  // default for all cases
+let duplexSide = null;  // default: null = no override → backend uses printer default (spec §5.8: 'LongEdge' is NEVER sent explicitly)
 if (AppState.landscapeMode === 'together' && file._originalOrientationMap != null) {
     let allLandscape = true;
     for (let p = 1; p <= file.totalPageCount; p++) {
@@ -869,7 +873,7 @@ const body = {
     pageRotations:    file.pageRotations.size > 0
         ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
         : null,
-    duplexSide,       // NEW: 'LongEdge' | 'ShortEdge'
+    duplexSide,       // NEW: null | 'ShortEdge'  (null = no override; 'LongEdge' is never sent explicitly)
     manualFlipDir:    duplexSide,  // NEW: same value; maps to PrintRequest.ManualFlipDir on backend
 };
 ```
@@ -884,7 +888,7 @@ Note: The `duplexSide` computation block must go BEFORE the `const body = {...}`
 4. Click "In" (print button)
 5. Inspect the POST request to `/api/print` → look at the request body
 6. Expected: `"duplexSide": "ShortEdge"` and `"manualFlipDir": "ShortEdge"` in the JSON body
-7. For a mixed or all-portrait document: expected `"duplexSide": "LongEdge"` and `"manualFlipDir": "LongEdge"`
+7. For a mixed or all-portrait document: expected `"duplexSide": null` (absent or null) and `"manualFlipDir": null` — **NOT** `"LongEdge"` (that would break separate-mode and simplex prints)
 
 - [ ] **Step 3: Commit**
 
@@ -922,7 +926,7 @@ Note: `§5.1` (warn-guard removal in `buildSheetLayout`) was done in Task 6, so 
 4. Switch to separate mode → orientation-grouped layout returns
 5. Switch back to together → CCW90 injection returns
 6. For an all-landscape PDF → print → verify backend receives `duplexSide: "ShortEdge"`
-7. For a mixed PDF → print → verify backend receives `duplexSide: "LongEdge"`
+7. For a mixed PDF → print → verify backend receives `duplexSide: null` (not `"LongEdge"`)
 
 - [ ] **Step 3: Commit**
 
@@ -969,4 +973,4 @@ All spec sections covered. ✓
 - `_originalOrientationMap` — `null` initial (Task 5), `Map<number, boolean>` after snapshot (Task 7), reset to `null` in teardown (Task 5) ✓
 - `DuplexSide` on `PrintJobState` — `string?` nullable (Task 1), set as-is `= duplexSide` (Task 4), passed as `duplexSide: jobState.DuplexSide` (Task 4) ✓
 - `duplexSide` in `PrintWithSumatra` — switch on `"ShortEdge"` / `"LongEdge"` / `_` (Task 3) ✓
-- Frontend sends `duplexSide: 'LongEdge' | 'ShortEdge'` (Task 11) — backend `Enum.TryParse<FlipDirection>` matches enum values `LongEdge`, `ShortEdge` exactly ✓
+- Frontend sends `duplexSide: null | 'ShortEdge'` (Task 11) — null means no override; 'ShortEdge' maps to backend switch case `"ShortEdge"` in `PrintWithSumatra` ✓

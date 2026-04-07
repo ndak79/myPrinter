@@ -1,6 +1,6 @@
 # Spec: Landscape Together Mode
 **Date:** 2026-04-07
-**Status:** Final (Round 7 reviewed)
+**Status:** Final (Round 8 reviewed)
 **Scope:** `frontend/app.js`, `backend/Models/PrintModels.cs`, `backend/Services/PrintAlgorithmService.cs`, `backend/Services/IWordInteropService.cs`, `backend/Services/WordInteropService.cs`, `backend/BackendStartup.cs`
 
 ---
@@ -831,7 +831,7 @@ _teardownTogether (on mode switch back to separate):
 | | Add `_togetherRotations` and `_originalOrientationMap` to `createFileEntry()` |
 | | Add `_teardownTogether(fileEntry)` helper function |
 | | `PreviewPanelModule.render()`: call `_teardownTogether` when switching away from sheet view (§5.0) |
-| | `_renderSheetView`: add defensive teardown (step [0]), reset `_blobQueue`/`_activeBlobRenders` in cleanup, add snapshot + Step A + Step B after cache-fill, add guard [2b] after step [2] |
+| | `_renderSheetView`: add defensive teardown (step [0]), reset `_blobQueue`/`_activeBlobRenders` in cleanup, add snapshot + Step A + Step B after cache-fill, add guard [6] after step [3] (dual async guard: `_currentFileId` + `landscapeMode` re-check) |
 | | Modebar click handler: call `_teardownTogether` (all files) before mode switch (§5.4) |
 | | Print-mode switch handler: call `_teardownTogether` (all files) on `duplex→booklet` switch while together mode active (§5.4b) |
 | | `_renderSheetPage`: badge suppression for `_togetherRotations` pages (§5.5) |
