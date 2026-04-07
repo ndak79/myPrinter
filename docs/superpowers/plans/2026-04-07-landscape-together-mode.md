@@ -538,8 +538,13 @@ After line 3305 (`if (this._currentFileId !== fileEntry.id) return;`), insert th
                 fileEntry._originalOrientationMap = intrinsicMap;
             }
 
-            // [6 - NEW] Guard after intrinsic detection await
+            // [6 - NEW] Guard after intrinsic detection await — two checks required:
+            // 1. File switch: another file became active during await
+            // 2. Mode switch: landscapeMode changed to 'separate' during await.
+            //    Without check 2, Render 1 would inject CCW90 in separate mode after
+            //    teardown has already run, leaving stale rotations until the next render.
             if (this._currentFileId !== fileEntry.id) return;
+            if (AppState.landscapeMode !== 'together') return;
 
             // [4] INJECT CCW90 for intrinsically landscape pages not already manually rotated
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
@@ -587,6 +592,7 @@ git commit -m "feat(frontend): implement together-mode CCW90 injection in _rende
 **Files:**
 - Modify: `frontend/app.js:3199-3204` (`PreviewPanelModule.render`)
 - Modify: `frontend/app.js:4151-4159` (modebar click handler)
+- Modify: `frontend/app.js` (print-mode switch handler — search `mode-select`)
 
 - [ ] **Step 1: Add teardown in `PreviewPanelModule.render()` on sheet→page switch**
 
@@ -612,40 +618,71 @@ render(fileEntry) {
 
 - [ ] **Step 2: Add teardown in modebar click handler**
 
-In `frontend/app.js`, update the modebar click handler (lines 4151-4159):
+  In `frontend/app.js`, update the modebar click handler (lines 4151-4159).
+  **Loop ALL files** (not just `activeFile`) — non-active files can hold stale CCW90
+  from a previous together-mode render:
 
-```javascript
-modeBar.addEventListener('click', e => {
-    const btn = e.target.closest('[data-lsmode]');
-    if (!btn) return;
-    const newMode = btn.dataset.lsmode;
+  ```javascript
+  modeBar.addEventListener('click', e => {
+      const btn = e.target.closest('[data-lsmode]');
+      if (!btn) return;
+      const newMode = btn.dataset.lsmode;
 
-    // §5.4: Teardown together-mode state before switching away from together.
-    if (AppState.landscapeMode === 'together' && newMode !== 'together') {
-        if (AppState.activeFile) _teardownTogether(AppState.activeFile);
-    }
+      // §5.4: Teardown together-mode state for ALL files before switching away.
+      // Non-active files can also hold stale CCW90 from a previous render.
+      if (AppState.landscapeMode === 'together' && newMode !== 'together') {
+          for (const f of AppState.files) {
+              _teardownTogether(f);
+          }
+      }
 
-    AppState.landscapeMode = newMode;
-    modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.lsmode === AppState.landscapeMode);
-    });
-    PreviewPanelModule.render(AppState.activeFile);
-});
-```
+      AppState.landscapeMode = newMode;
+      modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.lsmode === AppState.landscapeMode);
+      });
+      PreviewPanelModule.render(AppState.activeFile);
+  });
+  ```
+
+- [ ] **Step 2b: Add teardown in print-mode switch handler (§5.4b)**
+
+  In `frontend/app.js`, locate the click handler for the print-mode toggle buttons.
+  Search for `mode-select` — there is exactly one handler that reads this value and
+  changes `AppState.printMode`. Insert the teardown block **before** the call to
+  `PreviewPanelModule.render()` in that handler:
+
+  ```javascript
+  // §5.4b: Teardown together-mode state when switching away from duplex.
+  // _renderBookletSheetView has no step [0] defensive teardown, so stale CCW90
+  // injected by _renderSheetView would persist into the booklet render.
+  if (AppState.landscapeMode === 'together') {
+      for (const f of AppState.files) {
+          if (f._togetherRotations?.size > 0) _teardownTogether(f);
+      }
+  }
+  // (followed by the existing PreviewPanelModule.render() call)
+  ```
+
+  **Note:** The guard `f._togetherRotations?.size > 0` makes this idempotent — if
+  there is nothing to tear down (e.g. switching booklet→duplex), the loop is a no-op.
+  The reverse direction (booklet→duplex) is intentionally NOT excluded: the guard
+  makes it harmless, and excluding it would require reading the old printMode value.
 
 - [ ] **Step 3: Manual verification**
 
 1. Upload a PDF with landscape pages, switch to sheet view, enable together mode
-2. Switch to "Separate" mode in the modebar → landscape pages should return to original landscape orientation (no stale CCW90)
-3. Switch back to "Together" mode → CCW90 re-injected correctly
-4. Switch from sheet view to page view (click "Page" view toggle) → page view should show original orientation (no stale CCW90 badges)
+2. Switch to \"Separate\" mode in the modebar → landscape pages should return to original landscape orientation (no stale CCW90)
+3. Switch back to \"Together\" mode → CCW90 re-injected correctly
+4. Switch from sheet view to page view (click \"Page\" view toggle) → page view should show original orientation (no stale CCW90 badges)
 5. Switch back to sheet view → together mode active again, CCW90 re-injected
+6. (§5.4b) With together mode + sheet view active, switch print mode from duplex to booklet → booklet preview should show original (unrotated) landscape pages, no CCW90 artefacts
+7. (§5.4b) Switch print mode back from booklet to duplex → together mode re-injects CCW90 correctly on next render
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/app.js
-git commit -m "feat(frontend): add together-mode teardown in render() view-switch and modebar handler"
+git commit -m "feat(frontend): add together-mode teardown in render(), modebar, and printMode handlers"
 ```
 
 ---

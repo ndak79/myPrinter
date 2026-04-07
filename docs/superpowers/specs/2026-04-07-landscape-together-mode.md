@@ -1,6 +1,6 @@
 # Spec: Landscape Together Mode
 **Date:** 2026-04-07
-**Status:** Final (Round 4 reviewed)
+**Status:** Final (Round 7 reviewed)
 **Scope:** `frontend/app.js`, `backend/Models/PrintModels.cs`, `backend/Services/PrintAlgorithmService.cs`, `backend/Services/IWordInteropService.cs`, `backend/Services/WordInteropService.cs`, `backend/BackendStartup.cs`
 
 ---
@@ -39,6 +39,11 @@ After rotation:
 
 ### 3.1 New fields on FileEntry
 
+**Both fields MUST be added to `createFileEntry()` at construction time** (Task 5 in the plan).
+Code that iterates `_togetherRotations` (step [4], §5.4, `_teardownTogether`) assumes it is
+always a `Set`, never `undefined`. If either field is absent, a `TypeError` crash results
+on the first together-mode render or mode switch.
+
 Added alongside the existing `pageRotations` field at FileEntry construction:
 
 ```javascript
@@ -72,12 +77,14 @@ Remove the `(§4.8)` comment — together mode is now fully supported.
 ### 3.3 New POST body fields in `_startPrint()`
 
 ```
-duplexSide:    'LongEdge' | 'ShortEdge'
-manualFlipDir: 'LongEdge' | 'ShortEdge'   (maps to PrintRequest.ManualFlipDir on backend)
+duplexSide:    null | 'ShortEdge'
+manualFlipDir: null | 'ShortEdge'   (maps to PrintRequest.ManualFlipDir on backend)
 ```
 
-Defaults to `'LongEdge'` for all existing cases. `'ShortEdge'` is sent only when
-together mode is active and the entire document is landscape (see §5.8).
+Both default to `null` (no override — backend uses printer default). `'ShortEdge'` is
+sent only when together mode is active and the entire document is intrinsically landscape
+(see §5.8). `'LongEdge'` is never sent explicitly — when portrait/mixed, `null` is sent
+and the backend's heuristic naturally selects `LongEdge`.
 
 ---
 
@@ -110,12 +117,16 @@ The page-view renderer reads `fileEntry.pageRotations` directly and would show s
 CCW90 injections as `-90°` badges the user never requested.
 
 Add this teardown call in `PreviewPanelModule.render()`, after the `blankAbsorbedBy`
-reset and **before** the viewMode dispatch:
+reset and **before** the viewMode dispatch. Tear down **all files** (not just the
+active file), because a non-active file that had together-mode CCW90 injected would
+retain stale rotations even after the view switches away from sheet view:
 
 ```javascript
 // In PreviewPanelModule.render(), before the viewMode dispatch:
-if (this._viewMode !== 'sheet' && fileEntry?._togetherRotations?.size > 0) {
-    _teardownTogether(fileEntry);
+if (this._viewMode !== 'sheet') {
+    for (const f of AppState.files) {
+        if (f._togetherRotations?.size > 0) _teardownTogether(f);
+    }
 }
 ```
 
@@ -140,8 +151,7 @@ group.
 ### 5.2 `_renderSheetView` — execution sequence for together mode
 
 The existing orientation cache-fill loop must run **before** injection so that the
-original landscape/portrait identity of each page is known. The full sequence when
-`AppState.landscapeMode === 'together'`:
+original landscape/portrait identity of each page is known. The full sequence:
 
 ```
 [0] DEFENSIVE TEARDOWN (at top of _renderSheetView, before all other logic):
@@ -166,7 +176,16 @@ original landscape/portrait identity of each page is known. The full sequence wh
     // This guard protects steps [3]–[4] from mutating a stale fileEntry.
     // Step [6] adds a SECOND guard after step [5]'s await.
 
-[3] SNAPSHOT (together mode only, runs after [2b]):
+// ── TOGETHER MODE ONLY ──────────────────────────────────────────────────────
+// if AppState.landscapeMode === 'together':
+//
+// CRITICAL: This if-block is REQUIRED. Without it, steps [3]–[5] would run in
+// separate mode, injecting CCW90 into separate-mode renders, triggering step [0]'s
+// defensive teardown on the next render, which clears _togetherRotations, causing
+// step [3] to re-snapshot, [4] to re-inject, etc. — an infinite inject-teardown
+// cycle on every render in separate mode.
+
+[3] SNAPSHOT (runs if _originalOrientationMap == null):
     if fileEntry._originalOrientationMap == null:    // == catches both null and undefined
 
         // Detect INTRINSIC orientation (without any user rotations) for each page.
@@ -187,14 +206,37 @@ original landscape/portrait identity of each page is known. The full sequence wh
     // Must be taken before [4] so it is not contaminated by CCW90 injection.
     // The null-guard prevents re-renders from overwriting the snapshot.
 
-[4] STEP A — INJECT CCW90 (together mode only):
+[6] ASYNC GUARD (NEW — two checks, executed sequentially):
+    if _currentFileId !== fileEntry.id: return
+    if AppState.landscapeMode !== 'together': return
+    //
+    // CRITICAL — why both checks are required:
+    //
+    // Check 1 (_currentFileId): guards against file switch during step [3]'s await.
+    //   Both renders target the same file (same fileEntry.id), so this check ALONE
+    //   is insufficient when a landscapeMode switch occurs without a file switch.
+    //
+    // Check 2 (landscapeMode): guards against mode switch during step [3]'s await.
+    //   Scenario: Render 1 starts in together mode and awaits at step [3].
+    //   The user switches landscapeMode to 'separate' → §5.4 teardown runs
+    //   (clears _togetherRotations, nulls _originalOrientationMap) → Render 2 starts
+    //   and completes in separate mode → Render 1's step [3] await resolves →
+    //   Render 1 overwrites _originalOrientationMap, passes check 1 (same fileEntry),
+    //   and WITHOUT check 2 would proceed to steps [4]–[5], injecting CCW90 in
+    //   separate mode. _togetherRotations becomes non-empty; stale CCW90 persists
+    //   in pageRotations until a THIRD render triggers step [0]'s teardown.
+    //   During that window, _startPrint() would send wrong CCW90 rotations to the
+    //   backend and the DOM may flash the together-mode layout briefly.
+    //   Check 2 catches this: if the mode changed while we were awaiting, bail out.
+
+[4] STEP A — INJECT CCW90:
     for each p in [1 .. fileEntry.totalPageCount]:
         if fileEntry._originalOrientationMap.get(p) === true:  // intrinsically landscape
             if NOT fileEntry.pageRotations.has(p):             // not manually rotated
                 fileEntry.pageRotations.set(p, 'CCW90')
                 fileEntry._togetherRotations.add(p)
 
-[5] STEP B — INVALIDATE STALE CACHE (together mode only):
+[5] STEP B — INVALIDATE STALE CACHE:
     for each p in fileEntry._togetherRotations:
         fileEntry._orientationMap.delete(p)
     // After deletion, all pages in _togetherRotations are missing from orientationMap.
@@ -203,13 +245,12 @@ original landscape/portrait identity of each page is known. The full sequence wh
     for each p in fileEntry._togetherRotations:
         fileEntry._orientationMap.set(p, false)  // CCW90 makes landscape pages portrait-sized
 
-[6] ASYNC GUARD (NEW — same pattern as [2b], protects against file switch during
-    step [3]'s await in the intrinsic detection loop):
-    if _currentFileId !== fileEntry.id: return
+// ── END TOGETHER MODE BLOCK ─────────────────────────────────────────────────
 
 [7] BUILD SHEETS:
     buildSheetLayout(fileEntry, printMode, orientationMap, AppState.landscapeMode)
-    // orientationMap now maps every page to false => one group => original order
+    // In together mode: orientationMap now maps every page to false => one group => original order
+    // In separate mode: orientationMap unchanged => existing orientation-grouping logic applies
 ```
 
 ### 5.3 `_renderSheetView` — cleanup block
@@ -227,23 +268,70 @@ a mode switch.
 
 ### 5.4 Modebar click handler — teardown on mode switch
 
-When the user switches away from together mode, teardown must run on the active file
-before the new mode is set:
+When the user switches away from together mode, teardown must run on **all files**
+before the new mode is set. Non-active files can also hold stale CCW90 in
+`pageRotations` from a previous together-mode render (e.g. the user loaded two files,
+viewed both in sheet view with together mode, then switched modes). Tearing down only
+`activeFile` leaves non-active files with stale rotations that would be sent to the
+printer if those files are printed later.
 
 ```
 on modebar click:
     newMode = btn.dataset.lsmode
 
     if AppState.landscapeMode === 'together' AND newMode !== 'together':
-        if AppState.activeFile: _teardownTogether(AppState.activeFile)
+        for each f of AppState.files:      // ALL files, not just activeFile
+            _teardownTogether(f)
 
     AppState.landscapeMode = newMode
     update active class on buttons
     PreviewPanelModule.render(AppState.activeFile)
 ```
 
-The defensive teardown in `_renderSheetView` (§5.2 step [0]) covers non-active files
-that may have stale state from a previous together-mode render.
+The defensive teardown in `_renderSheetView` (§5.2 step [0]) also catches any file
+that somehow slips through (e.g. files added after the mode switch), but the modebar
+handler is the primary teardown site for non-active files.
+
+### 5.4b Print-mode switch handler — teardown on `duplex → booklet` switch
+
+**Why needed (BUG-3):** When `printMode` switches from `duplex` to `booklet` while
+`landscapeMode === 'together'` is active, `_renderSheetView` is not called — instead
+`_renderBookletSheetView` runs. Step [0]'s defensive teardown is inside `_renderSheetView`
+and never fires. Stale CCW90 entries in `pageRotations` persist into the booklet render,
+producing incorrect rotated pages in the booklet preview and print output.
+
+Neither §5.0 nor §5.4 covers this path: §5.0 only fires on `sheet→page` view switch;
+§5.4 only fires on `landscapeMode` switch.
+
+**Fix:** In `frontend/app.js`, locate the click handler for the print-mode toggle
+buttons — the handler that reads `mode-select` value and sets `AppState.printMode`
+(search for `mode-select` to find it; there is exactly one such handler). Insert the
+teardown block **before** the call to `PreviewPanelModule.render()` in that handler:
+
+```javascript
+// In the printMode switch handler, before render():
+if (AppState.landscapeMode === 'together') {
+    for (const f of AppState.files) {
+        if (f._togetherRotations?.size > 0) _teardownTogether(f);
+    }
+}
+```
+
+Alternatively, add step [0]'s defensive teardown to `_renderBookletSheetView` as well:
+
+```javascript
+// At top of _renderBookletSheetView(fileEntry):
+if (fileEntry._togetherRotations?.size > 0) {
+    _teardownTogether(fileEntry);
+}
+```
+
+**Preferred approach:** the `printMode` switch handler teardown (first option), because
+it covers all files proactively, consistent with §5.4's approach.
+
+**Note:** The reverse direction (`booklet → duplex`) is safe: the booklet renderer never
+injects CCW90 into `_togetherRotations`, so there is nothing to tear down. Only the
+`duplex+together → booklet` transition requires teardown.
 
 ### 5.5 Rotation badge suppression in `_renderSheetPage`
 
@@ -257,26 +345,6 @@ RotationHelper.updateBadge(el, badgeRotation)
 ```
 
 User-manually-rotated pages (not in `_togetherRotations`) retain their badge normally.
-
-### 5.6 Rotation badge suppression in `_syncSelectionUI`
-
-`_syncSelectionUI` (~line 3806) is a second badge-update path that runs on every
-selection change. It also calls `RotationHelper.updateBadge` unconditionally with
-`pageRotations.get(pageNum)`, which would re-add the auto-suppressed `-90°` badge
-on every selection event. Apply the same suppression guard here:
-
-```javascript
-// Before (existing):
-const rotation = activeFile.pageRotations?.get(pageNum) ?? null;
-RotationHelper.updateBadge(card, rotation);
-
-// After (together-mode guard added):
-const rotation     = activeFile.pageRotations?.get(pageNum) ?? null;
-const badgeRotation = activeFile._togetherRotations?.has(pageNum) ? null : rotation;
-RotationHelper.updateBadge(card, badgeRotation);
-```
-
-This guard is identical in structure to §5.5. Both paths must be updated together.
 
 ### 5.5b Rotation badge suppression in `ThumbStripModule`
 
@@ -297,12 +365,17 @@ Same pattern as §5.5/§5.6 — `?.` guard handles missing field gracefully.
 ### 5.5c Rotation badge suppression in `ZoomModal`
 
 The zoom modal (`ZoomModal._buildPageContainer`, line ~1704) calls
-`RotationHelper.updateBadge(div, rotation)` with the raw rotation. Apply the same guard:
+`RotationHelper.updateBadge(div, rotation)` with the raw rotation. Apply the same guard.
+Note: in `ZoomModal._buildPageContainer` there is **no `fileEntry` variable in scope** —
+use `AppState.activeFile` instead:
 
 ```javascript
-const badgeRotation = fileEntry._togetherRotations?.has(pageNum) ? null : rotation;
+const badgeRotation = AppState.activeFile?._togetherRotations?.has(n) ? null : rotation;
 RotationHelper.updateBadge(div, badgeRotation);
 ```
+
+(The page number variable inside `ZoomModal._buildPageContainer` is `n`, from the
+surrounding loop `for (let n = 1; n <= count; n++)` at line ~1680.)
 
 ### 5.6 Rotation badge suppression in `_syncSelectionUI`
 
@@ -331,13 +404,20 @@ the manually applied rotation.
 
 **Where to add this:** In `ContextMenu._applyRotation` (line ~1949 in `app.js`), after
 the rotation is applied to `AppState.pageRotations` (lines ~1952/1955) and before the
-cache-invalidation block (line ~1960). Use `const fileEntry = AppState.activeFile`
-(already available in that scope at line ~1961).
+cache-invalidation block. The existing code already declares
+`const fileEntry = AppState.activeFile;` at line ~1961 — the eviction block must be
+inserted **inside** the existing `if (fileEntry)` block, AFTER that declaration, not
+before it (inserting before the declaration would be a `ReferenceError`):
 
 ```javascript
-// After applying user's rotation to page P:
-if (fileEntry._togetherRotations?.has(p)) {
-    fileEntry._togetherRotations.delete(p);
+// _applyRotation — existing structure (simplified):
+//   lines ~1952-1958: apply rotation to AppState.pageRotations
+//   line  ~1961: const fileEntry = AppState.activeFile;   ← EXISTING declaration
+//   lines ~1962+: existing cache-invalidation block
+
+// Insert INSIDE the existing if (fileEntry) block, right after line 1961:
+if (fileEntry._togetherRotations?.has(pageNum)) {
+    fileEntry._togetherRotations.delete(pageNum);
     // P is now "owned" by the user — teardown won't touch it.
     // _orientationMap entry for P will be re-detected correctly on next render.
 }
@@ -356,7 +436,7 @@ if (fileEntry._togetherRotations?.has(p)) {
 ```
 for each file being printed:
     originalMap = file._originalOrientationMap
-    duplexSide  = 'LongEdge'                        // default
+    duplexSide  = null                          // default: no override → printer uses its own default
 
     if AppState.landscapeMode === 'together' AND originalMap is not null:
         allLandscape = every p in [1..file.totalPageCount]:
@@ -365,9 +445,18 @@ for each file being printed:
             duplexSide = 'ShortEdge'
 
     POST body includes:
-        duplexSide:    duplexSide           // 'LongEdge' | 'ShortEdge'
+        duplexSide:    duplexSide           // null | 'ShortEdge'
         manualFlipDir: duplexSide           // same value; maps to PrintRequest.ManualFlipDir on backend
 ```
+
+**Why `null` as default (not `'LongEdge'`):** Sending `duplexSide: 'LongEdge'` explicitly
+causes the backend to emit `-print-settings "duplexlong"` for every print — including
+separate-mode prints, simplex prints, and booklet mode. This overrides the printer
+driver's own default, which is benign for most portrait documents but breaks printer
+drivers that auto-select ShortEdge for landscape-oriented separate-mode documents.
+Using `null` preserves existing behavior for all non-together-mode cases (backend emits
+no `-print-settings` arg at all), and sends `'ShortEdge'` only for together-mode
+all-landscape documents where the explicit override is required.
 
 `manualFlipDir` sent from frontend maps to `PrintRequest.ManualFlipDir` on the backend
 via ASP.NET Core's default camelCase deserialization (`manualFlipDir` → `ManualFlipDir`).
@@ -380,7 +469,7 @@ case-insensitive matching maps by property-name similarity, not by arbitrary ren
 → §6.6 override never activates.
 
 If `_originalOrientationMap` is null (user prints without ever opening sheet view in
-together mode), `duplexSide` defaults to `'LongEdge'` safely.
+together mode), `duplexSide` defaults to `null` → backend uses printer default.
 
 ---
 
@@ -389,8 +478,8 @@ together mode), `duplexSide` defaults to `'LongEdge'` safely.
 ### 6.1 `PrintModels.cs` — new fields on `PrintRequest`
 
 ```csharp
-public string? DuplexSide    { get; set; }  // "LongEdge" | "ShortEdge" | null => LongEdge
-public string? ManualFlipDir { get; set; }  // "LongEdge" | "ShortEdge" | null => auto-detect
+public string? DuplexSide    { get; set; }  // null | "ShortEdge" — null = no override (see §6.4/§6.5)
+public string? ManualFlipDir { get; set; }  // null | "ShortEdge" — null = use heuristic (see §6.6)
 ```
 
 **Note:** The property is named `ManualFlipDir` (not `FlipDirection`) to avoid reader
@@ -613,7 +702,9 @@ INPUT: pages = [1L  2P  3P  4L  5L  6L]
   | 1L (CCW90) |  | 3P         |  | 5L (CCW90) |
   | 2P         |  | 4L (CCW90) |  | 6L (CCW90) |
   +------------+  +------------+  +------------+
-  all portrait-sized (sheet-faces-row)
+  all portrait-sized (DOM layout: left face / right face in a flex-row)
+  Note: the ASCII diagram shows top/bottom faces for readability, but the
+  actual DOM renders the two faces side-by-side (flex-row: left = front, right = back).
 
   3 sheets. Original document order preserved. No blank padding.
 
@@ -716,17 +807,18 @@ _teardownTogether (on mode switch back to separate):
 | I2 | User rotated page manually, then enables together | User's rotation preserved; only unrotated landscape pages get CCW90. |
 | I3 | User rotates a page while together mode is active | Manual rotation stored in `pageRotations` but NOT in `_togetherRotations`; unaffected by teardown. |
 | I4 | Switch together => separate => together | Teardown clears `_togetherRotations`; re-enable runs fresh injection. |
-| I5 | All-portrait document in together mode | No CCW90 injected; `_togetherRotations` empty; `duplexSide='LongEdge'`. |
+| I5 | All-portrait document in together mode | No CCW90 injected; `_togetherRotations` empty; `duplexSide=null` (backend heuristic → LongEdge). |
 | I6 | All-landscape document in together mode | All L pages injected; `duplexSide='ShortEdge'`. |
-| I7 | Mixed L+P document in together mode | Only L pages injected; `duplexSide='LongEdge'`. |
+| I7 | Mixed L+P document in together mode | Only L pages injected; `duplexSide=null` (backend heuristic → LongEdge). |
 | I8 | Single-sided pages in together mode | Bước-2 R2/R6 logic runs unchanged on the single group. |
 | I9 | User-inserted blank (p=0) in together mode | Blank placed in the single group; `isLandscape=false` (portrait blank). |
 | I10 | File switch while together mode active | New file has fresh `_togetherRotations = new Set()`; injection runs on first render. |
 | I11 | Non-active file with stale `_togetherRotations` | Defensive teardown at top of `_renderSheetView` cleans it up on next render. |
 | I12 | `duplexSide` allLandscape scope | Checks `_originalOrientationMap` for all pages 1..totalPageCount (not just selected). |
-| I13 | `_startPrint` before any sheet-view render | `_originalOrientationMap` is null; `duplexSide` defaults to `'LongEdge'` safely. |
+| I13 | `_startPrint` before any sheet-view render | `_originalOrientationMap` is null; `duplexSide` defaults to `null` → backend uses printer default (acceptable: no orientation data available without sheet-view render). |
 | I14 | Rotation badge for auto-injected CCW90 | Badge suppressed for `_togetherRotations` pages in `_renderSheetPage`, `_syncSelectionUI`, `ThumbStripModule._renderThumb`, `ThumbStripModule._syncSelectionHighlights`, and `ZoomModal._buildPageContainer`; shown for user-rotated pages. |
 | I15 | Switch from sheet view to page view while together mode active | `PreviewPanelModule.render()` calls `_teardownTogether` before page-view path; no stale CCW90 badges shown in page view. |
+| I16 | `printMode` switches away from `duplex` while `landscapeMode === 'together'` and sheet view is active | `_teardownTogether` fires for every file with non-empty `_togetherRotations`. Post-condition: all files' `pageRotations` reflect only user-applied rotations; `_togetherRotations` is empty; `_originalOrientationMap` is `null`. The subsequent booklet render shows original orientations without any CCW90 artefacts. |
 
 ---
 
@@ -740,7 +832,8 @@ _teardownTogether (on mode switch back to separate):
 | | Add `_teardownTogether(fileEntry)` helper function |
 | | `PreviewPanelModule.render()`: call `_teardownTogether` when switching away from sheet view (§5.0) |
 | | `_renderSheetView`: add defensive teardown (step [0]), reset `_blobQueue`/`_activeBlobRenders` in cleanup, add snapshot + Step A + Step B after cache-fill, add guard [2b] after step [2] |
-| | Modebar click handler: call `_teardownTogether` before mode switch (§5.4) |
+| | Modebar click handler: call `_teardownTogether` (all files) before mode switch (§5.4) |
+| | Print-mode switch handler: call `_teardownTogether` (all files) on `duplex→booklet` switch while together mode active (§5.4b) |
 | | `_renderSheetPage`: badge suppression for `_togetherRotations` pages (§5.5) |
 | | `_syncSelectionUI`: badge suppression for `_togetherRotations` pages (§5.6) |
 | | `ThumbStripModule._renderThumb` + `_syncSelectionHighlights`: badge suppression (§5.5b) |
@@ -761,7 +854,13 @@ _teardownTogether (on mode switch back to separate):
 
 ## 10. Out of Scope
 
-- Booklet mode (not affected).
+- **Booklet mode interaction:** Booklet mode (`printMode === 'booklet'`) uses a separate
+  `_renderBookletSheetView` path (not `_renderSheetView`). The CCW90 injection in §5.2
+  steps [3]–[5] is inside `_renderSheetView` and does **not** run for booklet mode.
+  However, switching from `duplex+together` → `booklet` while together mode is active
+  would carry stale CCW90 rotations into the booklet renderer. §5.4b adds a teardown
+  call in the `printMode` switch handler to handle this transition. The reverse
+  direction (`booklet → duplex`) requires no teardown (booklet never injects CCW90).
 - Simplex mode: `buildSheetLayout` does not group by orientation for simplex, but
   together-mode CCW90 injection in `_renderSheetView` fires regardless of `printMode`.
   This means landscape pages are rotated CCW90 in preview and in the printed PDF when
