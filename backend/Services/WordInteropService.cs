@@ -1097,9 +1097,9 @@ public class WordInteropService : IWordInteropService
 
             Console.WriteLine($"[CreateSmartDuplexPdf] Source opened. PageCount={sourceDoc.PageCount}");
 
-            // Phase 2: vẫn cần thứ tự REVERSE cho các trang even
+            // Thứ tự đã được ManualDuplexPlan.Build() xử lý đúng (Reverse cho faceDownStack).
+            // KHÔNG OrderByDescending lại — chỉ lọc out-of-range để tránh crash.
             var orderedPages = pageNumbers
-                .OrderByDescending(p => p)
                 .Where(p => p >= 1 && p <= sourceDoc.PageCount)
                 .ToArray();
 
