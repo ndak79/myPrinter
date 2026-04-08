@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using System.Runtime.Versioning;
+using System.Text.Json.Serialization;
 
 namespace PrinterApp;
 
@@ -17,6 +18,13 @@ public static class BackendStartup
     public static WebApplication Build(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+
+        // Configure JSON serialization: enums as strings so "CW90", "CCW90", etc.
+        // in PageRotations are correctly deserialized into RotationDirection enum values.
+        builder.Services.ConfigureHttpJsonOptions(options =>
+        {
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        });
 
         // Configure CORS
         builder.Services.AddCors(options =>

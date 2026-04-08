@@ -696,12 +696,25 @@ public class WordInteropService : IWordInteropService
                     }
                     else
                     {
+                        // No preceding page to use as template — default to A4 portrait.
+                        // Use the same non-skippable gray-rect pattern as CreateNonSkippableBlankPage
+                        // so the printer does not silently skip this blank page.
                         var blankPage = targetDoc.AddPage();
                         blankPage.Width  = XUnit.FromPoint(595.28);
                         blankPage.Height = XUnit.FromPoint(841.89);
-                        using var gfx = XGraphics.FromPdfPage(blankPage);
-                        gfx.DrawRectangle(XBrushes.White, 0, 0, 0.01, 0.01);
-                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, A4 portrait)");
+                        using (var gfx = XGraphics.FromPdfPage(blankPage))
+                        {
+                            double rectSize = 3;
+                            double centerX  = blankPage.Width.Point  / 2.0;
+                            double centerY  = blankPage.Height.Point / 2.0;
+                            gfx.DrawRectangle(
+                                new XSolidBrush(XColor.FromArgb(255, 250, 250, 250)),
+                                centerX - rectSize / 2.0,
+                                centerY - rectSize / 2.0,
+                                rectSize,
+                                rectSize);
+                        }
+                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, A4 portrait, non-skippable)");
                     }
                 }
                 else if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)
@@ -1016,6 +1029,8 @@ public class WordInteropService : IWordInteropService
             }
 
             // 3) Dựa trên pageInfos → tạo file PDF mới
+            PdfPage? lastRealPage = null; // tracks last non-blank page for use as blank template
+
             for (int i = 0; i < pageInfos.Count; i++)
             {
                 var info = pageInfos[i];
@@ -1023,7 +1038,10 @@ public class WordInteropService : IWordInteropService
 
                 if (info.IsBlank)
                 {
-                    var templatePage = sourceDoc.Pages[0];
+                    // Use the last real page written as dimension template so that blanks
+                    // inherit the correct page size (important for mixed page-size documents).
+                    // Fall back to sourceDoc.Pages[0] only when no real page has been written yet.
+                    var templatePage = lastRealPage ?? sourceDoc.Pages[0];
                     CreateNonSkippableBlankPage(targetDoc, templatePage, info.IsLandscape);
 
                     Console.WriteLine($"[ProcessMixedOrientation] Wrote BLANK page at processed index {info.ProcessedIndex} (ori={ (info.IsLandscape ? "L" : "P") })");
@@ -1032,6 +1050,7 @@ public class WordInteropService : IWordInteropService
                 {
                     var sourcePage = sourceDoc.Pages[info.OriginalPageNumber - 1];
                     targetDoc.AddPage(sourcePage);
+                    lastRealPage = sourcePage; // update template reference
 
                     Console.WriteLine($"[ProcessMixedOrientation] Wrote ORIGINAL page {info.OriginalPageNumber} -> processed index {info.ProcessedIndex}");
                 }

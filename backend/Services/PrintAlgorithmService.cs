@@ -141,6 +141,10 @@ public class PrintAlgorithmService
         // Apply custom page order if provided (I)
         pagesToPrint = ApplyPageOrder(pagesToPrint, pageOrder);
 
+        // Build rotation map early so it is in scope both inside and outside the subset branch.
+        // Keys are original page numbers (1-based) at this point.
+        var manualRotationMap = BuildRotationMap(pageRotations);
+
         // Create subset if pages need reordering or filtering
         var naturalOrder = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
         if (!pagesToPrint.SequenceEqual(naturalOrder))
@@ -175,15 +179,19 @@ public class PrintAlgorithmService
                 Console.WriteLine($"[CreateNormalDuplexJob] Remapped single-sided pages (subset): [{string.Join(",", effectiveSingleSidedPages)}]");
             }
 
+            // REMAP Rotations BEFORE resetting pagesToPrint:
+            //  pagesToPrint still holds the original page numbers (e.g. [3,1,2,0,4]).
+            //  After the reset below it becomes [1..N] and the mapping is lost.
+            //  We must remap here — mirroring the auto-duplex path — so that
+            //  rotationMap keys are translated from original page numbers to
+            //  their 1-based positions in the newly created subset PDF.
+            manualRotationMap = RemapRotations(manualRotationMap, pagesToPrint);
+            Console.WriteLine($"[CreateNormalDuplexJob] Remapped rotation map inside subset branch (subset size={pdfInfo.PageCount}).");
+
             pagesToPrint = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
         }
 
         // Apply per-page rotations before mixed-orientation processing (U)
-        var manualRotationMap = BuildRotationMap(pageRotations);
-        if (!pagesToPrint.SequenceEqual(naturalOrder))
-        {
-            manualRotationMap = RemapRotations(manualRotationMap, pagesToPrint);
-        }
         if (manualRotationMap.Count > 0)
         {
             workingPdfPath = _wordService.ApplyPageRotations(workingPdfPath, manualRotationMap);
