@@ -1392,12 +1392,12 @@ public class WordInteropService : IWordInteropService
                             break;
                     }
 
-                    // A2 fix: after 90/270 rotation the canvas is formH×formW — draw must
-                    // fill that rotated canvas, so width/height args must be swapped too.
-                    if (degrees == 90 || degrees == 270)
-                        gfx.DrawImage(form, 0, 0, formH, formW);
-                    else
-                        gfx.DrawImage(form, 0, 0, formW, formH);
+                    // BE-23-1 fix: always draw the form at its natural (effective) dimensions formW×formH.
+                    // The translate+rotate transform already rotates the coordinate system, so the form's
+                    // natural width/height arguments correctly fill the rotated canvas without distortion.
+                    // The previous code swapped to (formH, formW) for 90/270, which caused non-uniform
+                    // scaling (aspect ratio distortion) for pages that don't have embedded srcRotate metadata.
+                    gfx.DrawImage(form, 0, 0, formW, formH);
                     gfx.Restore();
 
                     Console.WriteLine($"[ApplyPageRotations] Page {pageNum}: rotated {degrees}°");
