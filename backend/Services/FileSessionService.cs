@@ -83,9 +83,15 @@ public sealed class FileSessionService : IDisposable
 
         foreach (var (id, session) in _files)
         {
-            if (session.CreatedAt < cutoff && _files.TryRemove(id, out _))
+            // BE-16-1 fix: capture the removed session from TryRemove rather than reading
+            // session.FilePath after removal. UpdateFilePath() mutates FilePath in-place on
+            // the shared FileSession object, so reading session.FilePath after TryRemove
+            // could see a new path written by a concurrent UpdateFilePath call, causing us
+            // to delete the freshly-converted PDF instead of the original upload.
+            // Using `removed` here snapshots FilePath atomically at the moment of removal.
+            if (session.CreatedAt < cutoff && _files.TryRemove(id, out var removed))
             {
-                DeleteFileSafe(session.FilePath);
+                DeleteFileSafe(removed.FilePath);
                 Console.WriteLine($"[FileSessionService] Cleaned up expired file session: {id}");
             }
         }
