@@ -6,8 +6,8 @@ public interface IWordInteropService
 {
     PdfInfo GetPdfInfo(string path);
     int GetPageCount(string path);
-    void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers);
-    string ProcessMixedOrientation(string sourcePath, int[]? singleSidedPages, out List<ManualDuplexPageInfo> pageInfos);
+    void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers, out HashSet<int> insertedBlankIndices);
+    string ProcessMixedOrientation(string sourcePath, int[]? singleSidedPages, out List<ManualDuplexPageInfo> pageInfos, HashSet<int>? insertedBlankIndices = null);
     string ProcessMixedOrientation(string sourcePath, int[] singleSidedPages);
     string CreateSmartDuplexPdf(string sourcePath, int[] pageNumbers);
     void PrintPdf(string pdfPath, string printerName, string? pageRange = null, string? duplexSide = null);

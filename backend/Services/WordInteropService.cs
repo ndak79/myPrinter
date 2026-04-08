@@ -721,8 +721,9 @@ public class WordInteropService : IWordInteropService
     /// <summary>
     /// Creates a new PDF containing only the specified pages from the source PDF.
     /// </summary>
-    public void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers)
+    public void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers, out HashSet<int> insertedBlankIndices)
     {
+        insertedBlankIndices = new HashSet<int>();
         try
         {
             using var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
@@ -740,6 +741,7 @@ public class WordInteropService : IWordInteropService
                     {
                         bool isLandscape = template.Width.Point > template.Height.Point;
                         CreateNonSkippableBlankPage(targetDoc, template, isLandscape);
+                        insertedBlankIndices.Add(targetDoc.PageCount); // BE-24-1: track 1-based output index of this blank
                         Console.WriteLine($"[CreatePdfSubset] Added blank page (isLandscape={isLandscape})");
                     }
                     else
@@ -786,6 +788,7 @@ public class WordInteropService : IWordInteropService
                                 rectSize);
                         }
                         Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, dims={w:F2}x{h:F2}pt, non-skippable)");
+                        insertedBlankIndices.Add(targetDoc.PageCount); // BE-24-1: track 1-based output index of this leading blank
                     }
                 }
                 else if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)
@@ -989,7 +992,8 @@ public class WordInteropService : IWordInteropService
     /// </summary>
     public string ProcessMixedOrientation(string sourcePath,
                                           int[]? singleSidedPages,
-                                          out List<ManualDuplexPageInfo> pageInfos)
+                                          out List<ManualDuplexPageInfo> pageInfos,
+                                          HashSet<int>? insertedBlankIndices = null)
     {
         var outputPath = Path.Combine(Path.GetTempPath(), $"processed_mixed_{Guid.NewGuid()}.pdf");
         var singleSidedSet = new HashSet<int>(singleSidedPages ?? Array.Empty<int>());
@@ -1023,65 +1027,30 @@ public class WordInteropService : IWordInteropService
                 isLandscapeByPage[i + 1] = w > h;
             }
 
-            // BUG FIX (C1): User-inserted blank pages (created by CreatePdfSubset for
+            // BUG FIX (C1 → BE-24-1): User-inserted blank pages (created by CreatePdfSubset for
             // pageOrder=0 entries) always have portrait A4 dimensions (595×842), regardless
             // of the surrounding pages' orientation. This causes them to be detected as
             // "portrait", which incorrectly splits a landscape group at every blank page
             // boundary → unnecessary extra padding blanks and wrong sheet count.
             //
-            // Fix: blank pages inherit the orientation of the preceding real page (the same
-            // rule CreatePdfSubset already uses when choosing the blank's template). We detect
-            // blank pages by their "non-skippable" signature: a near-A4 page whose content is
-            // just a tiny gray rectangle (very small content area relative to page size).
-            // Rather than trying to inspect content, we use a simpler structural rule:
-            // a page is a "layout blank" if it has exactly portrait-A4 or landscape-A4
-            // dimensions AND a content stream that is trivially small (detected by MediaBox
-            // matching standard blank dimensions within 1pt tolerance).
+            // Original fix (C1) used a dimension heuristic: treat any A4-sized page that differs
+            // in orientation from its predecessor as an inserted blank and inherit the predecessor's
+            // orientation. This introduced BE-24-1: a real portrait A4 content page following a
+            // landscape page also satisfies that condition and is wrongly reclassified.
             //
-            // Even simpler and equally correct: propagate the preceding page's orientation
-            // forward through any page whose dimensions are square or that exactly matches
-            // the blank dimensions we create (595×842 portrait or 842×595 landscape).
-            // Since CreateNonSkippableBlankPage copies template w/h exactly, a blank that
-            // was created in portrait-A4 context has 595×842, and one in landscape-A4 has
-            // 842×595. Only the FORMER is misclassified (portrait blank in a landscape group).
-            //
-            // Implementation: after initial classification, forward-propagate orientation
-            // through any page that has the same dimensions as a standard CreateNonSkippableBlankPage
-            // output (i.e., its dimensions exactly match one of the two A4 orientations and the
-            // preceding page had the opposite orientation — meaning it's likely a blank that
-            // inherited the wrong context).
-            //
-            // The most reliable approach: a page is treated as orientation-neutral (inherits
-            // predecessor) if its width and height are within 2pt of any standard page size
-            // AND it was preceded by a page of different orientation. This covers the common
-            // case without inspecting content streams.
-            //
-            // PRACTICAL IMPLEMENTATION: simply forward-propagate the predecessor's orientation
-            // through any page that is exactly square or that matches the standard blank
-            // dimensions produced by CreateNonSkippableBlankPage (595.28×841.89 or swapped).
-            const double blankW = 595.28;
-            const double blankH = 841.89;
-            const double tolerance = 2.0;
-
-            for (int i = 2; i <= pageCount; i++) // start at 2 — need predecessor
+            // Fix (BE-24-1): CreatePdfSubset now tracks the 1-based output indices of every blank
+            // page it creates. We use that authoritative set here instead of the dimension heuristic.
+            // When insertedBlankIndices is provided (always for the manual-duplex path), a page is
+            // treated as an inserted blank only if its index is in the set.
+            if (insertedBlankIndices != null && insertedBlankIndices.Count > 0)
             {
-                var pg = sourceDoc.Pages[i - 1];
-                double pw = pg.Width.Point;
-                double ph = pg.Height.Point;
-                int pr = pg.Rotate;
-                if (pr == 90 || pr == 270) (pw, ph) = (ph, pw);
-
-                bool isStandardBlankPortrait  = Math.Abs(pw - blankW) < tolerance && Math.Abs(ph - blankH) < tolerance;
-                bool isStandardBlankLandscape = Math.Abs(pw - blankH) < tolerance && Math.Abs(ph - blankW) < tolerance;
-
-                if ((isStandardBlankPortrait || isStandardBlankLandscape) &&
-                    isLandscapeByPage[i] != isLandscapeByPage[i - 1])
+                for (int i = 2; i <= pageCount; i++)
                 {
-                    // This page has standard blank dimensions but different orientation from
-                    // predecessor — it's almost certainly a user-inserted blank that was
-                    // created in the predecessor's context. Inherit predecessor orientation.
-                    isLandscapeByPage[i] = isLandscapeByPage[i - 1];
-                    Console.WriteLine($"[ProcessMixedOrientation] Page {i}: blank orientation corrected to match predecessor ({(isLandscapeByPage[i] ? "L" : "P")})");
+                    if (insertedBlankIndices.Contains(i) && isLandscapeByPage[i] != isLandscapeByPage[i - 1])
+                    {
+                        isLandscapeByPage[i] = isLandscapeByPage[i - 1];
+                        Console.WriteLine($"[ProcessMixedOrientation] Page {i}: inserted blank orientation corrected to match predecessor ({(isLandscapeByPage[i] ? "L" : "P")})");
+                    }
                 }
             }
 

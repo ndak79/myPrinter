@@ -143,7 +143,7 @@ public class PrintAlgorithmService
             {
                 Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex creating subset for pages: {string.Join(",", selectedPages)}");
                 var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
-                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages, out _);
                 jobState.TempPdfPath = subsetPath;
                 jobState.IntermediateFiles.Add(subsetPath); // BUG-8-2: track for cleanup
 
@@ -198,12 +198,13 @@ public class PrintAlgorithmService
 
         // Create subset if pages need reordering or filtering
         var naturalOrder = Enumerable.Range(1, pdfInfo.PageCount).ToArray();
+        HashSet<int> subsetBlankIndices = new HashSet<int>(); // BE-24-1: track blank pages inserted by CreatePdfSubset
         if (!pagesToPrint.SequenceEqual(naturalOrder))
         {
             Console.WriteLine($"[CreateNormalDuplexJob] Creating subset PDF for pages: {string.Join(",", pagesToPrint)}");
             var subsetPath = Path.Combine(Path.GetTempPath(), $"subset_{Guid.NewGuid()}.pdf");
 
-            _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint);
+            _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint, out subsetBlankIndices); // BE-24-1: capture inserted blank indices
             workingPdfPath = subsetPath;
             jobState.IntermediateFiles.Add(subsetPath); // BUG-8-2: track for cleanup
 
@@ -272,8 +273,10 @@ public class PrintAlgorithmService
         var processedPath = _wordService.ProcessMixedOrientation(
             workingPdfPath,
             effectiveSingleSidedPages,
-            out var pageInfos
+            out var pageInfos,
+            subsetBlankIndices  // BE-24-1: pass authoritative blank indices so heuristic doesn't misclassify real A4 portrait pages
         );
+        jobState.IntermediateFiles.Add(processedPath); // BE-24-2: track so catch block cleans it up if ManualDuplexPlan.Build throws
 
         // 3) BUILD ManualDuplexPlan TỪ pageInfos
         // Canon LBP2900: face-down stack (trang in sau nằm trên cùng) → faceDownStack = true
@@ -348,7 +351,7 @@ public class PrintAlgorithmService
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
         {
             var tempSelectedPdf = Path.Combine(Path.GetTempPath(), $"selected_{Guid.NewGuid()}.pdf");
-            _wordService.CreatePdfSubset(pdfPath, tempSelectedPdf, selectedPages);
+            _wordService.CreatePdfSubset(pdfPath, tempSelectedPdf, selectedPages, out _);
             sourcePdfPath = tempSelectedPdf;
             localTemps.Add(tempSelectedPdf);
         }
@@ -437,7 +440,7 @@ public class PrintAlgorithmService
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
         {
             var subsetPath = Path.Combine(Path.GetTempPath(), $"simplex_subset_{Guid.NewGuid()}.pdf");
-            _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
+            _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages, out _);
             workingPdfPath = subsetPath;
             simplexJobState.IntermediateFiles.Add(subsetPath); // track immediately
             Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");

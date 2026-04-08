@@ -125,6 +125,8 @@ const AppState = {
         this.currentJob           = null;
         this.pendingPrintQueue    = null;  // B18-FE-1 fix: clear stale queue on full reset
         this.isUserTypingPageRange = false;
+        this.printMode            = 'duplex'; // B24-FE-2 fix: reset to default so new session isn't contaminated
+        this.viewMode             = 'page';   // B24-FE-2 fix: same
     },
 };
 
