@@ -1801,6 +1801,7 @@ const ZoomModal = {
         document.getElementById('all-double-btn')?.addEventListener('click', () => {
             AppState.selectAllPages(); AppState.singleSidedPages.clear();
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay(); this._updateModalStyles();
+            ThumbStripModule._syncSelectionHighlights?.();
             if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
             else PreviewPanelModule.onStateChanged();
             showToast('Da chon tat ca in 2 mat', 'success');
@@ -1809,6 +1810,7 @@ const ZoomModal = {
         document.getElementById('all-single-btn')?.addEventListener('click', () => {
             AppState.selectAllPages(); AppState.singleSidedPages = new Set(AppState.selectedPages);
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay(); this._updateModalStyles();
+            ThumbStripModule._syncSelectionHighlights?.();
             if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
             else PreviewPanelModule.onStateChanged();
             showToast('Da chon tat ca in 1 mat', 'success');
@@ -1818,6 +1820,7 @@ const ZoomModal = {
         document.getElementById('deselect-all-btn')?.addEventListener('click', () => {
             AppState.selectedPages.clear(); AppState.singleSidedPages.clear();
             PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay(); this._updateModalStyles();
+            ThumbStripModule._syncSelectionHighlights?.();
             if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
             else PreviewPanelModule.onStateChanged();
             PrintModule.updateButton();
@@ -2324,16 +2327,29 @@ const HistoryModule = {
             if (f) { f.collate = item.collate; CopiesModule.sync(); }
         }
 
-        // Restore page range
+        // Restore page range — only when active file matches the history entry's file.
+        // If a different file is active, the saved range may reference pages that don't
+        // exist in the current file, causing silent truncation (e.g. "5-20" → page 5 only).
+        const activeFileName = AppState.activeFile?.name ?? '';
+        const historyFileName = item.file ?? '';
+        const fileMatches = activeFileName === historyFileName;
         if (item.pageRange && AppState.totalPageCount > 0) {
-            const input = document.getElementById('page-range-input');
-            if (input) {
-                input.value = item.pageRange;
-                input.dispatchEvent(new Event('input'));
+            if (fileMatches) {
+                const input = document.getElementById('page-range-input');
+                if (input) {
+                    input.value = item.pageRange;
+                    input.dispatchEvent(new Event('input'));
+                }
             }
         }
 
-        showToast(`Đã khôi phục cài đặt in "${item.file}"`, 'info');
+        const rangeSkipped = item.pageRange && !fileMatches;
+        showToast(
+            rangeSkipped
+                ? `Đã khôi phục cài đặt in "${item.file}" (bỏ qua dải trang vì file đang mở khác)`
+                : `Đã khôi phục cài đặt in "${item.file}"`,
+            'info'
+        );
         PrintModule.updateButton();
     },
 
