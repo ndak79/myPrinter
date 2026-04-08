@@ -282,6 +282,12 @@ public static class BackendStartup
             PrintAlgorithmService printAlgorithm,
             FileSessionService sessions) =>
         {
+            // BE-18-4 fix: hoist jobState outside try so catch blocks can clean up
+            // intermediate files. ClaimJob removes the job from the session dictionary,
+            // so the background TTL sweeper can no longer reach it. If ExecutePrintJob
+            // throws during phase 2, we must explicitly delete IntermediateFiles here —
+            // otherwise they are orphaned on disk permanently.
+            PrintJobState? jobState = null;
             try
             {
                 // BUG-4 fix: guard null/empty jobId before dictionary lookup
@@ -290,7 +296,7 @@ public static class BackendStartup
 
                 // BUG-3 fix: atomically claim the job via TryRemove so concurrent
                 // requests for the same jobId cannot both execute phase 2.
-                var jobState = sessions.ClaimJob(jobId);
+                jobState = sessions.ClaimJob(jobId);
                 if (jobState == null)
                     return Results.NotFound(new PrintResponse { Success = false, Message = "Job not found or already completed." });
 
@@ -305,10 +311,13 @@ public static class BackendStartup
             }
             catch (InvalidOperationException ex)
             {
+                // Clean up claimed job's temp files — sweeper can no longer reach them.
+                if (jobState != null) FileSessionService.DeleteIntermediateFiles(jobState);
                 return Results.BadRequest(new PrintResponse { Success = false, Message = ex.Message });
             }
             catch (Exception ex)
             {
+                if (jobState != null) FileSessionService.DeleteIntermediateFiles(jobState);
                 return Results.Problem($"Error continuing print job: {ex.Message}");
             }
         });

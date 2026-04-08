@@ -123,6 +123,7 @@ const AppState = {
         this.files                = [];
         this.activeFileIndex      = -1;
         this.currentJob           = null;
+        this.pendingPrintQueue    = null;  // B18-FE-1 fix: clear stale queue on full reset
         this.isUserTypingPageRange = false;
     },
 };
@@ -2412,6 +2413,7 @@ const PrintModule = {
                         showToast('Không thể hủy lệnh in', 'error');
                     }
                     AppState.currentJob = null;
+                    AppState.pendingPrintQueue = null;  // B18-FE-1 fix: clear stale queue on cancel
                     btn.dataset.mode = '';
                     btn.classList.remove('cancellable');
                     btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
