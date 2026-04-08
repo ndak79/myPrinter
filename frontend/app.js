@@ -159,6 +159,10 @@ function lookAheadOrientation(pages, blankIdx, orientationMap) {
 // CONTRACT: Caller MUST call PreviewPanelModule.render(entry) after this returns.
 function togglePageSelection(entry, pageNum) {
     if (entry.selectedPages.has(pageNum)) {
+        // B22-FE-8 fix: capture SS state BEFORE deleting it below, so the on-the-fly
+        // absorption check (which replaces the blankAbsorbedBy map in page view) works.
+        const wasSingleSided = entry.singleSidedPages.has(pageNum);
+
         // R8: deselect clears SS status
         entry.selectedPages.delete(pageNum);
         entry.singleSidedPages.delete(pageNum);
@@ -166,7 +170,12 @@ function togglePageSelection(entry, pageNum) {
         // R7: if this page had absorbed a blank (R6), splice that blank out of pageOrder.
         // blankAbsorbedBy is populated by buildSheetLayout at last render.
         // Forward scan runs AFTER selectedPages.delete() so has(v) checks are accurate.
-        if (entry.blankAbsorbedBy && entry.blankAbsorbedBy.has(pageNum)) {
+        // B22-FE-8 fix: blankAbsorbedBy is only populated in sheet view; in page view it
+        // stays empty. Fall back to on-the-fly absorption check: a blank is absorbed iff
+        // the page was single-sided (same semantic as blankAbsorbedBy, immune to view mode).
+        const hasAbsorbedBlank = (entry.blankAbsorbedBy && entry.blankAbsorbedBy.has(pageNum))
+            || wasSingleSided;
+        if (hasAbsorbedBlank) {
             const rawIdx = entry.pageOrder.indexOf(pageNum);
             if (rawIdx >= 0) {
                 for (let k = rawIdx + 1; k < entry.pageOrder.length; k++) {

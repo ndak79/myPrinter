@@ -746,15 +746,29 @@ public class WordInteropService : IWordInteropService
                     {
                         // No preceding page — peek at the first real page in pageNumbers to match
                         // the document's orientation (BE-13-5: avoid Portrait/Landscape mismatch).
+                        // BE-22-2 fix: use the source page's actual dimensions instead of
+                        // hardcoded A4 values, so non-A4 documents (US Letter, A3, etc.) get
+                        // a correctly-sized blank page that won't cause a paper-size mismatch.
                         var firstRealPage = pageNumbers.FirstOrDefault(p => p >= 1 && p <= sourceDoc.PageCount);
                         PdfPage? orientationSource = firstRealPage > 0
                             ? sourceDoc.Pages[firstRealPage - 1]
                             : null;
-                        bool isLandscape = orientationSource != null
-                            && orientationSource.Width.Point > orientationSource.Height.Point;
 
-                        double w = isLandscape ? 841.89 : 595.28;
-                        double h = isLandscape ? 595.28 : 841.89;
+                        double w, h;
+                        if (orientationSource != null)
+                        {
+                            // Use the actual page dimensions, preserving any non-A4 paper size
+                            w = orientationSource.Width.Point;
+                            h = orientationSource.Height.Point;
+                            Console.WriteLine($"[CreatePdfSubset] Leading blank: matched source page dims {w:F2}x{h:F2}pt");
+                        }
+                        else
+                        {
+                            // No real page at all — fall back to A4 portrait as last resort
+                            w = 595.28;
+                            h = 841.89;
+                            Console.WriteLine("[CreatePdfSubset] Leading blank: no source page found, using A4 portrait fallback");
+                        }
 
                         var blankPage = targetDoc.AddPage();
                         blankPage.Width  = XUnit.FromPoint(w);
@@ -771,7 +785,7 @@ public class WordInteropService : IWordInteropService
                                 rectSize,
                                 rectSize);
                         }
-                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, isLandscape={isLandscape}, non-skippable)");
+                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, dims={w:F2}x{h:F2}pt, non-skippable)");
                     }
                 }
                 else if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)
