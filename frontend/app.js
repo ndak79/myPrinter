@@ -73,6 +73,7 @@ const AppState = {
             blankAbsorbedBy:  new Map(), // populated by buildSheetLayout; reset each render cycle
             _togetherRotations:      new Set(), // Set<pageNum> — pages auto-rotated by together mode
             _originalOrientationMap: null,      // Map<pageNum, bool> | null — pre-injection snapshot
+            _pendingOrientationMap:  null,      // transient: set during async intrinsic detection, committed after guards (F1 fix)
             landscapeMode: 'together',   // 'separate' | 'together' — per-file, default matches current global default
             copies:        1,            // int 1–99 — per-file copy count
             collate:       true,         // bool — per-file collate setting
@@ -137,6 +138,7 @@ function _teardownTogether(fileEntry) {
     }
     fileEntry._togetherRotations.clear();
     fileEntry._originalOrientationMap = null;
+    fileEntry._pendingOrientationMap   = null; // discard any in-flight intrinsic detection (F1 fix)
 }
 
 // ─── lookAheadOrientation ──────────────────────────────────────────
@@ -198,22 +200,27 @@ function unsetSingleSided(fileEntry, pageNums) {
     // Phase 1: collect blank indices to remove (before splicing anything)
     const blankIndicesToRemove = [];
     for (const pageNum of pageNums) {
-        if (fileEntry.blankAbsorbedBy.has(pageNum)) {
-            // Forward scan: find blank (0) after pageNum in raw pageOrder,
-            // skipping deselected pages that may lie in between.
-            const rawIdx = fileEntry.pageOrder.indexOf(pageNum);
-            if (rawIdx >= 0) {
-                for (let k = rawIdx + 1; k < fileEntry.pageOrder.length; k++) {
-                    const v = fileEntry.pageOrder[k];
-                    if (v === 0) {
-                        blankIndicesToRemove.push(k);
-                        break;
-                    }
-                    if (fileEntry.selectedPages.has(v)) {
-                        break; // selected page encountered — blank not reachable
-                    }
-                    // deselected page — skip and continue forward
+        // BUG FIX (B7b): previously guarded by fileEntry.blankAbsorbedBy.has(pageNum),
+        // which is only populated during sheet-view renders. In page-view mode every
+        // render() resets blankAbsorbedBy to new Map() without repopulating it, so the
+        // guard was always false → absorbed blank never spliced from pageOrder → orphaned
+        // blank survived → extra blank page printed.
+        //
+        // Fix: always run the forward scan — if a 0 exists after pageNum (skipping
+        // deselected pages) it is the absorbed blank and must be removed. This is the
+        // same on-the-fly derivation as buildEffectivePageOrder uses (B7 fix).
+        const rawIdx = fileEntry.pageOrder.indexOf(pageNum);
+        if (rawIdx >= 0) {
+            for (let k = rawIdx + 1; k < fileEntry.pageOrder.length; k++) {
+                const v = fileEntry.pageOrder[k];
+                if (v === 0) {
+                    blankIndicesToRemove.push(k);
+                    break;
                 }
+                if (fileEntry.selectedPages.has(v)) {
+                    break; // selected page encountered — blank not reachable
+                }
+                // deselected page — skip and continue forward
             }
         }
         fileEntry.singleSidedPages.delete(pageNum);
@@ -3575,7 +3582,9 @@ const PreviewPanelModule = {
                 for (const { p, isLandscape } of intrinsicResults) {
                     intrinsicMap.set(p, isLandscape);
                 }
-                fileEntry._originalOrientationMap = intrinsicMap;
+                // NOTE: assignment deferred to after the guards below (F1 fix).
+                // See guard block immediately after this if-closure.
+                fileEntry._pendingOrientationMap = intrinsicMap;
             }
 
             // [6] Guard after intrinsic detection await — two checks required:
@@ -3585,7 +3594,15 @@ const PreviewPanelModule = {
             if (this._currentFileId !== fileEntry.id) return;
             if (fileEntry.landscapeMode !== 'together') return;
 
-            // [4] INJECT CCW90 for intrinsically landscape pages not already manually rotated
+            // F1 fix: commit the pending map only AFTER guards pass. If the user switched
+            // together→separate during the intrinsic-detection await, _teardownTogether already
+            // nulled _originalOrientationMap; the guard above returns before we reach here,
+            // so the stale map is never committed and the next together-mode entry will
+            // correctly re-run intrinsic detection from scratch.
+            if (fileEntry._pendingOrientationMap != null) {
+                fileEntry._originalOrientationMap = fileEntry._pendingOrientationMap;
+                fileEntry._pendingOrientationMap  = null;
+            }
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
                 if (fileEntry._originalOrientationMap.get(p) === true) {  // intrinsically landscape
                     if (!fileEntry.pageRotations.has(p)) {                // not manually rotated

@@ -697,8 +697,13 @@ public class PrintAlgorithmService
                 // jobState.RemainingPages được gán từ ManualDuplexPlan.Phase2Pages
                 if (jobState.RemainingPages == null || jobState.RemainingPages.Length == 0)
                 {
-                    Console.WriteLine("[ExecutePrintJob] WARNING: No even pages to print in second phase.");
-                    return;
+                    // This should never happen if ProcessMixedOrientation padded correctly.
+                    // Throw instead of silently returning so the caller surfaces a real error
+                    // to the user rather than appearing to succeed with nothing printed. (C6 fix)
+                    throw new InvalidOperationException(
+                        "[ExecutePrintJob] Phase 2 has no pages to print. " +
+                        "This indicates ProcessMixedOrientation produced an odd page count — " +
+                        "please report this as a bug with the document that triggered it.");
                 }
 
                 Console.WriteLine("[ExecutePrintJob] Manual duplex phase 2: creating smart rotated PDF for back pages");

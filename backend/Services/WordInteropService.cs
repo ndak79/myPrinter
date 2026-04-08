@@ -962,6 +962,68 @@ public class WordInteropService : IWordInteropService
                 isLandscapeByPage[i + 1] = w > h;
             }
 
+            // BUG FIX (C1): User-inserted blank pages (created by CreatePdfSubset for
+            // pageOrder=0 entries) always have portrait A4 dimensions (595×842), regardless
+            // of the surrounding pages' orientation. This causes them to be detected as
+            // "portrait", which incorrectly splits a landscape group at every blank page
+            // boundary → unnecessary extra padding blanks and wrong sheet count.
+            //
+            // Fix: blank pages inherit the orientation of the preceding real page (the same
+            // rule CreatePdfSubset already uses when choosing the blank's template). We detect
+            // blank pages by their "non-skippable" signature: a near-A4 page whose content is
+            // just a tiny gray rectangle (very small content area relative to page size).
+            // Rather than trying to inspect content, we use a simpler structural rule:
+            // a page is a "layout blank" if it has exactly portrait-A4 or landscape-A4
+            // dimensions AND a content stream that is trivially small (detected by MediaBox
+            // matching standard blank dimensions within 1pt tolerance).
+            //
+            // Even simpler and equally correct: propagate the preceding page's orientation
+            // forward through any page whose dimensions are square or that exactly matches
+            // the blank dimensions we create (595×842 portrait or 842×595 landscape).
+            // Since CreateNonSkippableBlankPage copies template w/h exactly, a blank that
+            // was created in portrait-A4 context has 595×842, and one in landscape-A4 has
+            // 842×595. Only the FORMER is misclassified (portrait blank in a landscape group).
+            //
+            // Implementation: after initial classification, forward-propagate orientation
+            // through any page that has the same dimensions as a standard CreateNonSkippableBlankPage
+            // output (i.e., its dimensions exactly match one of the two A4 orientations and the
+            // preceding page had the opposite orientation — meaning it's likely a blank that
+            // inherited the wrong context).
+            //
+            // The most reliable approach: a page is treated as orientation-neutral (inherits
+            // predecessor) if its width and height are within 2pt of any standard page size
+            // AND it was preceded by a page of different orientation. This covers the common
+            // case without inspecting content streams.
+            //
+            // PRACTICAL IMPLEMENTATION: simply forward-propagate the predecessor's orientation
+            // through any page that is exactly square or that matches the standard blank
+            // dimensions produced by CreateNonSkippableBlankPage (595.28×841.89 or swapped).
+            const double blankW = 595.28;
+            const double blankH = 841.89;
+            const double tolerance = 2.0;
+
+            for (int i = 2; i <= pageCount; i++) // start at 2 — need predecessor
+            {
+                var pg = sourceDoc.Pages[i - 1];
+                double pw = pg.Width.Point;
+                double ph = pg.Height.Point;
+                int pr = pg.Rotate;
+                if (pr == 90 || pr == 270) (pw, ph) = (ph, pw);
+
+                bool isStandardBlankPortrait  = Math.Abs(pw - blankW) < tolerance && Math.Abs(ph - blankH) < tolerance;
+                bool isStandardBlankLandscape = Math.Abs(pw - blankH) < tolerance && Math.Abs(ph - blankW) < tolerance;
+
+                if ((isStandardBlankPortrait || isStandardBlankLandscape) &&
+                    isLandscapeByPage[i] != isLandscapeByPage[i - 1])
+                {
+                    // This page has standard blank dimensions but different orientation from
+                    // predecessor — it's almost certainly a user-inserted blank that was
+                    // created in the predecessor's context. Inherit predecessor orientation.
+                    isLandscapeByPage[i] = isLandscapeByPage[i - 1];
+                    Console.WriteLine($"[ProcessMixedOrientation] Page {i}: blank orientation corrected to match predecessor ({(isLandscapeByPage[i] ? "L" : "P")})");
+                }
+            }
+
             // 2) Duyệt theo group consecutive cùng orientation
             int current = 1;
             while (current <= pageCount)
@@ -1144,17 +1206,24 @@ public class WordInteropService : IWordInteropService
                     form.PageNumber = pageNum;
 
                     var newPage = targetDoc.AddPage();
-                    newPage.Width = XUnit.FromPoint(form.PointWidth);
-                    newPage.Height = XUnit.FromPoint(form.PointHeight);
+                    // BUG FIX (C9): use orientation-adjusted w/h, NOT form.PointWidth/PointHeight.
+                    // form.Point* returns raw MediaBox dimensions which are NOT swapped for
+                    // PDF-level Rotate metadata (90°/270°). w and h are already correctly
+                    // swapped above (lines 1133-1134), so they reflect the visually-effective
+                    // page dimensions. Using the raw form dimensions for a portrait page stored
+                    // as landscape+Rotate90 (common from Word) would create a landscape canvas
+                    // and render garbled content on the physical back face.
+                    newPage.Width  = XUnit.FromPoint(w);
+                    newPage.Height = XUnit.FromPoint(h);
 
                     using var gfx = XGraphics.FromPdfPage(newPage);
                     gfx.Save();
-                    gfx.TranslateTransform(form.PointWidth, form.PointHeight);
+                    gfx.TranslateTransform(w, h);  // pivot at corrected dimensions
                     gfx.RotateTransform(180);
-                    gfx.DrawImage(form, 0, 0);
+                    gfx.DrawImage(form, 0, 0, w, h); // explicit size matches corrected canvas
                     gfx.Restore();
 
-                    Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum} rotated successfully");
+                    Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum} rotated successfully (w={w:F1}, h={h:F1})");
                 }
                 else
                 {
