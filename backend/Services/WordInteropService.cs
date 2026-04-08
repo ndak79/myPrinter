@@ -116,7 +116,10 @@ public class WordInteropService : IWordInteropService
         string? tempPng = null;
         string effectivePath = imagePath;
 
-        if (ext is ".webp" or ".tif" or ".tiff" or ".bmp")
+        // B6 fix: .jpg/.jpeg/.png bypass EXIF orientation when loaded directly by
+        // PdfSharp's XImage.FromFile. Route them through System.Drawing.Bitmap first
+        // (same path already taken for WebP/TIFF/BMP) so EXIF rotation is honoured.
+        if (ext is ".webp" or ".tif" or ".tiff" or ".bmp" or ".jpg" or ".jpeg" or ".png")
         {
             tempPng = Path.Combine(Path.GetTempPath(), $"img_convert_{Guid.NewGuid()}.png");
             using var sysBmp = new System.Drawing.Bitmap(imagePath);
@@ -892,27 +895,22 @@ public class WordInteropService : IWordInteropService
 
     private void CleanupWordObjects(Word.Document? doc, Word.Application? app)
     {
-        try
-        {
-            if (doc != null)
-            {
-                doc.Close(SaveChanges: false);
-                Marshal.ReleaseComObject(doc);
-            }
+        // B7 fix: use independent try/catch for each COM step so that a failure
+        // in doc.Close() does not skip app.Quit() and leave WINWORD.EXE alive.
+        try { if (doc != null) doc.Close(SaveChanges: false); }
+        catch (Exception ex) { Console.WriteLine($"[CleanupWordObjects] doc.Close failed: {ex.Message}"); }
 
-            if (app != null)
-            {
-                app.Quit();
-                Marshal.ReleaseComObject(app);
-            }
+        try { if (doc != null) Marshal.ReleaseComObject(doc); }
+        catch (Exception ex) { Console.WriteLine($"[CleanupWordObjects] ReleaseComObject(doc) failed: {ex.Message}"); }
 
-            // Let the GC run naturally; forcing full collections on every print
-            // can cause noticeable pauses when printing many documents.
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error cleaning up Word objects: {ex.Message}");
-        }
+        try { if (app != null) app.Quit(); }
+        catch (Exception ex) { Console.WriteLine($"[CleanupWordObjects] app.Quit failed: {ex.Message}"); }
+
+        try { if (app != null) Marshal.ReleaseComObject(app); }
+        catch (Exception ex) { Console.WriteLine($"[CleanupWordObjects] ReleaseComObject(app) failed: {ex.Message}"); }
+
+        // Let the GC run naturally; forcing full collections on every print
+        // can cause noticeable pauses when printing many documents.
     }
 
         /// <summary>
@@ -1342,8 +1340,14 @@ public class WordInteropService : IWordInteropService
                     }
 
                     form.PageNumber = pageNum;
+                    // A3 fix: use rotation-adjusted dimensions, not raw MediaBox.
+                    // Pages exported by Word often store portrait as landscape+Rotate:90.
+                    // form.PointWidth/PointHeight return the raw MediaBox, ignoring Rotate.
                     double formW = form.PointWidth;
                     double formH = form.PointHeight;
+                    int srcRotate = srcPage.Rotate;
+                    if (srcRotate == 90 || srcRotate == 270)
+                        (formW, formH) = (formH, formW); // adjust to visually-effective dims
 
                     var newPage = targetDoc.AddPage();
                     if (degrees == 90 || degrees == 270)
@@ -1377,7 +1381,12 @@ public class WordInteropService : IWordInteropService
                             break;
                     }
 
-                    gfx.DrawImage(form, 0, 0, formW, formH);
+                    // A2 fix: after 90/270 rotation the canvas is formH×formW — draw must
+                    // fill that rotated canvas, so width/height args must be swapped too.
+                    if (degrees == 90 || degrees == 270)
+                        gfx.DrawImage(form, 0, 0, formH, formW);
+                    else
+                        gfx.DrawImage(form, 0, 0, formW, formH);
                     gfx.Restore();
 
                     Console.WriteLine($"[ApplyPageRotations] Page {pageNum}: rotated {degrees}°");

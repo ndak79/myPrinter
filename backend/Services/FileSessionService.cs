@@ -46,6 +46,14 @@ public sealed class FileSessionService : IDisposable
     public PrintJobState? GetJob(string jobId)
         => _jobs.TryGetValue(jobId, out var j) ? j : null;
 
+    /// <summary>
+    /// Atomically removes and returns a job, without deleting its temp file.
+    /// Used by /api/print/continue to prevent double-execution of phase 2
+    /// if two requests arrive simultaneously for the same jobId (TOCTOU fix).
+    /// </summary>
+    public PrintJobState? ClaimJob(string jobId)
+        => _jobs.TryRemove(jobId, out var job) ? job : null;
+
     public void RemoveJob(string jobId)
     {
         if (_jobs.TryRemove(jobId, out var job))

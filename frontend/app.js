@@ -1724,7 +1724,11 @@ const PageSelectModule = {
         text.split(',').forEach(part => {
             part = part.trim();
             if (part.includes('-')) {
-                const [a, b] = part.split('-').map(s => parseInt(s.trim()));
+                // BUG-3 fix: reject segments with more than one dash (e.g. "1-2-3")
+                // to prevent silent data loss from [a,b] destructuring discarding extra elements.
+                const segments = part.split('-').map(s => parseInt(s.trim()));
+                if (segments.length !== 2) return; // malformed range — skip silently
+                const [a, b] = segments;
                 if (!isNaN(a) && !isNaN(b))
                     for (let i = Math.min(a,b); i <= Math.max(a,b); i++)
                         if (i >= 1 && i <= AppState.totalPageCount) pages.add(i);
@@ -2536,23 +2540,41 @@ const PrintModule = {
     },
 
     async _continuePrint() {
+        // BUG-1 fix: guard against null currentJob (timer race after cancel, or ESC edge case)
+        if (!AppState.currentJob) return;
         try {
             showToast('Dang in mat chan...', 'info');
             const res    = await fetch(`${API_BASE}/print/continue?jobId=${AppState.currentJob.jobId}`, { method: 'POST' });
             const result = await res.json();
+            const btn = document.getElementById('print-btn');
+            const resetBtn = () => {
+                AppState.currentJob = null;
+                if (btn) {
+                    btn.dataset.mode = '';
+                    btn.classList.remove('cancellable');
+                    btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
+                    PrintModule.updateButton();
+                }
+            };
             if (result.success) {
                 showToast('In hoan tat!', 'success');
-                AppState.currentJob = null;
-                // Reset cancel button (A)
-                const btn = document.getElementById('print-btn');
+                resetBtn();
+            } else {
+                // BUG-2 fix: reset button even on failure so UI doesn't get stuck
+                showToast('Loi: ' + result.message, 'error');
+                resetBtn();
+            }
+        } catch (err) {
+            // BUG-2 fix: also reset on network error
+            showToast('Loi khi tiep tuc in: ' + err.message, 'error');
+            AppState.currentJob = null;
+            const btn = document.getElementById('print-btn');
+            if (btn) {
                 btn.dataset.mode = '';
                 btn.classList.remove('cancellable');
                 btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
                 PrintModule.updateButton();
             }
-            else showToast('Loi: ' + result.message, 'error');
-        } catch (err) {
-            showToast('Loi khi tiep tuc in: ' + err.message, 'error');
         }
     },
 

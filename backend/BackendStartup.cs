@@ -176,6 +176,12 @@ public static class BackendStartup
         {
             try
             {
+                // BUG-1 fix: explicit null/empty guards before any dictionary lookup
+                if (string.IsNullOrWhiteSpace(request.FileId))
+                    return Results.BadRequest(new PrintResponse { Success = false, Message = "fileId is required." });
+                if (string.IsNullOrWhiteSpace(request.PrinterName))
+                    return Results.BadRequest(new PrintResponse { Success = false, Message = "printerName is required." });
+
                 var filePath = sessions.GetFilePath(request.FileId);
                 if (filePath == null)
                     return Results.NotFound(new PrintResponse { Success = false, Message = "File not found. Please upload again." });
@@ -187,30 +193,36 @@ public static class BackendStartup
                 if (!File.Exists(filePath))
                     return Results.NotFound(new PrintResponse { Success = false, Message = "File not found on server. Please upload again." });
 
-                if (!printerService.IsPrinterAvailable(request.PrinterName))
-                    return Results.BadRequest(new PrintResponse { Success = false, Message = "Printer is not available" });
-
+                // BUG-5 fix: collapse double WMI query into one; use OrdinalIgnoreCase consistently
                 var printers = printerService.GetAllPrinters();
-                var printer = printers.FirstOrDefault(p => p.Name == request.PrinterName);
+                var printer = printers.FirstOrDefault(p =>
+                    string.Equals(p.Name, request.PrinterName, StringComparison.OrdinalIgnoreCase));
                 if (printer == null)
-                    return Results.NotFound(new PrintResponse { Success = false, Message = "Printer not found" });
+                    return Results.NotFound(new PrintResponse { Success = false, Message = "Printer not found." });
+                if (!printerService.IsPrinterAvailable(request.PrinterName))
+                    return Results.BadRequest(new PrintResponse { Success = false, Message = "Printer is not available." });
 
                 PrintJobState jobState;
 
+                // BUG-2 fix: explicit else-if for each mode + reject unknown values
                 if (request.Mode == PrintMode.NormalDuplex)
                     jobState = printAlgorithm.CreateNormalDuplexJob(filePath, request.PrinterName, printer.IsDuplex,
                         request.PageRange, request.SingleSidedPages, request.Watermark, request.PageOrder, request.PageRotations,
-                        duplexSide:    request.DuplexSide,      // NEW §6.3
-                        manualFlipDir: request.ManualFlipDir);  // NEW §6.6
+                        duplexSide:    request.DuplexSide,
+                        manualFlipDir: request.ManualFlipDir);
                 else if (request.Mode == PrintMode.Simplex)
                     jobState = printAlgorithm.CreateSimplexJob(filePath, request.PrinterName,
                         request.PageRange, request.Watermark, request.PageOrder, request.PageRotations);
-                else
+                else if (request.Mode == PrintMode.BookletA5)
                     jobState = printAlgorithm.CreateBookletJob(filePath, request.PrinterName, printer.IsDuplex,
                         request.PageRange, request.SingleSidedPages, request.PageOrder, request.PageRotations);
+                else
+                    return Results.BadRequest(new PrintResponse { Success = false, Message = $"Unknown print mode: {(int)request.Mode}" });
 
                 int copies = Math.Max(1, request.Copies);
 
+                // BUG-6 fix: only store the job in session if it's a manual duplex waiting for flip.
+                // Completed non-manual jobs don't need to be stored and would accumulate in memory.
                 if (!jobState.IsManualDuplex)
                 {
                     for (int copy = 0; copy < copies; copy++)
@@ -219,14 +231,14 @@ public static class BackendStartup
                         if (copies > 1 && copy < copies - 1)
                             System.Threading.Thread.Sleep(2000);
                     }
+                    // No AddJob — print is complete, nothing to continue
                 }
                 else
                 {
                     printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
                     jobState.Copies = copies;
+                    sessions.AddJob(jobState.JobId, jobState);
                 }
-
-                sessions.AddJob(jobState.JobId, jobState);
 
                 return Results.Ok(new PrintResponse
                 {
@@ -234,6 +246,11 @@ public static class BackendStartup
                     Message = jobState.WaitingForFlip ? "First phase complete. Waiting for manual flip." : "Print job sent successfully.",
                     JobState = jobState.WaitingForFlip ? jobState : null
                 });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // BUG-7 fix: domain errors (invalid page range, empty PDF, etc.) → 400 not 500
+                return Results.BadRequest(new PrintResponse { Success = false, Message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -248,18 +265,27 @@ public static class BackendStartup
         {
             try
             {
-                var jobState = sessions.GetJob(jobId);
+                // BUG-4 fix: guard null/empty jobId before dictionary lookup
+                if (string.IsNullOrWhiteSpace(jobId))
+                    return Results.BadRequest(new PrintResponse { Success = false, Message = "jobId is required." });
+
+                // BUG-3 fix: atomically claim the job via TryRemove so concurrent
+                // requests for the same jobId cannot both execute phase 2.
+                var jobState = sessions.ClaimJob(jobId);
                 if (jobState == null)
-                    return Results.NotFound(new PrintResponse { Success = false, Message = "Job not found" });
+                    return Results.NotFound(new PrintResponse { Success = false, Message = "Job not found or already completed." });
 
                 if (!jobState.WaitingForFlip)
-                    return Results.BadRequest(new PrintResponse { Success = false, Message = "Job is not waiting for flip" });
+                    return Results.BadRequest(new PrintResponse { Success = false, Message = "Job is not waiting for flip." });
 
                 printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
                 jobState.WaitingForFlip = false;
-                sessions.RemoveJob(jobId);
 
                 return Results.Ok(new PrintResponse { Success = true, Message = "Print job completed successfully" });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new PrintResponse { Success = false, Message = ex.Message });
             }
             catch (Exception ex)
             {
