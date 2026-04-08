@@ -2477,7 +2477,12 @@ const PrintModule = {
 
     updateButton() {
         const printBtn   = document.getElementById('print-btn');
-        const ready = !!(AppState.selectedPrinter && AppState.uploadedFile && AppState.selectedPages.size > 0);
+        // B32-FE-6 fix: check ANY file has pages selected, not just the active file.
+        // _startPrint() prints from AppState.files.filter(f => f.selectedPages.size > 0),
+        // so the button must be enabled whenever any file is printable, regardless of
+        // which file is currently active in the tab strip.
+        const anyFileReady = AppState.files.some(f => f.selectedPages.size > 0);
+        const ready = !!(AppState.selectedPrinter && anyFileReady);
         if (printBtn)   printBtn.disabled   = !ready;
         SummaryModule.update();
         if (PrintPreviewModule._isOpen) PrintPreviewModule._updateFooterSummary();
