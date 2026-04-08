@@ -259,6 +259,12 @@ public static class BackendStartup
                 }
                 else
                 {
+                    // BE-26-5: store job in session BEFORE the Phase 1 loop so that if an
+                    // exception occurs on copy 2+, the partial job (already printed fronts)
+                    // is still registered and the user can still trigger Phase 2 via Continue.
+                    jobState.Copies = copies;
+                    sessions.AddJob(jobState.JobId, jobState);
+
                     // BE-25-3: Phase 1 must also loop copies times (mirrors the Phase 2 loop added in BE-24-8).
                     // Without this, a user requesting N copies gets only 1 set of fronts but N sets of backs.
                     for (int copy = 0; copy < copies; copy++)
@@ -267,8 +273,6 @@ public static class BackendStartup
                         if (copies > 1 && copy < copies - 1)
                             await Task.Delay(2000);
                     }
-                    jobState.Copies = copies;
-                    sessions.AddJob(jobState.JobId, jobState);
                 }
 
                 return Results.Ok(new PrintResponse
