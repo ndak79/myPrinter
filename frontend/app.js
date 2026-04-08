@@ -2697,6 +2697,7 @@ const PrintModule = {
                     ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
                     : null,
                 duplexSide,
+                manualFlipDir: duplexSide,  // B20-FE-1 fix: mirror _startPrint which sends both fields
             };
 
             try {

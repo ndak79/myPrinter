@@ -173,6 +173,11 @@ public static class BackendStartup
                     return Results.BadRequest($"Unsupported file type: {extension}");
 
                 sessions.UpdateFilePath(fileId, pdfPath);
+                // BE-20-3 fix: delete the original uploaded file (Word/image) now that
+                // the session tracks only the converted pdfPath. Without this, the original
+                // temp file is orphaned: session cleanup deletes pdfPath but never knows
+                // about filePath (which has already been superseded).
+                FileSessionService.DeleteFileSafe(filePath);
                 return Results.Ok(new { success = true, pdfPath });
             }
             catch (Exception ex)

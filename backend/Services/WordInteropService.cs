@@ -546,8 +546,14 @@ public class WordInteropService : IWordInteropService
                 return false;
             }
             bool completed = proc.WaitForExit(60_000);
-            Console.WriteLine($"[PrintWithSumatra] Exit code: {proc.ExitCode}, completed in time: {completed}");
-            return completed && proc.ExitCode == 0;
+            if (!completed)
+            {
+                Console.WriteLine("[PrintWithSumatra] Timed out after 60s — killing process.");
+                try { proc.Kill(); } catch { /* best-effort */ }
+                return false;
+            }
+            Console.WriteLine($"[PrintWithSumatra] Exit code: {proc.ExitCode}");
+            return proc.ExitCode == 0;
         }
         catch (Exception ex)
         {
