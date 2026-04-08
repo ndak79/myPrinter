@@ -31,8 +31,9 @@ public class PrinterManagementService
 
             foreach (ManagementObject printer in searcher.Get())
             {
-                var name = (string)printer["Name"];
-                var portName = (string)printer["PortName"];
+                // BUG-4A fix: WMI can return null for Name/PortName — cast with null-coalesce
+                var name = printer["Name"] as string ?? string.Empty;
+                var portName = printer["PortName"] as string ?? string.Empty;
 
                 // Filter out virtual printers
                 if (IsVirtualPrinter(name, portName))
@@ -40,8 +41,9 @@ public class PrinterManagementService
                     continue;
                 }
 
-                var isDefault = (bool)printer["Default"];
-                var workOffline = (bool)printer["WorkOffline"];
+                // BUG-4B fix: WMI bool fields can be null → pattern-match instead of direct cast
+                var isDefault = printer["Default"] is bool b1 && b1;
+                var workOffline = printer["WorkOffline"] is bool b2 && b2;
                 var statusValue = printer["PrinterStatus"] != null
                     ? Convert.ToUInt16(printer["PrinterStatus"])
                     : (UInt16)0;
@@ -147,6 +149,9 @@ public class PrinterManagementService
             5 => PrinterStatus.Warmup,
             7 => PrinterStatus.Offline,
             1 => PrinterStatus.Other,
+            // BUG-4C fix: statuses 6–11 are error/jam/paper-out states — report as Offline
+            // so IsPrinterAvailable returns false and prevents wasted print jobs
+            >= 6 and <= 11 => PrinterStatus.Offline,
             _ => PrinterStatus.Unknown
         };
     }

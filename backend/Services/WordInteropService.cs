@@ -241,9 +241,17 @@ public class WordInteropService : IWordInteropService
             }
 
             var firstPage = document.Pages[0];
-            var isLandscape = firstPage.Width.Point > firstPage.Height.Point;
 
-            Console.WriteLine($"[GetPdfInfo] PageCount={pageCount}, Orientation={(isLandscape ? "Landscape" : "Portrait")} (W:{firstPage.Width}, H:{firstPage.Height})");
+            // BUG-1A fix: PDF /Rotate metadata can make a physically-portrait page
+            // appear as landscape (e.g. Word-exported PDFs with 90° rotation).
+            // We must account for this when determining true orientation.
+            double pw = firstPage.Width.Point;
+            double ph = firstPage.Height.Point;
+            var rotate = firstPage.Rotate;
+            if (rotate == 90 || rotate == 270) (pw, ph) = (ph, pw);
+            var isLandscape = pw > ph;
+
+            Console.WriteLine($"[GetPdfInfo] PageCount={pageCount}, Orientation={(isLandscape ? "Landscape" : "Portrait")} (W:{firstPage.Width}, H:{firstPage.Height}, Rotate:{rotate})");
 
             return new PdfInfo(pageCount, isLandscape);
         }

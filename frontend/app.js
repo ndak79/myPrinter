@@ -1169,6 +1169,12 @@ const UploadModule = {
             return;
         }
 
+        // BUG-U3 fix: reject oversized files immediately before attempting upload
+        if (file.size > 100 * 1024 * 1024) {
+            showToast(`File quá lớn (tối đa 100MB): ${file.name}`, 'error');
+            return;
+        }
+
         const uploadCard = document.getElementById('upload-area')?.closest('.card');
         if (uploadCard) clearCardError(uploadCard);
 
@@ -1213,7 +1219,15 @@ const UploadModule = {
             // Convert if needed
             if (entry.needsConversion) {
                 showToast(`Đang chuyển đổi ${entry.name}...`, 'info');
-                await fetch(`${API_BASE}/convert?fileId=${entry.id}`, { method: 'POST' });
+                // BUG-U1 fix: check convert response — failure must remove the orphaned entry
+                const convertRes = await fetch(`${API_BASE}/convert?fileId=${entry.id}`, { method: 'POST' });
+                if (!convertRes.ok) {
+                    const idx = AppState.files.indexOf(entry);
+                    if (idx !== -1) AppState.removeFile(idx);
+                    TabsModule.render();
+                    showToast(`Lỗi chuyển đổi: ${entry.name}`, 'error');
+                    return;
+                }
             }
 
             // Update file info display (legacy UI elements — may not exist in app-shell)
@@ -4496,6 +4510,8 @@ const ViewModeModule = {
                 const btn = e.target.closest('[data-lsmode]');
                 if (!btn) return;
                 const newMode = btn.dataset.lsmode;
+                // BUG-M1 fix: guard against redundant double-click re-renders
+                if (newMode === AppState.landscapeMode) return;
 
                 // §5.4: Teardown together-mode state for the ACTIVE file only before switching.
                 // Only this file's landscapeMode is changing — non-active files keep their own

@@ -199,7 +199,8 @@ public static class BackendStartup
                     string.Equals(p.Name, request.PrinterName, StringComparison.OrdinalIgnoreCase));
                 if (printer == null)
                     return Results.NotFound(new PrintResponse { Success = false, Message = "Printer not found." });
-                if (!printerService.IsPrinterAvailable(request.PrinterName))
+                // BUG-4D fix: use already-retrieved printer.Status instead of firing a second WMI query
+                if (printer.Status == PrinterStatus.Offline)
                     return Results.BadRequest(new PrintResponse { Success = false, Message = "Printer is not available." });
 
                 PrintJobState jobState;

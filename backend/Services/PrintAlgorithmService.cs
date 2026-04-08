@@ -451,9 +451,17 @@ public class PrintAlgorithmService
         // Use the first page size as the base. For an A4 portrait source this will
         // produce an A4 landscape sheet with two scaled pages side-by-side.
         var firstPage = sourceDoc.Pages[0];
+
+        // BUG-3B fix: account for PDF /Rotate metadata — a page stored as portrait with
+        // Rotate=90 is visually landscape; swap w/h before computing booklet sheet dims.
         double sourceWidth = firstPage.Width.Point;
         double sourceHeight = firstPage.Height.Point;
+        var firstRotate = firstPage.Rotate;
+        if (firstRotate == 90 || firstRotate == 270) (sourceWidth, sourceHeight) = (sourceHeight, sourceWidth);
 
+        // Booklet sheet: two source pages side-by-side → landscape sheet.
+        // Height of source page becomes width of booklet sheet (the folded dimension),
+        // width of source page becomes height (the other dimension).
         double bookletPageWidth = sourceHeight;   // e.g. 842 for A4 landscape
         double bookletPageHeight = sourceWidth;   // e.g. 595 for A4 landscape
 
@@ -475,6 +483,7 @@ public class PrintAlgorithmService
                 DrawPageOnHalf(
                     gfx,
                     form,
+                    sourceDoc,
                     pageOrder[i],
                     leftSide: true,
                     pageWidth: bookletPageWidth,
@@ -488,6 +497,7 @@ public class PrintAlgorithmService
                 DrawPageOnHalf(
                     gfx,
                     form,
+                    sourceDoc,
                     pageOrder[i + 1],
                     leftSide: false,
                     pageWidth: bookletPageWidth,
@@ -502,6 +512,7 @@ public class PrintAlgorithmService
     private void DrawPageOnHalf(
         XGraphics gfx,
         XPdfForm form,
+        PdfDocument sourceDoc,
         int pageNumber,
         bool leftSide,
         double pageWidth,
@@ -517,9 +528,14 @@ public class PrintAlgorithmService
         double x = leftSide ? 0 : halfWidth;
         double y = 0;
 
-        // Check for landscape orientation (Width > Height)
-        // If landscape, we rotate -90 degrees (CCW) so it fits the portrait slot perfectly.
-        bool isLandscape = form.PointWidth > form.PointHeight;
+        // BUG-3D fix: form.PointWidth/PointHeight reflects raw stored dimensions which
+        // ignore PDF /Rotate metadata. Read the actual source page to get Rotate, then
+        // swap dimensions before deciding whether the visual page is landscape.
+        var srcPage = sourceDoc.Pages[pageNumber - 1];
+        double fw = form.PointWidth;
+        double fh = form.PointHeight;
+        if (srcPage.Rotate == 90 || srcPage.Rotate == 270) (fw, fh) = (fh, fw);
+        bool isLandscape = fw > fh;
 
         if (isLandscape)
         {
