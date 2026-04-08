@@ -88,6 +88,59 @@ public class PrintAlgorithmService
             // Apply custom page order if provided (I)
             selectedPages = ApplyPageOrder(selectedPages, pageOrder);
 
+            // INSERT BLANK BACKS for single-sided pages (Bug B9 fix).
+            // Auto-duplex printers pair pages sequentially: odd positions → front face,
+            // even positions → back face. A page marked single-sided must land on a FRONT
+            // face (odd position) and have a blank BACK face.
+            //
+            // Algorithm (position-aware):
+            //   - Walk selectedPages left-to-right, tracking the 1-based print position.
+            //   - When an SS page is found at an even (back) position, pad with a blank
+            //     first to push it to the next front, then add the SS page + blank back.
+            //   - When an SS page is at an odd (front) position, just add blank back.
+            //   - If the page is already followed by a user-inserted blank (0), skip the
+            //     extra blank to avoid double-blanking on that back face.
+            if (singleSidedPages != null && singleSidedPages.Length > 0)
+            {
+                var singleSidedSet = new HashSet<int>(singleSidedPages);
+                var adjusted       = new List<int>(selectedPages.Length + singleSidedPages.Length * 2);
+                int position       = 1; // 1-indexed: odd = front face, even = back face
+
+                for (int si = 0; si < selectedPages.Length; si++)
+                {
+                    int page = selectedPages[si];
+
+                    if (page != 0 && singleSidedSet.Contains(page))
+                    {
+                        // Ensure SS page lands on a FRONT face (odd position)
+                        if (position % 2 == 0)
+                        {
+                            adjusted.Add(0); // pad current back face → advance to next front
+                            position++;
+                        }
+
+                        adjusted.Add(page); // SS page on front
+                        position++;
+
+                        // Add blank back — unless the next entry is already a blank
+                        bool nextIsBlank = (si + 1 < selectedPages.Length && selectedPages[si + 1] == 0);
+                        if (!nextIsBlank)
+                        {
+                            adjusted.Add(0);
+                            position++;
+                        }
+                    }
+                    else
+                    {
+                        adjusted.Add(page);
+                        position++;
+                    }
+                }
+
+                selectedPages = adjusted.ToArray();
+                Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex: inserted SS blanks → pages: {string.Join(",", selectedPages)}");
+            }
+
             // Apply per-page rotations before creating subset (U)
             var rotationMap = BuildRotationMap(pageRotations);
 

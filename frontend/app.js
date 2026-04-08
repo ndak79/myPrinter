@@ -231,7 +231,16 @@ function unsetSingleSided(fileEntry, pageNums) {
 // ─── buildEffectivePageOrder ──────────────────────────────────────
 // Derive the page order to send to backend — strips absorbed blanks so backend
 // does not double-blank (SS page already gets a system blank from ProcessMixedOrientation).
-// REQUIREMENT: fileEntry.blankAbsorbedBy must be populated (Invariant 7 guarantees this).
+//
+// Previously read fileEntry.blankAbsorbedBy, which is only populated during
+// sheet-view renders. In page-view every render() resets it to new Map() without
+// repopulating → stale empty Map → all blanks after SS pages were sent to backend
+// → double-blank (Bug B7).
+//
+// Fix: derive absorption directly from fileEntry.singleSidedPages — a blank is
+// "absorbed" iff its immediate predecessor in the selected+blank view is an SS page.
+// This is exactly the same semantic blankAbsorbedBy encodes, but computed on-the-fly
+// so the result is always correct regardless of view mode or render history.
 function buildEffectivePageOrder(fileEntry) {
     // Derive pages[] — same filtered view buildSheetLayout uses (deselected pages excluded).
     // MUST use pages[] instead of raw pageOrder to correctly detect absorption adjacency
@@ -247,11 +256,15 @@ function buildEffectivePageOrder(fileEntry) {
     }
 
     // Strip blanks that were absorbed by SS pages; keep standalone blanks.
+    // A blank is absorbed iff its immediate predecessor in the filtered view is
+    // a single-sided page — the backend's ProcessMixedOrientation will re-add it.
     return pages.filter((p, i) => {
         if (p !== 0) return true;          // non-blank: always keep
         if (i === 0) return true;          // blank at front — no preceding SS page, never absorbed
         const prevPage = pages[i - 1];     // predecessor in filtered view
-        return !fileEntry.blankAbsorbedBy.has(prevPage); // strip if absorbed
+        // Derive absorption on-the-fly: absorbed iff predecessor is a selected SS page.
+        // (Same semantics as blankAbsorbedBy but immune to stale cache state.)
+        return !fileEntry.singleSidedPages.has(prevPage);
     });
 }
 
@@ -2408,7 +2421,13 @@ const PrintModule = {
                 // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for all non-together cases)
                 if (file.landscapeMode === 'together' && file._originalOrientationMap != null) {
                     let allLandscape = true;
-                    for (let p = 1; p <= file.totalPageCount; p++) {
+                    // Check only pages actually being printed (Bug B8 fix):
+                    // previously looped 1..totalPageCount, so unselected portrait pages in a mixed
+                    // doc would keep allLandscape=false even when only landscape pages are selected.
+                    const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
+                        ? [...sel]                                                        // partial selection → check only selected
+                        : Array.from({ length: file.totalPageCount }, (_, i) => i + 1); // all selected → check all
+                    for (const p of pagesToCheck) {
                         if (file._originalOrientationMap.get(p) !== true) {
                             allLandscape = false;
                             break;
