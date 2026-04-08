@@ -282,7 +282,9 @@ public class WordInteropService : IWordInteropService
     public bool[] GetPageOrientations(string pdfPath)
     {
         Console.WriteLine($"[GetPageOrientations] Analyzing page orientations in: {pdfPath}");
-        
+        if (!File.Exists(pdfPath))
+            throw new FileNotFoundException("PDF file not found for orientation analysis.", pdfPath);
+
         using var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
         var orientations = new bool[document.PageCount];
         
@@ -452,6 +454,7 @@ public class WordInteropService : IWordInteropService
         catch (Exception ex)
         {
             Console.WriteLine($"[PrintPdf ERROR] {ex.Message}");
+            throw; // Re-throw to signal failure to caller
         }
         finally
         {
@@ -580,7 +583,7 @@ public class WordInteropService : IWordInteropService
                 Console.WriteLine("[PrintBySwappingDefaultPrinter] Process timed out.");
                 try { process.Kill(); } catch { }
             }
-            return true;
+            return completed;
         }
         finally
         {
@@ -677,8 +680,8 @@ public class WordInteropService : IWordInteropService
     {
         try
         {
-            var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
-            var targetDoc = new PdfDocument();
+            using var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
+            using var targetDoc = new PdfDocument();
 
             foreach (var pageNum in pageNumbers)
             {
@@ -727,10 +730,6 @@ public class WordInteropService : IWordInteropService
             int pageCount = targetDoc.PageCount;
             targetDoc.Save(targetPath);
             Console.WriteLine($"[CreatePdfSubset] Created subset PDF with {pageCount} pages at {targetPath}");
-            
-            // Dispose documents after save
-            targetDoc.Dispose();
-            sourceDoc.Dispose();
         }
         catch (Exception ex)
         {
@@ -751,7 +750,7 @@ public class WordInteropService : IWordInteropService
         
         try
         {
-            var targetDoc = new PdfDocument();
+            using var targetDoc = new PdfDocument();
 
             // Process pages in REVERSE order
             foreach (var pageNum in pageNumbers.OrderByDescending(p => p))
@@ -796,7 +795,6 @@ public class WordInteropService : IWordInteropService
 
             int pageCount = targetDoc.PageCount;
             targetDoc.Save(outputPath);
-            targetDoc.Dispose();
             
             Console.WriteLine($"[CreateRotatedPdfSubset] Created rotated PDF with {pageCount} pages (reverse order, 180° XGraphics rotation, 1:1 scale) at {outputPath}");
             
@@ -858,8 +856,8 @@ public class WordInteropService : IWordInteropService
 
             if (pagesToInclude.Count == 0)
             {
-                Console.WriteLine("[CreateTempPdfWithPages] No valid pages found in range, printing original.");
-                return sourcePath;
+                Console.WriteLine("[CreateTempPdfWithPages] No valid pages found in range.");
+                throw new InvalidOperationException("No valid pages found in the specified page range.");
             }
 
             var tempPath = Path.Combine(Path.GetTempPath(), $"print_job_{Guid.NewGuid()}.pdf");
@@ -888,7 +886,7 @@ public class WordInteropService : IWordInteropService
         catch (Exception ex)
         {
             Console.WriteLine($"[CreateTempPdfWithPages ERROR] Failed to build temp PDF: {ex.Message}");
-            return sourcePath;
+            throw;
         }
     }
 
@@ -1260,7 +1258,13 @@ public class WordInteropService : IWordInteropService
         using var targetDoc = new PdfDocument();
 
         // Parse color from hex "#RRGGBB"
+        if (string.IsNullOrWhiteSpace(opts.Color))
+            throw new ArgumentException("Watermark color cannot be empty.", nameof(opts));
+
         var hex = opts.Color.TrimStart('#');
+        if (hex.Length < 6)
+            throw new ArgumentException($"Invalid watermark color hex format: {opts.Color}", nameof(opts));
+
         var r = Convert.ToInt32(hex.Substring(0, 2), 16);
         var g = Convert.ToInt32(hex.Substring(2, 2), 16);
         var b = Convert.ToInt32(hex.Substring(4, 2), 16);

@@ -312,6 +312,8 @@ public class PrintAlgorithmService
         if (!string.IsNullOrWhiteSpace(pageRange))
         {
             selectedPages = ParsePageRange(pageRange, pdfInfo.PageCount);
+            if (selectedPages.Length == 0)
+                throw new InvalidOperationException("Page range resulted in no valid pages to print.");
         }
         else
         {
@@ -346,7 +348,8 @@ public class PrintAlgorithmService
         CreateBookletPdf(sourcePdfPath, bookletPdfPath, orderedPages, paddedCount);
 
         // Now treat it as normal duplex (no page range needed since booklet PDF is already filtered)
-        return CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: singleSidedPages);
+        // singleSidedPages not applicable/meaningful for booklet sheets in current logic
+        return CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: null);
     }
 
     public PrintJobState CreateSimplexJob(
@@ -678,8 +681,7 @@ public class PrintAlgorithmService
                 // jobState.OddPages được gán từ ManualDuplexPlan.Phase1Pages
                 if (jobState.OddPages == null || jobState.OddPages.Length == 0)
                 {
-                    Console.WriteLine("[ExecutePrintJob] WARNING: No odd pages to print in first phase.");
-                    return;
+                    throw new InvalidOperationException("No odd pages (Phase 1) to print in manual duplex job.");
                 }
 
                 var oddPagesStr = string.Join(",", jobState.OddPages);
