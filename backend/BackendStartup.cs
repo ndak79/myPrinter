@@ -186,7 +186,7 @@ public static class BackendStartup
             }
         });
 
-        app.MapPost("/api/print", (
+        app.MapPost("/api/print", async (
             PrintRequest request,
             PrinterManagementService printerService,
             IWordInteropService wordService,
@@ -251,7 +251,7 @@ public static class BackendStartup
                     {
                         printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
                         if (copies > 1 && copy < copies - 1)
-                            System.Threading.Thread.Sleep(2000);
+                            await Task.Delay(2000);
                     }
                     // BUG-8-2 fix: clean up intermediate temp files now that print is done
                     FileSessionService.DeleteIntermediateFiles(jobState);

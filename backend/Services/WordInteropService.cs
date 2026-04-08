@@ -17,6 +17,9 @@ public record PdfInfo(int PageCount, bool IsLandscape);
 [SupportedOSPlatform("windows")]
 public class WordInteropService : IWordInteropService
 {
+    // BE-21-6 fix: serialize the global-default-printer-swap strategy to prevent
+    // two concurrent print jobs from racing on the system-wide default printer setting.
+    private static readonly SemaphoreSlim _defaultPrinterLock = new SemaphoreSlim(1, 1);
     /// <summary>
     /// Tạo 1 trang "blank" nhưng có content siêu nhỏ để tránh bị viewer/driver skip.
     /// isLandscape = true → trang ngang, false → trang dọc.
@@ -165,7 +168,22 @@ public class WordInteropService : IWordInteropService
         {
             if (tempPng != null)
             {
-                try { File.Delete(tempPng); } catch { /* best-effort cleanup */ }
+                // BE-21-4 fix: tempPng is not tracked by FileSessionService, so retry deletion
+                // once after a short wait to handle any transient file-handle retention.
+                try { File.Delete(tempPng); }
+                catch
+                {
+                    try
+                    {
+                        System.Threading.Thread.Sleep(500);
+                        File.Delete(tempPng);
+                        Console.WriteLine($"[ConvertImageToPdf] Cleaned up temp PNG on retry: {tempPng}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ConvertImageToPdf] WARNING: Could not delete temp PNG '{tempPng}': {ex.Message}");
+                    }
+                }
             }
         }
     }
@@ -564,6 +582,11 @@ public class WordInteropService : IWordInteropService
 
     private bool PrintBySwappingDefaultPrinter(string filePath, string printerName)
     {
+        // BE-21-6 fix: acquire lock to prevent two concurrent jobs from racing on the
+        // system-wide default printer setting (set → print → restore is not atomic).
+        _defaultPrinterLock.Wait();
+        try
+        {
         var originalDefault = GetDefaultPrinterName();
         Console.WriteLine($"[PrintBySwappingDefaultPrinter] Original default printer: {originalDefault ?? "(none)"}");
 
@@ -610,6 +633,11 @@ public class WordInteropService : IWordInteropService
                 SetDefaultPrinter(originalDefault);
                 Console.WriteLine($"[PrintBySwappingDefaultPrinter] Restored default printer to: {originalDefault}");
             }
+        }
+        }
+        finally
+        {
+            _defaultPrinterLock.Release();
         }
     }
 

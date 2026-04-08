@@ -1132,13 +1132,20 @@ const PrinterModule = {
                         if (sel) sel.value = match.name;
                         AppState.selectedPrinter = match;
                     } else {
-                        // Previously selected printer disappeared — clear selection
-                        AppState.selectedPrinter = null;
-                        const sel = document.getElementById('printer-select');
-                        if (sel) sel.value = '';
-                        PrintModule.updateButton();
-                        StepIndicatorModule.update();
-                        showToast('Máy in đã chọn không còn khả dụng. Vui lòng chọn lại.', 'warning');
+                        // Previously selected printer disappeared from poll response.
+                        // B21-FE-5 fix: do NOT clear selectedPrinter while a print job is active —
+                        // a transient poll miss during printing would break subsequent iterations.
+                        if (AppState.currentJob || AppState.pendingPrintQueue) {
+                            console.warn('[PrinterModule] Selected printer missing in poll but print job active — keeping selection.');
+                        } else {
+                            // No active job — safe to clear
+                            AppState.selectedPrinter = null;
+                            const sel = document.getElementById('printer-select');
+                            if (sel) sel.value = '';
+                            PrintModule.updateButton();
+                            StepIndicatorModule.update();
+                            showToast('Máy in đã chọn không còn khả dụng. Vui lòng chọn lại.', 'warning');
+                        }
                     }
                 }
             } catch { /* silently ignore poll failures */ }
@@ -2624,11 +2631,15 @@ const PrintModule = {
                 // B17-FE-2 fix: resume remaining files in the multi-file queue (if any).
                 // When _startPrint paused for manual flip, it saved remaining files into
                 // AppState.pendingPrintQueue. Resume them now that phase 2 is complete.
+                // B21-FE-7 fix: null the queue AFTER _resumePrintQueue, not before.
+                // If we null it first and _resumePrintQueue throws, the queue is permanently
+                // lost. Keep it alive until resume succeeds; the catch block below will clear
+                // it on error (which is correct — user gets an error toast and must retry).
                 const queue = AppState.pendingPrintQueue;
-                AppState.pendingPrintQueue = null;
                 if (queue && queue.nextIndex < queue.files.length) {
                     await this._resumePrintQueue(queue);
                 }
+                AppState.pendingPrintQueue = null;
             } else {
                 // BUG-2 fix: reset button even on failure so UI doesn't get stuck
                 showToast('Loi: ' + result.message, 'error');
