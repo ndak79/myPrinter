@@ -1069,7 +1069,7 @@ const PrinterModule = {
             const printers = await response.json();
             this._printers = printers;
 
-            this._renderPrinters(printers);
+            this._renderPrinters(printers, true);
 
             // Change listener for printer select dropdown
             document.getElementById('printer-select')?.addEventListener('change', e => {
@@ -1092,7 +1092,8 @@ const PrinterModule = {
         }
     },
 
-    _renderPrinters(printers) {
+    // forceDefault=true only on initial load; polls pass false to preserve user's choice
+    _renderPrinters(printers, forceDefault = false) {
         const sel = document.getElementById('printer-select');
         if (!sel) return;
         sel.innerHTML = '<option value="">🖨 Chọn máy in…</option>';
@@ -1102,9 +1103,9 @@ const PrinterModule = {
             opt.textContent = p.name + (p.isDuplex ? ' ✦' : '');
             sel.appendChild(opt);
         });
-        // Auto-select default printer
+        // Auto-select default printer only on initial load
         const def = printers.find(p => p.isDefault) || printers[0];
-        if (def) {
+        if (def && forceDefault) {
             sel.value = def.name;
             AppState.selectedPrinter = def;
             PrintModule.updateButton();
@@ -1118,13 +1119,25 @@ const PrinterModule = {
                 const res = await fetch(`${API_BASE}/printers`);
                 if (!res.ok) return;
                 this._printers = await res.json();
-                // Re-render dropdown options (preserving current selection)
-                const sel = document.getElementById('printer-select');
-                if (!sel) return;
-                const currentVal = sel.value;
-                this._renderPrinters(this._printers);
-                if (currentVal && this._printers.some(p => p.name === currentVal)) {
-                    sel.value = currentVal;
+                // Re-render dropdown options, preserving user's current printer selection
+                const prevName = AppState.selectedPrinter?.name || null;
+                this._renderPrinters(this._printers, false);
+                if (prevName) {
+                    const match = this._printers.find(p => p.name === prevName);
+                    if (match) {
+                        // Printer still exists — restore DOM and state
+                        const sel = document.getElementById('printer-select');
+                        if (sel) sel.value = match.name;
+                        AppState.selectedPrinter = match;
+                    } else {
+                        // Previously selected printer disappeared — clear selection
+                        AppState.selectedPrinter = null;
+                        const sel = document.getElementById('printer-select');
+                        if (sel) sel.value = '';
+                        PrintModule.updateButton();
+                        StepIndicatorModule.update();
+                        showToast('Máy in đã chọn không còn khả dụng. Vui lòng chọn lại.', 'warning');
+                    }
                 }
             } catch { /* silently ignore poll failures */ }
         }, 30_000);
@@ -2768,28 +2781,38 @@ const SummaryModule = {
         const el = document.getElementById('print-summary');
         if (!el) return;
 
-        const pages   = AppState.selectedPages.size;
-        const copies  = CopiesModule?.copies || 1;
-        const multiFile = AppState.files.length > 1;
         const mode    = document.getElementById('mode-select')?.value || 'duplex';
         const printer = AppState.selectedPrinter;
 
-        if (!AppState.uploadedFile || pages === 0) { el.classList.add('hidden'); return; }
+        // Collect all files that have pages selected
+        const activeFiles = AppState.files.filter(f => f.selectedPages.size > 0);
+        if (!AppState.uploadedFile || activeFiles.length === 0) { el.classList.add('hidden'); return; }
 
-        // Estimate sheets
-        let sheets;
-        if (mode === 'booklet') {
-            sheets = Math.ceil(pages / 4) * copies;
-        } else {
-            // duplex (in thông minh)
-            const singleSided = AppState.singleSidedPages.size;
-            const doubleSided = pages - singleSided;
-            sheets = Math.ceil(doubleSided / 2) + singleSided;
-            sheets *= copies;
+        const multiFile = activeFiles.length > 1;
+
+        // Aggregate pages and sheets across all active files
+        let totalPages = 0;
+        let totalSheets = 0;
+        for (const f of activeFiles) {
+            const fPages = f.selectedPages.size;
+            const fCopies = f.copies ?? 1;
+            let fSheets;
+            if (mode === 'booklet') {
+                fSheets = Math.ceil(fPages / 4) * fCopies;
+            } else {
+                const fSingle = f.singleSidedPages.size;
+                const fDouble = fPages - fSingle;
+                fSheets = (Math.ceil(fDouble / 2) + fSingle) * fCopies;
+            }
+            totalPages  += fPages;
+            totalSheets += fSheets;
         }
 
+        // Copies label: show only if single file (multi-file each has own copies)
+        const copies = activeFiles.length === 1 ? (activeFiles[0].copies ?? 1) : null;
+
         // Estimate time: ~15s per sheet (realistic for manual duplex + processing)
-        const totalSec = sheets * 15;
+        const totalSec = totalSheets * 15;
         const timeStr = totalSec < 60
             ? `< 1 phút`
             : totalSec < 3600
@@ -2798,13 +2821,13 @@ const SummaryModule = {
 
         el.classList.remove('hidden');
         el.innerHTML = `
-            <span>📄 ${pages} trang</span>
+            <span>📄 ${totalPages} trang</span>
             <span>·</span>
-            <span>🗒️ ${sheets} tờ</span>
+            <span>🗒️ ${totalSheets} tờ</span>
             <span>·</span>
             <span>⏱ ${timeStr}</span>
-            ${copies > 1 ? `<span>· ${copies} bản</span>` : ''}
-            ${multiFile ? `<span>· (file hiện tại)</span>` : ''}
+            ${copies !== null && copies > 1 ? `<span>· ${copies} bản</span>` : ''}
+            ${multiFile ? `<span>· ${activeFiles.length} file</span>` : ''}
             ${printer ? `<span>· 🖨️ ${printer.name}</span>` : ''}
         `;
     },

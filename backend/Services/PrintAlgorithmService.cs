@@ -771,6 +771,9 @@ public class PrintAlgorithmService
                     jobState.RemainingPages
                 );
 
+                // Track before printing so crash/restart during sleep doesn't orphan the file
+                jobState.IntermediateFiles.Add(rotatedPdfPath);
+
                 Console.WriteLine($"[ExecutePrintJob] Printing rotated back pages from: {rotatedPdfPath}");
 
                 _wordService.PrintPdf(
@@ -785,6 +788,7 @@ public class PrintAlgorithmService
                     // Đợi spooler 1 chút cho chắc rồi mới xóa
                     System.Threading.Thread.Sleep(5000);
                     File.Delete(rotatedPdfPath);
+                    jobState.IntermediateFiles.Remove(rotatedPdfPath);
                     Console.WriteLine("[ExecutePrintJob] Cleaned up rotated PDF");
                 }
                 catch (Exception ex)
