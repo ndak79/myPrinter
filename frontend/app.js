@@ -1314,6 +1314,9 @@ const UploadModule = {
             }
             // Sync copies widget + modebar + page-range to new active file
             CopiesModule.sync();
+            // B14-FE-3: reset typing flag so updateDisplay correctly overwrites the
+            // stale range text from the removed file instead of skipping the update.
+            AppState.isUserTypingPageRange = false;
             if (typeof PageSelectModule !== 'undefined') PageSelectModule.updateDisplay();
             TabsModule.render(); // rebuild tabs to remove the closed file's tab
             const modeBarRemove = document.getElementById('sheet-view-modebar');

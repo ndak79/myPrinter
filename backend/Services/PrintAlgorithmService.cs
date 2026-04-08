@@ -424,11 +424,22 @@ public class PrintAlgorithmService
         // Apply custom page order if provided (I)
         selectedPages = ApplyPageOrder(selectedPages, pageOrder);
 
+        // BE-14-3: create jobState early so intermediate files can be registered
+        // immediately after creation, preventing orphans when both subset AND rotation run.
+        var simplexJobState = new PrintJobState
+        {
+            TempPdfPath    = pdfPath, // updated below as temps are created
+            PrinterName    = printerName,
+            IsManualDuplex = false,
+            WaitingForFlip = false,
+        };
+
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
         {
             var subsetPath = Path.Combine(Path.GetTempPath(), $"simplex_subset_{Guid.NewGuid()}.pdf");
             _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
             workingPdfPath = subsetPath;
+            simplexJobState.IntermediateFiles.Add(subsetPath); // track immediately
             Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");
         }
 
@@ -440,17 +451,10 @@ public class PrintAlgorithmService
         {
             var rotatedPath = _wordService.ApplyPageRotations(workingPdfPath, simplexRotationMap);
             workingPdfPath = rotatedPath;
+            simplexJobState.IntermediateFiles.Add(rotatedPath); // track immediately
         }
 
-        var simplexJobState = new PrintJobState
-        {
-            TempPdfPath    = workingPdfPath,
-            PrinterName    = printerName,
-            IsManualDuplex = false,
-            WaitingForFlip = false,
-        };
-        // BUG-8-2: register intermediate files for cleanup
-        if (workingPdfPath != pdfPath) simplexJobState.IntermediateFiles.Add(workingPdfPath);
+        simplexJobState.TempPdfPath = workingPdfPath;
         return simplexJobState;
     }
 
