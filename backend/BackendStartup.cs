@@ -293,7 +293,7 @@ public static class BackendStartup
             }
         });
 
-        app.MapPost("/api/print/continue", (
+        app.MapPost("/api/print/continue", async (
             string jobId,
             PrintAlgorithmService printAlgorithm,
             FileSessionService sessions) =>
@@ -326,7 +326,7 @@ public static class BackendStartup
                 {
                     printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
                     if (jobState.Copies > 1 && copy < jobState.Copies - 1)
-                        System.Threading.Thread.Sleep(2000); // brief pause between copies
+                        await Task.Delay(2000); // BE-29-4 fix: async-friendly delay; Thread.Sleep blocked thread pool
                 }
                 jobState.WaitingForFlip = false;
                 FileSessionService.DeleteIntermediateFiles(jobState);

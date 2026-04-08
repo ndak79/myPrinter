@@ -127,6 +127,12 @@ const AppState = {
         this.isUserTypingPageRange = false;
         this.printMode            = 'duplex'; // B24-FE-2 fix: reset to default so new session isn't contaminated
         this.viewMode             = 'page';   // B24-FE-2 fix: same
+        // B29-FE-3 fix: keep the mode-select dropdown in sync with AppState.printMode.
+        // Without this, the dropdown shows the previously selected mode (e.g. 'booklet')
+        // after reset, while AppState.printMode is correctly 'duplex'. The dropdown's
+        // change handler would then overwrite AppState.printMode with the stale display value.
+        const modeSel = document.getElementById('mode-select');
+        if (modeSel) modeSel.value = 'duplex';
     },
 };
 
@@ -2695,6 +2701,9 @@ const PrintModule = {
     // B17-FE-2 fix: print remaining files in the queue after a manual-flip pause.
     // Mirrors the inner loop of _startPrint but starts from queue.nextIndex.
     async _resumePrintQueue({ files, nextIndex, modeCode, originalText }) {
+        // B29-FE-5 fix: derive string mode from modeCode so HistoryModule.add receives a
+        // string key that matches modeLabel (not an integer 0/1 which renders as raw number).
+        const mode = modeCode === 1 ? 'booklet' : 'duplex';
         const btn = document.getElementById('print-btn');
         for (let i = nextIndex; i < files.length; i++) {
             const file   = files[i];
@@ -2763,7 +2772,7 @@ const PrintModule = {
                         printerData: AppState.selectedPrinter,
                         pages:       file.selectedPages.size,
                         pageRange,
-                        mode:        modeCode,
+                        mode,         // B29-FE-5 fix: string ('duplex'/'booklet'), not modeCode integer
                         copies:      file.copies,
                         collate:     file.collate,
                     };
@@ -2789,7 +2798,7 @@ const PrintModule = {
                     printerData: AppState.selectedPrinter,
                     pages:       file.selectedPages.size,
                     pageRange,
-                    mode:        modeCode,
+                    mode,         // B29-FE-5 fix: string ('duplex'/'booklet'), not modeCode integer
                     copies:      file.copies,
                     collate:     file.collate,
                 });
