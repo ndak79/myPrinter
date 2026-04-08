@@ -308,7 +308,15 @@ public static class BackendStartup
                 if (!jobState.WaitingForFlip)
                     return Results.BadRequest(new PrintResponse { Success = false, Message = "Job is not waiting for flip." });
 
-                printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
+                // BE-24-8: execute Phase 2 once per copy (mirrors the Phase 1 loop in /api/print).
+                // jobState.Copies was saved when Phase 1 was started; without this loop the user
+                // gets N copies of the fronts but only 1 copy of the backs.
+                for (int copy = 0; copy < jobState.Copies; copy++)
+                {
+                    printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
+                    if (jobState.Copies > 1 && copy < jobState.Copies - 1)
+                        System.Threading.Thread.Sleep(2000); // brief pause between copies
+                }
                 jobState.WaitingForFlip = false;
                 FileSessionService.DeleteIntermediateFiles(jobState);
 

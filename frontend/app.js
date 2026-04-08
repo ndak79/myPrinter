@@ -2485,7 +2485,7 @@ const PrintModule = {
         btn.disabled = true;
         btn.style.opacity = '0.8';
 
-        const mode = document.getElementById('mode-select')?.value || 'duplex';
+        const mode = AppState.printMode || 'duplex'; // B25-FE-1: read from AppState (single source of truth); DOM may be stale after reset()
         const modeCode = (mode === 'duplex' || mode === 'normal') ? 0 : 1;
 
         try {
