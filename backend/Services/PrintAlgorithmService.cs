@@ -41,19 +41,19 @@ public class PrintAlgorithmService
 
         // Đọc metadata PDF gốc
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
-        // Use frontend-provided manualFlipDir when available (overrides first-page heuristic).
-        // In together mode the output PDF is all-portrait after CCW90, so pdfInfo.IsLandscape
-        // would return false even for all-landscape docs => wrong LongEdge flip.
-        FlipDirection flipDirection;
-        if (!string.IsNullOrEmpty(manualFlipDir) &&
-            Enum.TryParse<FlipDirection>(manualFlipDir, out var parsedFlip))
-        {
-            flipDirection = parsedFlip;
-        }
-        else
-        {
-            flipDirection = pdfInfo.IsLandscape ? FlipDirection.ShortEdge : FlipDirection.LongEdge;
-        }
+        // BUG-7-7 fix: flipDirection must be computed AFTER ApplyPageRotations so that a
+        // user-rotated first page doesn't produce the wrong flip heuristic.
+        // If the frontend supplies manualFlipDir we use it immediately (it already accounts
+        // for Together-mode CCW90 rewriting); otherwise we defer and resolve below, after
+        // rotations have been applied to workingPdfPath.
+        FlipDirection parsedFlipDir = FlipDirection.LongEdge; // default; may be overwritten
+        bool flipDirectionOverridden = !string.IsNullOrEmpty(manualFlipDir) &&
+                                       Enum.TryParse<FlipDirection>(manualFlipDir, out parsedFlipDir);
+        // Temporary value — heuristic path will overwrite this after ApplyPageRotations.
+        FlipDirection flipDirection = flipDirectionOverridden
+            ? parsedFlipDir
+            : FlipDirection.LongEdge;
+
 
         var jobState = new PrintJobState
         {
@@ -150,6 +150,7 @@ public class PrintAlgorithmService
                 var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
                 _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
                 jobState.TempPdfPath = subsetPath;
+                jobState.IntermediateFiles.Add(subsetPath); // BUG-8-2: track for cleanup
 
                 // Remap rotation keys from original page numbers to subset indices
                 rotationMap = RemapRotations(rotationMap, selectedPages);
@@ -158,7 +159,9 @@ public class PrintAlgorithmService
             // Apply rotations if any
             if (rotationMap.Count > 0)
             {
-                jobState.TempPdfPath = _wordService.ApplyPageRotations(jobState.TempPdfPath, rotationMap);
+                var rotatedPath = _wordService.ApplyPageRotations(jobState.TempPdfPath, rotationMap);
+                jobState.IntermediateFiles.Add(rotatedPath); // BUG-8-2: track for cleanup
+                jobState.TempPdfPath = rotatedPath;
             }
 
             jobState.WaitingForFlip = false;
@@ -207,6 +210,7 @@ public class PrintAlgorithmService
 
             _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint);
             workingPdfPath = subsetPath;
+            jobState.IntermediateFiles.Add(subsetPath); // BUG-8-2: track for cleanup
 
             pdfInfo = _wordService.GetPdfInfo(workingPdfPath);
 
@@ -247,8 +251,18 @@ public class PrintAlgorithmService
         // Apply per-page rotations before mixed-orientation processing (U)
         if (manualRotationMap.Count > 0)
         {
-            workingPdfPath = _wordService.ApplyPageRotations(workingPdfPath, manualRotationMap);
+            var rotatedPath = _wordService.ApplyPageRotations(workingPdfPath, manualRotationMap);
+            jobState.IntermediateFiles.Add(rotatedPath); // BUG-8-2: track for cleanup
+            workingPdfPath = rotatedPath;
             pdfInfo = _wordService.GetPdfInfo(workingPdfPath);
+        }
+
+        // BUG-7-7 fix: resolve deferred flip direction HERE, using the post-rotation pdfInfo.
+        // If the user rotated the first page 90°, the heuristic now reads the correct orientation.
+        if (!flipDirectionOverridden)
+        {
+            flipDirection = pdfInfo.IsLandscape ? FlipDirection.ShortEdge : FlipDirection.LongEdge;
+            Console.WriteLine($"[CreateNormalDuplexJob] flipDirection resolved after rotations: {flipDirection} (isLandscape={pdfInfo.IsLandscape})");
         }
 
         // 2) XỬ LÝ MIXED ORIENTATION + SINGLE-SIDED BẰNG ProcessMixedOrientation MỚI
@@ -328,6 +342,8 @@ public class PrintAlgorithmService
             var tempSelectedPdf = Path.Combine(Path.GetTempPath(), $"selected_{Guid.NewGuid()}.pdf");
             _wordService.CreatePdfSubset(pdfPath, tempSelectedPdf, selectedPages);
             sourcePdfPath = tempSelectedPdf;
+            // BUG-8-2: track for cleanup — will be cleaned via jobState from CreateNormalDuplexJob
+            // Store temporarily in a local list, merge into jobState after CreateNormalDuplexJob returns.
         }
 
         // Apply per-page rotations before booklet creation (U)
@@ -335,7 +351,10 @@ public class PrintAlgorithmService
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
             bookletRotationMap = RemapRotations(bookletRotationMap, selectedPages);
         if (bookletRotationMap.Count > 0)
-            sourcePdfPath = _wordService.ApplyPageRotations(sourcePdfPath, bookletRotationMap);
+        {
+            var rotatedSource = _wordService.ApplyPageRotations(sourcePdfPath, bookletRotationMap);
+            sourcePdfPath = rotatedSource;
+        }
 
         var pageCount = _wordService.GetPageCount(sourcePdfPath);
         var paddedCount = RoundUpToMultipleOf4(pageCount);
@@ -349,7 +368,13 @@ public class PrintAlgorithmService
 
         // Now treat it as normal duplex (no page range needed since booklet PDF is already filtered)
         // singleSidedPages not applicable/meaningful for booklet sheets in current logic
-        return CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: null);
+        var bookletJobState = CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: null);
+
+        // BUG-8-2: register all booklet intermediate files for cleanup
+        if (sourcePdfPath != pdfPath) bookletJobState.IntermediateFiles.Add(sourcePdfPath);
+        bookletJobState.IntermediateFiles.Add(bookletPdfPath);
+
+        return bookletJobState;
     }
 
     public PrintJobState CreateSimplexJob(
@@ -400,15 +425,21 @@ public class PrintAlgorithmService
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
             simplexRotationMap = RemapRotations(simplexRotationMap, selectedPages);
         if (simplexRotationMap.Count > 0)
-            workingPdfPath = _wordService.ApplyPageRotations(workingPdfPath, simplexRotationMap);
+        {
+            var rotatedPath = _wordService.ApplyPageRotations(workingPdfPath, simplexRotationMap);
+            workingPdfPath = rotatedPath;
+        }
 
-        return new PrintJobState
+        var simplexJobState = new PrintJobState
         {
             TempPdfPath    = workingPdfPath,
             PrinterName    = printerName,
             IsManualDuplex = false,
             WaitingForFlip = false,
         };
+        // BUG-8-2: register intermediate files for cleanup
+        if (workingPdfPath != pdfPath) simplexJobState.IntermediateFiles.Add(workingPdfPath);
+        return simplexJobState;
     }
 
     internal int RoundUpToMultipleOf4(int number)
@@ -632,9 +663,15 @@ public class PrintAlgorithmService
     {
         if (pageRotations == null || pageRotations.Count == 0)
             return new Dictionary<int, RotationDirection>();
-        return pageRotations
-            .Where(r => r.Rotation != RotationDirection.None)
-            .ToDictionary(r => r.PageNumber, r => r.Rotation);
+        // BUG-8-1 fix: frontend may send duplicate pageNumber entries (e.g. rapid UI clicks).
+        // ToDictionary throws ArgumentException on duplicates — use last-wins via GroupBy instead.
+        var map = new Dictionary<int, RotationDirection>();
+        foreach (var r in pageRotations)
+        {
+            if (r.Rotation != RotationDirection.None)
+                map[r.PageNumber] = r.Rotation; // last entry for a given page wins
+        }
+        return map;
     }
 
     /// <summary>

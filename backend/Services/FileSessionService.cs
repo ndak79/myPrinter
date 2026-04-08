@@ -57,7 +57,22 @@ public sealed class FileSessionService : IDisposable
     public void RemoveJob(string jobId)
     {
         if (_jobs.TryRemove(jobId, out var job))
+        {
             DeleteFileSafe(job.TempPdfPath);
+            // BUG-8-2 fix: also delete all intermediate files tracked during job construction
+            foreach (var f in job.IntermediateFiles)
+                DeleteFileSafe(f);
+        }
+    }
+
+    /// <summary>
+    /// BUG-8-2 fix: delete all intermediate files for a completed non-manual-duplex job.
+    /// Called from BackendStartup after ExecutePrintJob succeeds (no job stored in session).
+    /// </summary>
+    public static void DeleteIntermediateFiles(PrintJobState jobState)
+    {
+        foreach (var f in jobState.IntermediateFiles)
+            DeleteFileSafe(f);
     }
 
     // ─── Cleanup ─────────────────────────────────────────────────────────────

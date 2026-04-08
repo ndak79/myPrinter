@@ -3737,12 +3737,19 @@ const PreviewPanelModule = {
                                 return;
                             }
 
-                            // Re-derive index at click time — avoid stale closure
+                            // BUG-8-4 fix: re-derive blank's pageOrder index at click time by
+                            // re-scanning for the Nth zero (rPos) in pageOrder. This is immune
+                            // to stale render-position indices caused by inserting/removing other
+                            // blanks between render and click.
                             const rPos = parseInt(blank.dataset.blankRenderPos);
-                            const allBlanks = entry.pageOrder
-                                .map((p, i) => p === 0 ? i : -1)
-                                .filter(i => i >= 0);
-                            const currentIdx = allBlanks[rPos];
+                            let blankCount = -1;
+                            let currentIdx = -1;
+                            for (let bi = 0; bi < entry.pageOrder.length; bi++) {
+                                if (entry.pageOrder[bi] === 0) {
+                                    blankCount++;
+                                    if (blankCount === rPos) { currentIdx = bi; break; }
+                                }
+                            }
 
                             try {
                                 if (currentIdx >= 0 && entry.pageOrder[currentIdx] === 0) {

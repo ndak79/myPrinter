@@ -53,6 +53,20 @@ public static class BackendStartup
 
         app.UseCors("LocalWebApp");
 
+        // BUG-8-5 fix: global fallback exception handler so that any unhandled exception
+        // (e.g. from middleware or outside route try/catch blocks) returns a JSON body
+        // that the frontend can parse, rather than a plain-text Kestrel 500.
+        app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
+        {
+            ctx.Response.StatusCode  = 500;
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsJsonAsync(new PrintResponse
+            {
+                Success = false,
+                Message = "An unexpected server error occurred. Please try again."
+            });
+        }));
+
         // ── API Endpoints ──────────────────────────────────────────────
 
         app.MapGet("/api/printers", (PrinterManagementService printerService) =>
@@ -220,7 +234,9 @@ public static class BackendStartup
                 else
                     return Results.BadRequest(new PrintResponse { Success = false, Message = $"Unknown print mode: {(int)request.Mode}" });
 
-                int copies = Math.Max(1, request.Copies);
+                // BUG-8-3 fix: clamp copies to [1, 100] — no upper bound check existed,
+                // allowing accidental or malicious requests to loop thousands of times.
+                int copies = Math.Clamp(request.Copies, 1, 100);
 
                 // BUG-6 fix: only store the job in session if it's a manual duplex waiting for flip.
                 // Completed non-manual jobs don't need to be stored and would accumulate in memory.
@@ -232,6 +248,8 @@ public static class BackendStartup
                         if (copies > 1 && copy < copies - 1)
                             System.Threading.Thread.Sleep(2000);
                     }
+                    // BUG-8-2 fix: clean up intermediate temp files now that print is done
+                    FileSessionService.DeleteIntermediateFiles(jobState);
                     // No AddJob — print is complete, nothing to continue
                 }
                 else

@@ -128,6 +128,13 @@ namespace PrinterApp.Models
         /// "LongEdge" (flip along long edge, standard portrait) or "ShortEdge" (flip along short edge, landscape booklets).
         /// </summary>
         public string? DuplexSide { get; set; }  // null = no override → PrintWithSumatra emits no -print-settings arg
+
+        /// <summary>
+        /// BUG-8-2 fix: all intermediate temp PDF files created during job construction
+        /// (subset, rotated_pages, booklet, watermark, selected, etc.). Cleaned up by
+        /// FileSessionService when the job is removed or on completion in BackendStartup.
+        /// </summary>
+        public List<string> IntermediateFiles { get; set; } = new List<string>();
     }
 
     public class FlipInstruction
