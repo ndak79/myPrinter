@@ -710,12 +710,21 @@ public class WordInteropService : IWordInteropService
                     }
                     else
                     {
-                        // No preceding page to use as template — default to A4 portrait.
-                        // Use the same non-skippable gray-rect pattern as CreateNonSkippableBlankPage
-                        // so the printer does not silently skip this blank page.
+                        // No preceding page — peek at the first real page in pageNumbers to match
+                        // the document's orientation (BE-13-5: avoid Portrait/Landscape mismatch).
+                        var firstRealPage = pageNumbers.FirstOrDefault(p => p >= 1 && p <= sourceDoc.PageCount);
+                        PdfPage? orientationSource = firstRealPage > 0
+                            ? sourceDoc.Pages[firstRealPage - 1]
+                            : null;
+                        bool isLandscape = orientationSource != null
+                            && orientationSource.Width.Point > orientationSource.Height.Point;
+
+                        double w = isLandscape ? 841.89 : 595.28;
+                        double h = isLandscape ? 595.28 : 841.89;
+
                         var blankPage = targetDoc.AddPage();
-                        blankPage.Width  = XUnit.FromPoint(595.28);
-                        blankPage.Height = XUnit.FromPoint(841.89);
+                        blankPage.Width  = XUnit.FromPoint(w);
+                        blankPage.Height = XUnit.FromPoint(h);
                         using (var gfx = XGraphics.FromPdfPage(blankPage))
                         {
                             double rectSize = 3;
@@ -728,7 +737,7 @@ public class WordInteropService : IWordInteropService
                                 rectSize,
                                 rectSize);
                         }
-                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, A4 portrait, non-skippable)");
+                        Console.WriteLine($"[CreatePdfSubset] Added blank page (first page fallback, isLandscape={isLandscape}, non-skippable)");
                     }
                 }
                 else if (pageNum >= 1 && pageNum <= sourceDoc.PageCount)

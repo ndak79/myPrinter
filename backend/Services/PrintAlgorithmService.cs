@@ -58,6 +58,9 @@ public class PrintAlgorithmService
         // null means "no explicit override" => PrintWithSumatra will emit no -print-settings arg.
         jobState.DuplexSide = duplexSide;
 
+        try
+        {
+
         if (isDuplexPrinter)
         {
             // ==========================
@@ -304,7 +307,16 @@ public class PrintAlgorithmService
             $"TotalProcessedPages={plan.ProcessedPages.Count}"
         );
 
-        return jobState;
+            return jobState;
+        }
+        catch
+        {
+            // BE-13-6: Clean up any intermediate files this method created so the caller
+            // (e.g. CreateBookletJob) never has to know about our internal temp files.
+            foreach (var f in jobState.IntermediateFiles)
+                FileSessionService.DeleteFileSafe(f);
+            throw;
+        }
     }
 
 

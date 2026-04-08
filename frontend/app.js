@@ -1668,24 +1668,32 @@ const PageSelectModule = {
         input.addEventListener('blur',  () => { AppState.isUserTypingPageRange = false; this.updateDisplay(); });
         input.addEventListener('input', e => {
             AppState.isUserTypingPageRange = true;
+            // B13-FE-2/3: capture activeFile at schedule time so a file-switch during
+            // the 200ms debounce cannot apply File A's typed range to File B.
+            const targetFile = AppState.activeFile;
             clearTimeout(_rangeDebounce);
             _rangeDebounce = setTimeout(() => {
+                if (!targetFile) return; // file removed during debounce window — bail
                 const text = e.target.value.trim();
                 if (!text) {
-                    AppState.selectAllPages();
+                    // Re-check activeFile is still the same before clearing
+                    if (AppState.activeFile === targetFile) {
+                        AppState.selectAllPages();
+                    } else {
+                        targetFile.selectedPages = new Set();
+                        for (let i = 1; i <= targetFile.totalPageCount; i++) targetFile.selectedPages.add(i);
+                    }
                     input.style.borderColor = '';
                 } else {
-                    const parsed = this._parseRange(text);
+                    const parsed = this._parseRange(text, targetFile.totalPageCount);
                     if (parsed.size === 0 && text.length > 0) {
                         // Invalid range — show red border, don't change selection
                         input.style.borderColor = 'rgba(239, 68, 68, 0.6)';
                     } else {
                         // R8 cleanup: remove SS status for pages no longer selected
-                        if (AppState.activeFile) {
-                            const toUnset = [...AppState.activeFile.singleSidedPages].filter(p => !parsed.has(p));
-                            if (toUnset.length > 0) unsetSingleSided(AppState.activeFile, toUnset);
-                        }
-                        AppState.selectedPages = parsed;
+                        const toUnset = [...targetFile.singleSidedPages].filter(p => !parsed.has(p));
+                        if (toUnset.length > 0) unsetSingleSided(targetFile, toUnset);
+                        targetFile.selectedPages = parsed;
                         input.style.borderColor = '';
                     }
                 }
@@ -1746,7 +1754,7 @@ const PageSelectModule = {
         SRModule.announce(all ? 'Đã chọn tất cả trang' : `Đã chọn ${AppState.selectedPages.size} trang`);
     },
 
-    _parseRange(text) {
+    _parseRange(text, maxPage = AppState.totalPageCount) {
         const pages = new Set();
         text.split(',').forEach(part => {
             part = part.trim();
@@ -1758,10 +1766,10 @@ const PageSelectModule = {
                 const [a, b] = segments;
                 if (!isNaN(a) && !isNaN(b))
                     for (let i = Math.min(a,b); i <= Math.max(a,b); i++)
-                        if (i >= 1 && i <= AppState.totalPageCount) pages.add(i);
+                        if (i >= 1 && i <= maxPage) pages.add(i);
             } else {
                 const n = parseInt(part);
-                if (!isNaN(n) && n >= 1 && n <= AppState.totalPageCount) pages.add(n);
+                if (!isNaN(n) && n >= 1 && n <= maxPage) pages.add(n);
             }
         });
         return pages;
@@ -2800,9 +2808,11 @@ const SummaryModule = {
             if (mode === 'booklet') {
                 fSheets = Math.ceil(fPages / 4) * fCopies;
             } else {
-                const fSingle = f.singleSidedPages.size;
-                const fDouble = fPages - fSingle;
-                fSheets = (Math.ceil(fDouble / 2) + fSingle) * fCopies;
+                // B13-FE-6: use real layout logic (matches orientation grouping + padding)
+                // instead of simplified Math.ceil(double/2)+single formula which undercounts
+                // mixed-orientation docs (each orientation group gets padded to even count).
+                const layout = buildSheetLayout(f, mode, null, f.landscapeMode ?? 'together');
+                fSheets = layout.sheets.length * fCopies;
             }
             totalPages  += fPages;
             totalSheets += fSheets;
