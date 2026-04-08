@@ -2498,14 +2498,22 @@ const PrintModule = {
             return;
         }
 
+        // B33-FE-4 fix: disable the Print button BEFORE awaiting the confirmation modal.
+        // Previously the button was only disabled after the modal resolved, leaving a window
+        // where a rapid double-click would start two concurrent _startPrint() invocations
+        // and submit two POST /api/print requests. Disabling here collapses that race window.
+        const btn = document.getElementById('print-btn');
+        const originalText = btn?.textContent;
+        if (btn) { btn.disabled = true; btn.style.opacity = '0.8'; }
+
         // Show confirmation dialog
         const confirmed = await ConfirmPrintModal.show();
-        if (!confirmed) return;
-
-        const btn = document.getElementById('print-btn');
-        const originalText = btn.textContent;
-        btn.disabled = true;
-        btn.style.opacity = '0.8';
+        if (!confirmed) {
+            // User cancelled — re-enable button
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.textContent = originalText; }
+            PrintModule.updateButton();
+            return;
+        }
 
         const mode = AppState.printMode || 'duplex'; // B25-FE-1: read from AppState (single source of truth); DOM may be stale after reset()
         const modeCode = (mode === 'duplex' || mode === 'normal') ? 0 : 1;
@@ -2899,16 +2907,21 @@ const PrintModule = {
         const continueBtn = document.getElementById('continue-btn');
         if (continueBtn) continueBtn.classList.remove('all-checked');
 
-        // Checklist → enable button when all checked
+        // Checklist → enable button when all checked.
+        // B33-FE-5 fix: updateContinueBtn was defined as a local function inside _showFlipModal,
+        // creating a new reference on every call. removeEventListener with a new reference cannot
+        // remove listeners from prior calls, so listeners accumulated across multiple flip-modal
+        // openings (e.g., multi-file manual duplex or multiple print sessions in one page lifetime).
+        // Fix: store the handler on `this` so the same stable reference is always removed/added.
         const checkboxes = document.querySelectorAll('.flip-checkbox');
-        const updateContinueBtn = () => {
+        if (this._updateContinueBtn) {
+            checkboxes.forEach(cb => cb.removeEventListener('change', this._updateContinueBtn));
+        }
+        this._updateContinueBtn = () => {
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             continueBtn?.classList.toggle('all-checked', allChecked);
         };
-        checkboxes.forEach(cb => {
-            cb.removeEventListener('change', updateContinueBtn);
-            cb.addEventListener('change', updateContinueBtn);
-        });
+        checkboxes.forEach(cb => cb.addEventListener('change', this._updateContinueBtn));
 
         // Optional timer
         let _timerInterval = null;
