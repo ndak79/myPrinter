@@ -28,6 +28,7 @@ _initPdfWorker();
 const AppState = {
     selectedPrinter:       null,
     currentJob:            null,
+    pendingPrintQueue:     null,  // B17-FE-2 fix: queue of remaining files after a manual-flip pause
     isUserTypingPageRange: false,
     printMode:             'duplex',   // 'duplex' | 'booklet'
     viewMode:              'page',     // 'page' | 'sheet'
@@ -2537,6 +2538,11 @@ const PrintModule = {
                 if (result.jobState?.waitingForFlip) {
                     // Manual duplex: show flip modal and wait for user to continue
                     AppState.currentJob = result.jobState;
+                    // B17-FE-2 fix: save remaining files so _continuePrint can resume them
+                    // after the user flips paper and clicks Continue.
+                    AppState.pendingPrintQueue = (i + 1 < filesToPrint.length)
+                        ? { files: filesToPrint, nextIndex: i + 1, modeCode, originalText }
+                        : null;
                     this._showFlipModal(result.jobState.instruction);
                     btn.dataset.mode = 'cancellable';
                     btn.classList.add('cancellable');
@@ -2544,7 +2550,7 @@ const PrintModule = {
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     showToast('Đã in mặt lẻ! Vui lòng làm theo hướng dẫn.', 'info');
-                    // Stop multi-file loop — user must manually continue
+                    // Stop multi-file loop — _continuePrint will resume the queue
                     return;
                 }
 
@@ -2613,15 +2619,25 @@ const PrintModule = {
             if (result.success) {
                 showToast('In hoan tat!', 'success');
                 resetBtn();
+                // B17-FE-2 fix: resume remaining files in the multi-file queue (if any).
+                // When _startPrint paused for manual flip, it saved remaining files into
+                // AppState.pendingPrintQueue. Resume them now that phase 2 is complete.
+                const queue = AppState.pendingPrintQueue;
+                AppState.pendingPrintQueue = null;
+                if (queue && queue.nextIndex < queue.files.length) {
+                    await this._resumePrintQueue(queue);
+                }
             } else {
                 // BUG-2 fix: reset button even on failure so UI doesn't get stuck
                 showToast('Loi: ' + result.message, 'error');
+                AppState.pendingPrintQueue = null;
                 resetBtn();
             }
         } catch (err) {
             // BUG-2 fix: also reset on network error
             showToast('Loi khi tiep tuc in: ' + err.message, 'error');
             AppState.currentJob = null;
+            AppState.pendingPrintQueue = null;
             const btn = document.getElementById('print-btn');
             if (btn) {
                 btn.dataset.mode = '';
@@ -2630,6 +2646,121 @@ const PrintModule = {
                 PrintModule.updateButton();
             }
         }
+    },
+
+    // B17-FE-2 fix: print remaining files in the queue after a manual-flip pause.
+    // Mirrors the inner loop of _startPrint but starts from queue.nextIndex.
+    async _resumePrintQueue({ files, nextIndex, modeCode, originalText }) {
+        const btn = document.getElementById('print-btn');
+        for (let i = nextIndex; i < files.length; i++) {
+            const file   = files[i];
+            const isLast = i === files.length - 1;
+
+            if (btn) {
+                btn.textContent = `⏳ Đang in file ${i + 1}/${files.length}...`;
+                btn.disabled = true;
+                btn.style.opacity = '0.7';
+            }
+
+            const sel = file.selectedPages;
+            const pageRange = (sel.size > 0 && sel.size < file.totalPageCount)
+                ? Array.from(sel).sort((a, b) => a - b).join(',')
+                : null;
+
+            let duplexSide = null;
+            if (file.landscapeMode === 'together' && file._originalOrientationMap != null) {
+                let allLandscape = true;
+                const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
+                    ? [...sel]
+                    : Array.from({ length: file.totalPageCount }, (_, k) => k + 1);
+                for (const p of pagesToCheck) {
+                    if (file._originalOrientationMap.get(p) !== true) { allLandscape = false; break; }
+                }
+                if (allLandscape) duplexSide = 'ShortEdge';
+            }
+
+            const body = {
+                fileId:           file.id,
+                printerName:      AppState.selectedPrinter.name,
+                mode:             modeCode,
+                pageRange,
+                singleSidedPages: file.singleSidedPages.size > 0 ? Array.from(file.singleSidedPages) : null,
+                copies:           file.copies,
+                collate:          file.collate,
+                pageOrder:        (() => {
+                    const effective = buildEffectivePageOrder(file);
+                    return effective.length > 0 ? effective : null;
+                })(),
+                pageRotations:    file.pageRotations.size > 0
+                    ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
+                    : null,
+                duplexSide,
+            };
+
+            try {
+                const res    = await fetch(`${API_BASE}/print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const result = await res.json();
+
+                if (!result.success) {
+                    showToast(`Lỗi in file ${file.name}: ${result.message}`, 'error');
+                    if (btn) { btn.disabled = false; btn.textContent = originalText; btn.style.opacity = ''; }
+                    return;
+                }
+
+                if (result.jobState?.waitingForFlip) {
+                    AppState.currentJob = result.jobState;
+                    AppState.pendingPrintQueue = (i + 1 < files.length)
+                        ? { files, nextIndex: i + 1, modeCode, originalText }
+                        : null;
+                    this._showFlipModal(result.jobState.instruction);
+                    if (btn) {
+                        btn.dataset.mode = 'cancellable';
+                        btn.classList.add('cancellable');
+                        btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                    }
+                    showToast('Đã in mặt lẻ! Vui lòng làm theo hướng dẫn.', 'info');
+                    return;
+                }
+
+                HistoryModule.add({
+                    file:        file.name,
+                    fileId:      file.id,
+                    printer:     AppState.selectedPrinter.name,
+                    printerData: AppState.selectedPrinter,
+                    pages:       file.selectedPages.size,
+                    pageRange,
+                    mode:        modeCode,
+                    copies:      file.copies,
+                    collate:     file.collate,
+                });
+
+                if (!isLast) await new Promise(r => setTimeout(r, 500));
+            } catch (err) {
+                showToast(`Lỗi in file ${file.name}: ${err.message}`, 'error');
+                if (btn) { btn.disabled = false; btn.textContent = originalText; btn.style.opacity = ''; }
+                return;
+            }
+        }
+
+        // All remaining files printed
+        const fileCount = files.length;
+        if (btn) {
+            btn.textContent = fileCount > 1 ? `✓ Đã in ${fileCount} file!` : '✓ Đã gửi lệnh in!';
+            btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+            btn.style.opacity = '1';
+        }
+        showToast(fileCount > 1 ? `In thành công ${fileCount} file!` : 'In thành công!', 'success');
+        setTimeout(() => {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+                btn.style.background = '';
+                btn.style.opacity = '';
+                PrintModule.updateButton();
+            }
+        }, 2000);
     },
 
     _showFlipModal(instruction) {
