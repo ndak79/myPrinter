@@ -259,7 +259,14 @@ public static class BackendStartup
                 }
                 else
                 {
-                    printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
+                    // BE-25-3: Phase 1 must also loop copies times (mirrors the Phase 2 loop added in BE-24-8).
+                    // Without this, a user requesting N copies gets only 1 set of fronts but N sets of backs.
+                    for (int copy = 0; copy < copies; copy++)
+                    {
+                        printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
+                        if (copies > 1 && copy < copies - 1)
+                            await Task.Delay(2000);
+                    }
                     jobState.Copies = copies;
                     sessions.AddJob(jobState.JobId, jobState);
                 }

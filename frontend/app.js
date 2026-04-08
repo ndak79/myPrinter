@@ -883,7 +883,7 @@ const PrintPreviewModule = {
         const el = document.getElementById('preview-print-summary');
         if (!el) return;
         const pages   = AppState.selectedPages.size;
-        const mode    = document.getElementById('mode-select')?.value || 'duplex';
+        const mode    = AppState.printMode || 'duplex'; // B26-FE-4: read from AppState not DOM
         const copies  = window.CopiesModule?.copies || 1;
         if (pages === 0) { el.innerHTML = ''; return; }
 
@@ -2333,6 +2333,7 @@ const HistoryModule = {
         if (item.mode) {
             const modeSel = document.getElementById('mode-select');
             if (modeSel) { modeSel.value = item.mode; AppState.printMode = item.mode; }
+            ViewModeModule.onPrintModeChange(); // B26-FE-3: sync sheet-view layout when mode changes via reprint
         }
 
         // Restore copies
@@ -2964,12 +2965,11 @@ const SummaryModule = {
         const el = document.getElementById('print-summary');
         if (!el) return;
 
-        const mode    = document.getElementById('mode-select')?.value || 'duplex';
+        const mode    = AppState.printMode || 'duplex'; // B26-FE-1: read from AppState (source of truth); DOM may be stale after reset()
         const printer = AppState.selectedPrinter;
 
         // Collect all files that have pages selected
         const activeFiles = AppState.files.filter(f => f.selectedPages.size > 0);
-        if (!AppState.uploadedFile || activeFiles.length === 0) { el.classList.add('hidden'); return; }
 
         const multiFile = activeFiles.length > 1;
 
@@ -3148,7 +3148,7 @@ const ConfirmPrintModal = {
         const container = document.getElementById('confirm-print-summary');
         if (!container) return;
 
-        const mode    = document.getElementById('mode-select')?.value || 'duplex';
+        const mode    = AppState.printMode || 'duplex'; // B26-FE-2: read from AppState not DOM
         const printer = AppState.selectedPrinter;
         const modeLabel = { duplex: 'In thông minh', normal: 'In thông minh', booklet: 'Sách A5 (Booklet)' };
         const filesToPrint = AppState.files.filter(f => f.selectedPages.size > 0);
