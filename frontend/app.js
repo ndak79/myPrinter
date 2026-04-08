@@ -120,6 +120,16 @@ const AppState = {
     },
 
     reset() {
+        // B31-FE-7 fix: destroy pdf.js worker memory for all loaded documents before
+        // clearing the files array. AppState.removeFile() does this individually, but
+        // reset() previously dropped the array without calling destroy(), leaking the
+        // pdf.js worker memory for every open document.
+        for (const entry of this.files) {
+            if (entry?.pdfDoc) {
+                try { entry.pdfDoc.destroy(); } catch (_) {}
+                entry.pdfDoc = null;
+            }
+        }
         this.files                = [];
         this.activeFileIndex      = -1;
         this.currentJob           = null;
@@ -3230,7 +3240,9 @@ const ConfirmPrintModal = {
         const sel = multiFile ? null : Array.from(filesToPrint[0]?.selectedPages ?? []).sort((a,b)=>a-b);
         const rangeStr = multiFile ? 'Tất cả các file'
             : sel?.length === filesToPrint[0]?.totalPageCount ? 'Tất cả'
-            : sel?.join(', ').replace(/,\s/g, ', ') || 'Tất cả';
+            // B31-FE-6 fix: use _formatRange to show "1-5, 8, 10-12" instead of a raw
+            // comma-separated list of integers which is unreadable for large selections.
+            : (PageSelectModule._formatRange(sel) || 'Tất cả');
 
         const copiesStr = copies !== null ? `${sheets} tờ × ${copies} bản` : `${sheets} tờ (mỗi file khác nhau)`;
 
