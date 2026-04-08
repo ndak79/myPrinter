@@ -30,9 +30,13 @@ public class WordInteropService : IWordInteropService
     {
         var page = targetDoc.AddPage();
 
-        // Lấy kích thước từ template, rồi chỉnh orientation nếu cần
+        // Lấy kích thước từ template, rồi chỉnh orientation nếu cần.
+        // BE-34-1 fix: PDF /Rotate metadata makes stored Width/Height unreliable for orientation.
+        // Swap to get the visually-rendered dimensions before deciding landscape vs portrait.
         double w = templatePage.Width.Point;
         double h = templatePage.Height.Point;
+        int templateRotate = templatePage.Rotate;
+        if (templateRotate == 90 || templateRotate == 270) (w, h) = (h, w);
 
         bool templateIsLandscape = w > h;
 
@@ -739,7 +743,11 @@ public class WordInteropService : IWordInteropService
 
                     if (template != null)
                     {
-                        bool isLandscape = template.Width.Point > template.Height.Point;
+                        // BE-34-1 fix: account for PDF /Rotate metadata when determining orientation
+                        double _tw = template.Width.Point, _th = template.Height.Point;
+                        int _tr = template.Rotate;
+                        if (_tr == 90 || _tr == 270) (_tw, _th) = (_th, _tw);
+                        bool isLandscape = _tw > _th;
                         CreateNonSkippableBlankPage(targetDoc, template, isLandscape);
                         insertedBlankIndices.Add(targetDoc.PageCount); // BE-24-1: track 1-based output index of this blank
                         Console.WriteLine($"[CreatePdfSubset] Added blank page (isLandscape={isLandscape})");
@@ -759,10 +767,13 @@ public class WordInteropService : IWordInteropService
                         double w, h;
                         if (orientationSource != null)
                         {
-                            // Use the actual page dimensions, preserving any non-A4 paper size
+                            // Use the actual page dimensions, preserving any non-A4 paper size.
+                            // BE-34-1 fix: account for PDF /Rotate so visual dimensions are correct.
                             w = orientationSource.Width.Point;
                             h = orientationSource.Height.Point;
-                            Console.WriteLine($"[CreatePdfSubset] Leading blank: matched source page dims {w:F2}x{h:F2}pt");
+                            int _or = orientationSource.Rotate;
+                            if (_or == 90 || _or == 270) (w, h) = (h, w);
+                            Console.WriteLine($"[CreatePdfSubset] Leading blank: matched source page dims {w:F2}x{h:F2}pt (Rotate={_or})");
                         }
                         else
                         {

@@ -4827,6 +4827,7 @@ const ViewModeModule = {
                     b.classList.toggle('active', b.dataset.lsmode === AppState.landscapeMode);
                 });
                 PreviewPanelModule.render(AppState.activeFile);
+                SummaryModule.update(); // B34-FE-2: summary sheet count depends on landscapeMode
             });
         }
     },
