@@ -2559,6 +2559,20 @@ const PrintModule = {
                 if (result.jobState?.waitingForFlip) {
                     // Manual duplex: show flip modal and wait for user to continue
                     AppState.currentJob = result.jobState;
+                    // B28-FE-2 fix: save history metadata so _continuePrint can record
+                    // this job in history after Phase 2 completes (we return early below
+                    // without calling HistoryModule.add, so we must defer it).
+                    AppState.currentJob._historyEntry = {
+                        file:        file.name,
+                        fileId:      file.id,
+                        printer:     AppState.selectedPrinter.name,
+                        printerData: AppState.selectedPrinter,
+                        pages:       file.selectedPages.size,
+                        pageRange,
+                        mode,
+                        copies:      file.copies,
+                        collate:     file.collate,
+                    };
                     // B17-FE-2 fix: save remaining files so _continuePrint can resume them
                     // after the user flips paper and clicks Continue.
                     AppState.pendingPrintQueue = (i + 1 < filesToPrint.length)
@@ -2639,7 +2653,12 @@ const PrintModule = {
             };
             if (result.success) {
                 showToast('In hoan tat!', 'success');
+                // B28-FE-2 fix: capture history entry BEFORE resetBtn() nulls currentJob.
+                const histEntry = AppState.currentJob?._historyEntry;
                 resetBtn();
+                // B28-FE-2 fix: record the manual duplex job in history now that Phase 2
+                // completed successfully (Phase 1 returned early without calling HistoryModule.add).
+                if (histEntry) HistoryModule.add(histEntry);
                 // B17-FE-2 fix: resume remaining files in the multi-file queue (if any).
                 // When _startPrint paused for manual flip, it saved remaining files into
                 // AppState.pendingPrintQueue. Resume them now that phase 2 is complete.
@@ -2735,6 +2754,19 @@ const PrintModule = {
 
                 if (result.jobState?.waitingForFlip) {
                     AppState.currentJob = result.jobState;
+                    // B28-FE-2 fix: save history metadata so _continuePrint can record
+                    // this chained job in history after Phase 2 completes.
+                    AppState.currentJob._historyEntry = {
+                        file:        file.name,
+                        fileId:      file.id,
+                        printer:     AppState.selectedPrinter.name,
+                        printerData: AppState.selectedPrinter,
+                        pages:       file.selectedPages.size,
+                        pageRange,
+                        mode:        modeCode,
+                        copies:      file.copies,
+                        collate:     file.collate,
+                    };
                     AppState.pendingPrintQueue = (i + 1 < files.length)
                         ? { files, nextIndex: i + 1, modeCode, originalText }
                         : null;
