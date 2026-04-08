@@ -329,13 +329,16 @@ public class PrintAlgorithmService
         // Apply custom page order if provided (I)
         selectedPages = ApplyPageOrder(selectedPages, pageOrder);
 
+        // B11-BE-1 fix: track all temp files created locally so we can delete them
+        // if CreateNormalDuplexJob throws before we can register them on jobState.
+        var localTemps = new List<string>();
+
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
         {
             var tempSelectedPdf = Path.Combine(Path.GetTempPath(), $"selected_{Guid.NewGuid()}.pdf");
             _wordService.CreatePdfSubset(pdfPath, tempSelectedPdf, selectedPages);
             sourcePdfPath = tempSelectedPdf;
-            // BUG-8-2: track for cleanup — will be cleaned via jobState from CreateNormalDuplexJob
-            // Store temporarily in a local list, merge into jobState after CreateNormalDuplexJob returns.
+            localTemps.Add(tempSelectedPdf);
         }
 
         // Apply per-page rotations before booklet creation (U)
@@ -345,6 +348,9 @@ public class PrintAlgorithmService
         if (bookletRotationMap.Count > 0)
         {
             var rotatedSource = _wordService.ApplyPageRotations(sourcePdfPath, bookletRotationMap);
+            // rotatedSource replaces sourcePdfPath; if we already have a subset temp, that's
+            // still in localTemps; now add the rotated temp too.
+            if (rotatedSource != sourcePdfPath) localTemps.Add(rotatedSource);
             sourcePdfPath = rotatedSource;
         }
 
@@ -357,14 +363,25 @@ public class PrintAlgorithmService
         // Create booklet PDF with 2-up layout
         var bookletPdfPath = Path.Combine(Path.GetTempPath(), $"booklet_{Guid.NewGuid()}.pdf");
         CreateBookletPdf(sourcePdfPath, bookletPdfPath, orderedPages, paddedCount);
+        localTemps.Add(bookletPdfPath);
 
-        // Now treat it as normal duplex (no page range needed since booklet PDF is already filtered)
-        // singleSidedPages not applicable/meaningful for booklet sheets in current logic
-        var bookletJobState = CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: null);
+        // Now treat it as normal duplex (no page range needed since booklet PDF is already filtered).
+        // If this throws, clean up all locally-owned temp files so nothing is orphaned.
+        PrintJobState bookletJobState;
+        try
+        {
+            bookletJobState = CreateNormalDuplexJob(bookletPdfPath, printerName, isDuplexPrinter, pageRange: null, singleSidedPages: null);
+        }
+        catch
+        {
+            foreach (var t in localTemps)
+                FileSessionService.DeleteFileSafe(t);
+            throw;
+        }
 
-        // BUG-8-2: register all booklet intermediate files for cleanup
-        if (sourcePdfPath != pdfPath) bookletJobState.IntermediateFiles.Add(sourcePdfPath);
-        bookletJobState.IntermediateFiles.Add(bookletPdfPath);
+        // Success — hand ownership of all local temps to jobState for normal cleanup.
+        foreach (var t in localTemps)
+            bookletJobState.IntermediateFiles.Add(t);
 
         return bookletJobState;
     }

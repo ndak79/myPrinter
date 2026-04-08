@@ -77,6 +77,13 @@ namespace PrinterApp.Models
         public string JobId { get; set; } = Guid.NewGuid().ToString();
 
         /// <summary>
+        /// UTC timestamp when this job was created. Used by FileSessionService to
+        /// expire abandoned manual-duplex jobs that are still waiting for a flip
+        /// but were never continued or cancelled.
+        /// </summary>
+        public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+
+        /// <summary>
         /// True nếu đang in manual duplex (máy in 1 mặt, nhưng mình in 2 lượt).
         /// </summary>
         public bool IsManualDuplex { get; set; }

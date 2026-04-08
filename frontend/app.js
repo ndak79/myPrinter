@@ -2956,13 +2956,11 @@ const ConfirmPrintModal = {
         for (const f of filesToPrint) {
             const fPages = f.selectedPages.size;
             const fCopies = f.copies ?? 1;
-            let fSheets;
-            if (mode === 'booklet') {
-                fSheets = Math.ceil(fPages / 4) * fCopies;
-            } else {
-                const fSingle = f.singleSidedPages?.size ?? 0;
-                fSheets = (Math.ceil((fPages - fSingle) / 2) + fSingle) * fCopies;
-            }
+            // Use real layout logic to match what buildSheetLayout actually produces.
+            // Orientation grouping + per-group padding in duplex mode can diverge from
+            // the simplified formula, so we derive the count from the layout directly.
+            const fLayout = buildSheetLayout(f, mode, null, f.landscapeMode ?? 'together');
+            const fSheets = fLayout.sheets.length * fCopies;
             totalSheets += fSheets;
             totalPages  += fPages;
         }

@@ -92,10 +92,21 @@ public sealed class FileSessionService : IDisposable
 
         foreach (var (jobId, job) in _jobs)
         {
+            // Remove jobs whose temp file has already been deleted externally.
             if (!File.Exists(job.TempPdfPath))
             {
                 _jobs.TryRemove(jobId, out _);
                 Console.WriteLine($"[FileSessionService] Cleaned up orphaned job: {jobId}");
+                continue;
+            }
+
+            // Remove abandoned jobs that have exceeded the session TTL (e.g. a
+            // manual-duplex job where the user never clicked Continue or Cancel).
+            // Use RemoveJob so TempPdfPath and IntermediateFiles are both deleted.
+            if (job.CreatedAt < cutoff)
+            {
+                RemoveJob(jobId);
+                Console.WriteLine($"[FileSessionService] Cleaned up expired job: {jobId}");
             }
         }
     }
