@@ -222,12 +222,12 @@ public static class BackendStartup
                 // BUG-2 fix: explicit else-if for each mode + reject unknown values
                 if (request.Mode == PrintMode.NormalDuplex)
                     jobState = printAlgorithm.CreateNormalDuplexJob(filePath, request.PrinterName, printer.IsDuplex,
-                        request.PageRange, request.SingleSidedPages, request.Watermark, request.PageOrder, request.PageRotations,
+                        request.PageRange, request.SingleSidedPages, request.PageOrder, request.PageRotations,
                         duplexSide:    request.DuplexSide,
                         manualFlipDir: request.ManualFlipDir);
                 else if (request.Mode == PrintMode.Simplex)
                     jobState = printAlgorithm.CreateSimplexJob(filePath, request.PrinterName,
-                        request.PageRange, request.Watermark, request.PageOrder, request.PageRotations);
+                        request.PageRange, request.PageOrder, request.PageRotations);
                 else if (request.Mode == PrintMode.BookletA5)
                     jobState = printAlgorithm.CreateBookletJob(filePath, request.PrinterName, printer.IsDuplex,
                         request.PageRange, request.SingleSidedPages, request.PageOrder, request.PageRotations);
@@ -299,6 +299,7 @@ public static class BackendStartup
 
                 printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
                 jobState.WaitingForFlip = false;
+                FileSessionService.DeleteIntermediateFiles(jobState);
 
                 return Results.Ok(new PrintResponse { Success = true, Message = "Print job completed successfully" });
             }

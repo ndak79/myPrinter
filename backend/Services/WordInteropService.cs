@@ -1252,60 +1252,6 @@ public class WordInteropService : IWordInteropService
     }
 
     /// <summary>
-    /// Stamp a diagonal text watermark on every page of the PDF.
-    /// Returns path to the new watermarked PDF.
-    /// </summary>
-    public string AddWatermarkToPdf(string sourcePath, WatermarkOptions opts)
-    {
-        var outputPath = Path.Combine(Path.GetTempPath(), $"watermark_{Guid.NewGuid()}.pdf");
-        Console.WriteLine($"[AddWatermarkToPdf] Stamping '{opts.Text}' on: {sourcePath}");
-
-        using var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
-        using var targetDoc = new PdfDocument();
-
-        // Parse color from hex "#RRGGBB"
-        if (string.IsNullOrWhiteSpace(opts.Color))
-            throw new ArgumentException("Watermark color cannot be empty.", nameof(opts));
-
-        var hex = opts.Color.TrimStart('#');
-        if (hex.Length < 6)
-            throw new ArgumentException($"Invalid watermark color hex format: {opts.Color}", nameof(opts));
-
-        var r = Convert.ToInt32(hex.Substring(0, 2), 16);
-        var g = Convert.ToInt32(hex.Substring(2, 2), 16);
-        var b = Convert.ToInt32(hex.Substring(4, 2), 16);
-        var alpha = (int)(opts.Opacity / 100.0 * 255);
-        var color = XColor.FromArgb(alpha, r, g, b);
-
-        var font = new XFont("Arial", opts.FontSize, XFontStyleEx.Bold);
-
-        for (int i = 0; i < sourceDoc.PageCount; i++)
-        {
-            var page = targetDoc.AddPage(sourceDoc.Pages[i]);
-            using var gfx = XGraphics.FromPdfPage(page);
-
-            gfx.Save();
-            double cx = page.Width.Point / 2;
-            double cy = page.Height.Point / 2;
-            gfx.TranslateTransform(cx, cy);
-            gfx.RotateTransform(-45);
-
-            var size = gfx.MeasureString(opts.Text, font);
-            gfx.DrawString(
-                opts.Text,
-                font,
-                new XSolidBrush(color),
-                new XPoint(-size.Width / 2, size.Height / 4)
-            );
-            gfx.Restore();
-        }
-
-        targetDoc.Save(outputPath);
-        Console.WriteLine($"[AddWatermarkToPdf] Done: {outputPath}");
-        return outputPath;
-    }
-
-    /// <summary>
     /// Apply per-page rotations to a PDF (U — per-page rotation).
     /// Creates a new PDF where each page listed in rotationMap is rotated accordingly.
     /// Pages not in rotationMap are copied as-is.

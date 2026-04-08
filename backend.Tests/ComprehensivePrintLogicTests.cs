@@ -94,26 +94,6 @@ public class ComprehensivePrintLogicTests
     }
 
     [Fact]
-    public void Simplex_Watermark_AppliedBeforeSubsetCreation()
-    {
-        var mockWord = CreateMockWord(5);
-        mockWord.Setup(w => w.AddWatermarkToPdf(It.IsAny<string>(), It.IsAny<WatermarkOptions>()))
-                .Returns(@"C:\fake\watermarked.pdf");
-
-        string? subsetSource = null;
-        mockWord.Setup(w => w.CreatePdfSubset(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int[]>()))
-                .Callback<string, string, int[]>((s, t, pages) => subsetSource = s);
-
-        var service = new PrintAlgorithmService(mockWord.Object);
-        var watermark = new WatermarkOptions { Text = "DRAFT" };
-
-        service.CreateSimplexJob("test.pdf", "Printer1", pageRange: "1-3", watermark: watermark);
-
-        mockWord.Verify(w => w.AddWatermarkToPdf("test.pdf", watermark), Times.Once);
-        subsetSource.Should().Be(@"C:\fake\watermarked.pdf");
-    }
-
-    [Fact]
     public void Simplex_RotationCW90_OnPage2_ApplyPageRotationsCalledCorrectly()
     {
         var mockWord = CreateMockWord(5);
@@ -191,21 +171,6 @@ public class ComprehensivePrintLogicTests
         capturedRotations.Should().NotBeNull();
         capturedRotations.Should().ContainKey(2);
         capturedRotations![2].Should().Be(RotationDirection.CW90);
-    }
-
-    [Fact]
-    public void AutoDuplex_Watermark_AppliedFirst()
-    {
-        var mockWord = CreateMockWord(3);
-        mockWord.Setup(w => w.AddWatermarkToPdf(It.IsAny<string>(), It.IsAny<WatermarkOptions>()))
-                .Returns(@"C:\fake\watermarked.pdf");
-
-        var service = new PrintAlgorithmService(mockWord.Object);
-        var watermark = new WatermarkOptions { Text = "CONFIDENTIAL" };
-
-        service.CreateNormalDuplexJob("test.pdf", "Printer1", isDuplexPrinter: true, watermark: watermark);
-
-        mockWord.Verify(w => w.AddWatermarkToPdf("test.pdf", watermark), Times.Once);
     }
 
     // ================================================================

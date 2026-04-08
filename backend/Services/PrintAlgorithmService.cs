@@ -26,19 +26,11 @@ public class PrintAlgorithmService
     bool isDuplexPrinter,
     string? pageRange = null,
     int[]? singleSidedPages = null,
-    WatermarkOptions? watermark = null,
     int[]? pageOrder = null,
     List<PageRotation>? pageRotations = null,
-    string? duplexSide = null,      // NEW: "LongEdge" | "ShortEdge" | null
-    string? manualFlipDir = null)   // NEW: "LongEdge" | "ShortEdge" | null => auto-detect
+    string? duplexSide = null,      // "LongEdge" | "ShortEdge" | null
+    string? manualFlipDir = null)   // "LongEdge" | "ShortEdge" | null => auto-detect
     {
-        // Apply watermark if requested
-        if (watermark != null)
-        {
-            pdfPath = _wordService.AddWatermarkToPdf(pdfPath, watermark);
-            Console.WriteLine($"[CreateNormalDuplexJob] Watermark applied: {pdfPath}");
-        }
-
         // Đọc metadata PDF gốc
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
         // BUG-7-7 fix: flipDirection must be computed AFTER ApplyPageRotations so that a
@@ -381,19 +373,10 @@ public class PrintAlgorithmService
         string pdfPath,
         string printerName,
         string? pageRange = null,
-        WatermarkOptions? watermark = null,
         int[]? pageOrder = null,
         List<PageRotation>? pageRotations = null)
     {
         Console.WriteLine("[CreateSimplexJob] Single-sided print.");
-
-        // Apply watermark if requested
-        if (watermark != null)
-        {
-            pdfPath = _wordService.AddWatermarkToPdf(pdfPath, watermark);
-            Console.WriteLine($"[CreateSimplexJob] Watermark applied: {pdfPath}");
-        }
-
         var pdfInfo = _wordService.GetPdfInfo(pdfPath);
         string workingPdfPath = pdfPath;
 

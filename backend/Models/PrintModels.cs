@@ -33,7 +33,6 @@ namespace PrinterApp.Models
         public int[]? SingleSidedPages { get; set; } // Pages that should be printed single-sided
         public int Copies { get; set; } = 1;
         public bool Collate { get; set; } = true;
-        public WatermarkOptions? Watermark { get; set; } // null = no watermark
         /// <summary>
         /// Optional explicit page order. If provided, pages are printed in this order
         /// rather than the natural document order. Each value is a 1-based page number.
@@ -64,14 +63,6 @@ namespace PrinterApp.Models
         /// <summary>1-based page number</summary>
         public int PageNumber { get; set; }
         public RotationDirection Rotation { get; set; }
-    }
-
-    public class WatermarkOptions
-    {
-        public string Text { get; set; } = "DRAFT";
-        public int FontSize { get; set; } = 48;
-        public int Opacity { get; set; } = 30; // 0-100
-        public string Color { get; set; } = "#94a3b8"; // CSS hex color
     }
 
     public enum PrintMode

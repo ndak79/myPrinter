@@ -17,8 +17,6 @@ public class CreateNormalDuplexJobTests
         _mockWord = new Mock<IWordInteropService>();
         _mockWord.Setup(w => w.GetPdfInfo(It.IsAny<string>()))
                  .Returns(new PdfInfo(4, false));
-        _mockWord.Setup(w => w.AddWatermarkToPdf(It.IsAny<string>(), It.IsAny<WatermarkOptions>()))
-                 .Returns(@"C:\fake\watermarked.pdf");
         _mockWord.Setup(w => w.CreatePdfSubset(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int[]>()));
         _sut = new PrintAlgorithmService(_mockWord.Object);
     }
@@ -63,16 +61,6 @@ public class CreateNormalDuplexJobTests
         var act = () => _sut.CreateNormalDuplexJob(FakePdfPath, FakePrinter, isDuplexPrinter: true, pageRange: "99");
 
         act.Should().Throw<InvalidOperationException>();
-    }
-
-    [Fact]
-    public void AutoDuplex_WithWatermark_CallsAddWatermark()
-    {
-        var watermark = new WatermarkOptions { Text = "SECRET" };
-
-        _sut.CreateNormalDuplexJob(FakePdfPath, FakePrinter, isDuplexPrinter: true, watermark: watermark);
-
-        _mockWord.Verify(w => w.AddWatermarkToPdf(It.IsAny<string>(), watermark), Times.Once);
     }
 
     // ==========================================
@@ -187,14 +175,4 @@ public class CreateNormalDuplexJobTests
         result.ManualPlan.Should().NotBeNull();
     }
 
-    [Fact]
-    public void ManualDuplex_WithWatermark_WatermarkAppliedFirst()
-    {
-        SetupManualDuplexMocks(isLandscape: false, pageCount: 2);
-        var watermark = new WatermarkOptions { Text = "DRAFT" };
-
-        _sut.CreateNormalDuplexJob(FakePdfPath, FakePrinter, isDuplexPrinter: false, watermark: watermark);
-
-        _mockWord.Verify(w => w.AddWatermarkToPdf(It.IsAny<string>(), watermark), Times.Once);
-    }
 }

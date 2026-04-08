@@ -176,11 +176,9 @@ public class MixedScenarioTests
     }
 
     [Fact]
-    public void Watermark_PageOrder_And_Rotations_Together()
+    public void PageOrder_And_Rotations_Together()
     {
         var mockWord = new Mock<IWordInteropService>();
-        mockWord.Setup(w => w.AddWatermarkToPdf(It.IsAny<string>(), It.IsAny<WatermarkOptions>()))
-                .Returns(@"C:\fake\watermarked.pdf");
         mockWord.Setup(w => w.GetPdfInfo(It.IsAny<string>())).Returns(new PdfInfo(3, false));
         
         string? subsetSource = null;
@@ -193,22 +191,18 @@ public class MixedScenarioTests
                 .Returns(@"C:\fake\rotated.pdf");
 
         var service = new PrintAlgorithmService(mockWord.Object);
-        var watermark = new WatermarkOptions { Text = "TEST" };
         var rotations = new List<PageRotation>
         {
             new PageRotation { PageNumber = 1, Rotation = RotationDirection.CW90 }
         };
 
-        service.CreateSimplexJob("test.pdf", "Printer1", watermark: watermark, pageOrder: new[] { 3, 2, 1 }, pageRotations: rotations);
+        service.CreateSimplexJob("test.pdf", "Printer1", pageOrder: new[] { 3, 2, 1 }, pageRotations: rotations);
 
-        // Watermark should be applied first
-        mockWord.Verify(w => w.AddWatermarkToPdf("test.pdf", watermark), Times.Once);
-        
-        // Subset should be created from watermarked PDF
-        subsetSource.Should().Be(@"C:\fake\watermarked.pdf");
+        subsetSource.Should().NotBeNull();
+        subsetSource.Should().Be("test.pdf");
         
         // Rotations should be applied to the subset PDF
         rotationSource.Should().NotBeNull();
-        rotationSource.Should().NotBe(@"C:\fake\watermarked.pdf"); // It should be the temp subset path
+        rotationSource.Should().NotBe("test.pdf"); // It should be the temp subset path
     }
 }

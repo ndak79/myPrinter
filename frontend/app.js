@@ -2593,30 +2593,47 @@ const PrintModule = {
     },
 
     _showFlipModal(instruction) {
-        // Animated SVG (3)
-        document.getElementById('instruction-visual').innerHTML = `
-            <svg width="260" height="180" viewBox="0 0 260 180">
-                <defs>
-                    <marker id="arrow-flip" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-                        <polygon points="0 0,10 3.5,0 7" fill="#10b981"/>
-                    </marker>
-                </defs>
-                <!-- Paper group with animation -->
-                <g class="flip-paper-anim">
-                    <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
-                    <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
-                    <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">Giấy đã in</text>
-                    <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">mặt 1 ✓</text>
-                </g>
-                <!-- Arrow down -->
-                <path d="M 130 125 L 130 155" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
-                <!-- Tray -->
-                <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
-                <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">Khay giấy</text>
-                <!-- Label top -->
-                <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">Lấy ra → Lật → Đặt lại</text>
-            </svg>
-        `;
+        const visualType = instruction?.visualType || 'vertical';
+        document.getElementById('instruction-visual').innerHTML = visualType === 'horizontal'
+            ? `
+                <svg width="260" height="180" viewBox="0 0 260 180">
+                    <defs>
+                        <marker id="arrow-flip" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                            <polygon points="0 0,10 3.5,0 7" fill="#10b981"/>
+                        </marker>
+                    </defs>
+                    <g class="flip-paper-anim">
+                        <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
+                        <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
+                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">Giấy đã in</text>
+                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">mặt 1 ✓</text>
+                    </g>
+                    <path d="M 58 80 L 30 80" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
+                    <path d="M 202 80 L 230 80" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
+                    <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
+                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">Khay giấy</text>
+                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">Lấy ra → Lật ngang → Đặt lại</text>
+                </svg>
+            `
+            : `
+                <svg width="260" height="180" viewBox="0 0 260 180">
+                    <defs>
+                        <marker id="arrow-flip" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
+                            <polygon points="0 0,10 3.5,0 7" fill="#10b981"/>
+                        </marker>
+                    </defs>
+                    <g class="flip-paper-anim">
+                        <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
+                        <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
+                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">Giấy đã in</text>
+                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">mặt 1 ✓</text>
+                    </g>
+                    <path d="M 130 125 L 130 155" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
+                    <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
+                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">Khay giấy</text>
+                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">Lấy ra → Lật → Đặt lại</text>
+                </svg>
+            `;
 
         document.getElementById('instruction-text').textContent =
             instruction || 'Lấy giấy ra và đặt thẳng lại vào khay (mặt đã in hướng xuống). KHÔNG cần xoay giấy.';
