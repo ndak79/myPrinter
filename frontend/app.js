@@ -1585,7 +1585,6 @@ const PreviewModule = {
             const loadTask = pdfjsLib.getDocument({
                 url,
                 rangeChunkSize:           65536,  // 64 KB chunks
-                disableAutoFetch:         true,   // Only fetch pages when needed
                 disableStream:            false,  // Enable streaming
                 isOffscreenCanvasSupported: true, // Render off main thread
                 useWasm:                  true,   // WASM decoders for JBIG2/JPEG2000
@@ -1611,12 +1610,19 @@ const PreviewModule = {
             const loadTask = pdfjsLib.getDocument({
                 url,
                 rangeChunkSize:           65536,  // 64 KB chunks
-                disableAutoFetch:         true,   // Only fetch pages when needed
                 disableStream:            false,  // Enable streaming
                 isOffscreenCanvasSupported: true, // Render off main thread
                 useWasm:                  true,   // WASM decoders for JBIG2/JPEG2000
             });
             entry.pdfDoc           = await loadTask.promise;
+            // Warm page 1 in background — pre-populates PDF.js internal page cache
+            // Use setTimeout (not queueMicrotask) to yield to active file's own render first
+            setTimeout(async () => {
+                try {
+                    const page = await entry.pdfDoc?.getPage(1);
+                    if (page) page.cleanup();
+                } catch (_) {}
+            }, 100);
             entry.totalPageCount   = entry.pdfDoc.numPages;
             entry.pageOrder        = Array.from({ length: entry.totalPageCount }, (_, i) => i + 1);
             entry.selectedPages    = new Set(entry.pageOrder);
@@ -4440,7 +4446,7 @@ const PreviewPanelModule = {
 
         try {
             await task.promise;
-            const blob = await off.convertToBlob({ type: 'image/jpeg', quality: 0.88 });
+            const blob = await off.convertToBlob({ type: 'image/webp', quality: 0.82 });
             const url  = URL.createObjectURL(blob);
             const entry = { canvas: off, url };
             cacheRef.set(key, entry);

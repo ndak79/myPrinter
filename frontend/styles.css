@@ -2997,3 +2997,6 @@ kbd {
 .thumb-file-root--hidden {
   display: none;
 }
+
+.preview-page-card { contain: layout paint; }
+.thumb-item        { contain: layout paint; }
