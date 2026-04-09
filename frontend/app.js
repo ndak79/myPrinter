@@ -1319,6 +1319,13 @@ const UploadModule = {
     },
 
     removeFile(index) {
+        // Capture id BEFORE AppState.removeFile() splices the array
+        const removedId = AppState.files[index]?.id;
+        if (removedId) {
+            PreviewPanelModule.removeFileRoot(removedId);
+            ThumbStripModule.removeFileRoot(removedId);
+        }
+
         AppState.removeFile(index);
         if (AppState.files.length === 0) {
             const fi = document.getElementById('file-input');
@@ -4631,6 +4638,37 @@ const PreviewPanelModule = {
         });
     },
 
+    removeFileRoot(fileId) {
+        const pageRoot = this._pageRoots.get(fileId);
+        if (pageRoot) { pageRoot.remove(); this._pageRoots.delete(fileId); }
+
+        const sheetRoot = this._sheetRoots.get(fileId);
+        if (sheetRoot) { sheetRoot.remove(); this._sheetRoots.delete(fileId); }
+
+        // Remove _pageEls entries for this file
+        for (const key of [...this._pageEls.keys()]) {
+            if (key.startsWith(fileId + '-')) this._pageEls.delete(key);
+        }
+
+        // Cancel in-flight render tasks and recalculate active render counter
+        for (const [taskKey, task] of [...this._renderTasks.entries()]) {
+            if (taskKey.startsWith(fileId + '-')) {  // '+'-' prevents prefix collision (e.g. id='f1' matching 'f10-...')
+                try { task.cancel(); } catch(_) {}
+                this._renderTasks.delete(taskKey);
+            }
+        }
+        // Recalculate counters — cancelled tasks may not decrement via .finally()
+        this._activeRenders     = this._renderTasks.size;
+        this._activeBlobRenders = 0; // blob tasks not tracked by key; safe to reset
+
+        // Drain queues
+        this._blobQueue   = (this._blobQueue   ?? []).filter(j => j.fileId !== fileId);
+        this._renderQueue = this._renderQueue.filter(j => j.fileId !== fileId);
+
+        // Evict pixel cache for this file
+        this._cache.deleteByPrefix(fileId + '-');
+    },
+
     clear() {
         if (this._observer) { this._observer.disconnect(); this._observer = null; }
         if (this._container) {
@@ -4662,6 +4700,26 @@ const ThumbStripModule = {
     _renderQueue:  [],
     _activeRenders: 0,
     _MAX_CONCURRENT: 8,
+
+    removeFileRoot(fileId) {
+        const root = this._fileRoots?.get(fileId);
+        if (root) { root.remove(); this._fileRoots.delete(fileId); }
+
+        for (const [key, task] of [...this._renderTasks.entries()]) {
+            if (key.startsWith(fileId + '-')) {  // '+'-' prevents prefix collision (e.g. id='f1' matching 'f10-...')
+                try { task.cancel(); } catch(_) {}
+                this._renderTasks.delete(key);
+            }
+        }
+        // NOTE: _renderThumb tasks run as bare awaits (not in _renderTasks Map).
+        // Setting _activeRenders = 0 is correct — their .finally() decrements are
+        // benign on detached nodes and will not over-decrement below 0 because
+        // _drainQueue checks _activeRenders < _MAX_CONCURRENT before spawning.
+        this._activeRenders = 0;
+
+        this._renderQueue = this._renderQueue.filter(j => j.fileId !== fileId);
+        this._cache.deleteByPrefix(fileId + '-');
+    },
 
     init() {
         this._container = document.getElementById('thumb-strip');
