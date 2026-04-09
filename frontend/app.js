@@ -1560,7 +1560,9 @@ const TabsModule = {
 
         // Instant scroll sideview to page 1 of the newly active file
         requestAnimationFrame(() => {
-            const firstThumb = ThumbStripModule._container?.querySelector(
+            const _activeRoot = ThumbStripModule._fileRoots?.get(AppState.activeFile?.id)
+                             ?? ThumbStripModule._container;
+            const firstThumb = _activeRoot?.querySelector(
                 `.thumb-item[data-file-index="${idx}"][data-page="1"]`
             );
             if (firstThumb) {
@@ -4693,6 +4695,7 @@ const PreviewPanelModule = {
 // ═══════════════════════════════════════════════════════════════════
 const ThumbStripModule = {
     _container:    null,
+    _fileRoots:    new Map(),   // fileId → <div.thumb-file-root>
     _scrollRAF:    false,
     _scrollIdleTimer: null,
     _renderTasks:  new Map(),
@@ -4719,6 +4722,17 @@ const ThumbStripModule = {
 
         this._renderQueue = this._renderQueue.filter(j => j.fileId !== fileId);
         this._cache.deleteByPrefix(fileId + '-');
+    },
+
+    _getOrCreateThumbRoot(fileEntry) {
+        let root = this._fileRoots.get(fileEntry.id);
+        if (root) return { root, isNew: false };
+        root = document.createElement('div');
+        root.className = 'thumb-file-root';
+        root.dataset.fileId = fileEntry.id;
+        this._fileRoots.set(fileEntry.id, root);
+        this._container.appendChild(root);
+        return { root, isNew: true };
     },
 
     init() {
@@ -4750,9 +4764,10 @@ const ThumbStripModule = {
         this._renderTasks.clear();
         this._renderQueue = [];
         this._activeRenders = 0;
-        this._container.innerHTML = '';
 
         if (AppState.files.length === 0) {
+            // All files removed — reset Maps to prevent stale DOM on next upload
+            this._fileRoots?.clear();
             this._container.innerHTML = `
                 <div class="preview-empty" style="padding:16px;text-align:center">
                     <span class="preview-empty-icon">📄</span>
@@ -4761,11 +4776,27 @@ const ThumbStripModule = {
             return;
         }
 
-        // Render only the active file — single-file thumbstrip
         const f = AppState.activeFile;
         if (!f) return;
 
-        // No file-name divider — single file only
+        // Hide all file roots except the active one
+        for (const [fid, r] of this._fileRoots) {
+            r.classList.toggle('thumb-file-root--hidden', fid !== f.id);
+        }
+        const { root, isNew } = this._getOrCreateThumbRoot(f);
+        if (!isNew) {
+            // Already built — refresh data-file-index (may have changed after drag-to-reorder)
+            // then re-sync selection highlights and re-render visible thumbs
+            const currentIdx = AppState.activeFileIndex;
+            root.querySelectorAll('.thumb-item').forEach(el => {
+                el.dataset.fileIndex = currentIdx;
+            });
+            this._syncSelectionHighlights();
+            requestAnimationFrame(() => this._renderVisible());
+            return;
+        }
+        // else: first time for this file — fall through to item creation loop below
+
         for (let p = 1; p <= f.totalPageCount; p++) {
             const item = document.createElement('div');
             item.className        = 'thumb-item';
@@ -4794,7 +4825,7 @@ const ThumbStripModule = {
                 e.preventDefault();
                 ContextMenu.show(e, p);
             });
-            this._container.appendChild(item);
+            root.appendChild(item);
         }
 
         // rAF to ensure layout, then render visible thumbs
@@ -4807,7 +4838,11 @@ const ThumbStripModule = {
         const cRect     = this._container.getBoundingClientRect();
         const lookahead = cRect.height * 2; // 2 screens ahead (was 1)
 
-        this._container.querySelectorAll('.thumb-item:not(.rendered)').forEach(el => {
+        // Scope to visible root only — hidden roots' items return getBoundingClientRect() as zeros
+        const activeFileId = AppState.activeFile?.id;
+        const activeThumbRoot = activeFileId ? this._fileRoots?.get(activeFileId) : null;
+        const searchRoot = activeThumbRoot ?? this._container;
+        searchRoot.querySelectorAll('.thumb-item:not(.rendered)').forEach(el => {
             const eRect = el.getBoundingClientRect();
             if (eRect.bottom >= cRect.top - lookahead && eRect.top <= cRect.bottom + lookahead) {
                 const fileId  = el.dataset.fileId;
@@ -4885,9 +4920,11 @@ const ThumbStripModule = {
     },
 
     _setActiveHighlight(fileIndex, pageNum) {
-        this._container.querySelectorAll('.thumb-item.active')
+        const activeId   = AppState.activeFile?.id;
+        const searchRoot = (activeId && this._fileRoots?.get(activeId)) || this._container;
+        searchRoot.querySelectorAll('.thumb-item.active')
             .forEach(el => el.classList.remove('active'));
-        const target = this._container.querySelector(
+        const target = searchRoot.querySelector(
             `.thumb-item[data-file-index="${fileIndex}"][data-page="${pageNum}"]`
         );
         target?.classList.add('active');
@@ -4902,7 +4939,9 @@ const ThumbStripModule = {
     // Sync selection CSS + rotation badges on all thumb items
     _syncSelectionHighlights() {
         if (!this._container) return;
-        this._container.querySelectorAll('.thumb-item').forEach(el => {
+        const _activeId   = AppState.activeFile?.id;
+        const _activeRoot = _activeId ? (this._fileRoots?.get(_activeId) ?? this._container) : this._container;
+        _activeRoot.querySelectorAll('.thumb-item').forEach(el => {
             const fileId  = el.dataset.fileId;
             const pageNum = parseInt(el.dataset.page);
             const entry   = AppState.files.find(f => f.id === fileId);
@@ -4921,16 +4960,20 @@ const ThumbStripModule = {
     // Virtual scrolling: release canvas memory for thumbnails far off-screen
     _unmountOffScreen() {
         if (!this._container) return;
-        const cRect = this._container.getBoundingClientRect();
+        const f = AppState.activeFile;
+        if (!f) return;
+        const activeRoot = this._fileRoots?.get(f.id) ?? this._container;
+
+        const cRect = activeRoot.getBoundingClientRect();
         const buffer = cRect.height * 4; // keep 4 screens of thumbs
 
-        this._container.querySelectorAll('.thumb-item.rendered').forEach(el => {
+        activeRoot.querySelectorAll('.thumb-item.rendered').forEach(el => {
             const eRect = el.getBoundingClientRect();
             const isFar = eRect.bottom < cRect.top - buffer || eRect.top > cRect.bottom + buffer;
             if (isFar) {
                 const img = el.querySelector('img.thumb-img');
                 if (img && img.src) {
-                    el.style.minHeight = `${el.offsetHeight}px`;
+                    el.style.minHeight = `${el.offsetHeight}px`; // measured on visible element — safe
                     img.src = ''; // release decoded bitmap memory
                     el.classList.remove('rendered');
                 }

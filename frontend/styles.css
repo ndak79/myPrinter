@@ -2988,3 +2988,12 @@ kbd {
   text-align:       center;
   white-space:      nowrap;
 }
+
+.thumb-file-root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* spacing between thumb items within a file */
+}
+.thumb-file-root--hidden {
+  display: none;
+}
