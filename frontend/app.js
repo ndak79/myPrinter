@@ -3766,7 +3766,13 @@ const PreviewPanelModule = {
 
     _getOrCreatePageRoot(fileEntry) {
         let root = this._pageRoots.get(fileEntry.id);
-        if (root) return { root, isNew: false };
+        if (root) {
+            // Re-attach if sheet-view's innerHTML='' detached this root from the container
+            if (!this._container.contains(root)) {
+                this._container.appendChild(root);
+            }
+            return { root, isNew: false };
+        }
         root = document.createElement('div');
         root.className = 'preview-file-root';
         root.dataset.fileId = fileEntry.id;
