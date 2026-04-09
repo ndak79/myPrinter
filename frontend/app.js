@@ -3781,6 +3781,19 @@ const PreviewPanelModule = {
         return { root, isNew: true };
     },
 
+    _getOrCreateSheetRoot(fileEntry) {
+        let root = this._sheetRoots.get(fileEntry.id);
+        if (!root) {
+            root = document.createElement('div');
+            root.className = 'preview-file-root preview-file-root--hidden';
+            root.dataset.fileId = fileEntry.id;
+            root.dataset.viewMode = 'sheet';
+            this._sheetRoots.set(fileEntry.id, root);
+            this._container.appendChild(root);
+        }
+        return root;
+    },
+
     // Render all pages of active file
     render(fileEntry) {
         // Invariant 3: reset blankAbsorbedBy before each rebuild
@@ -3915,11 +3928,26 @@ const PreviewPanelModule = {
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
         this._renderTasks.clear();
         this._currentFileId = fileEntry.id;
-        this._pageEls.clear();
-        this._sheetEls.clear();
-        this._container.innerHTML = '';
 
-        // NEW: reset blob pipeline to prevent stale renders draining into new cycle
+        // Hide all roots; show only this file's sheet root
+        for (const r of this._pageRoots.values())   r.classList.add('preview-file-root--hidden');
+        for (const [fid, r] of this._sheetRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
+
+        const sheetRoot = this._getOrCreateSheetRoot(fileEntry);
+        sheetRoot.classList.remove('preview-file-root--hidden');
+        sheetRoot.innerHTML = ''; // sheet layout always rebuilds — depends on selection/blank/rotation state
+
+        // Clear stale _pageEls entries for this file IMMEDIATELY after innerHTML = ''.
+        // _renderSheetView is async — scroll events during the upcoming await may iterate
+        // _pageEls and call getBoundingClientRect() on now-detached elements (returns zeros),
+        // which would cause phantom _enqueueBlob() calls. (per D14)
+        for (const k of [...this._pageEls.keys()]) {
+            if (k.startsWith(fileEntry.id + '-')) this._pageEls.delete(k);
+        }
+
+        this._sheetEls.clear();
+
+        // Reset blob pipeline (was previously resetting this._container globally)
         this._blobQueue = [];
         this._activeBlobRenders = 0;
 
@@ -3954,6 +3982,7 @@ const PreviewPanelModule = {
         }
         // Guard: user may have switched file during async detection
         if (this._currentFileId !== fileEntry.id) return;
+        if (this._viewMode !== 'sheet') return;  // view mode changed back to page — abort
 
         // ── TOGETHER MODE: snapshot → inject CCW90 → invalidate cache ──────────
         if (fileEntry.landscapeMode === 'together') {
@@ -3987,6 +4016,7 @@ const PreviewPanelModule = {
             // 2. Mode switch: landscapeMode changed to 'separate' during await.
             //    Without check 2, step [4] would inject CCW90 in separate mode.
             if (this._currentFileId !== fileEntry.id) return;
+            if (this._viewMode !== 'sheet') return;  // view mode changed — abort
             if (fileEntry.landscapeMode !== 'together') return;
 
             // F1 fix: commit the pending map only AFTER guards pass. If the user switched
@@ -4269,7 +4299,7 @@ const PreviewPanelModule = {
 
         inner.appendChild(sheetsCol);
         inner.appendChild(ejectedCol);
-        this._container.appendChild(inner);
+        sheetRoot.appendChild(inner);
 
         this._container.scrollTop = 0;
         requestAnimationFrame(() => this._renderVisible());
