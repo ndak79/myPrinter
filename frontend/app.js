@@ -3741,8 +3741,9 @@ const PreviewPanelModule = {
     _viewMode: 'page',
     _sheetEls: new Map(),              // sheetIndex → .sheet-card el
     _isDeleting: false,
-    _pageRoots:  new Map(),   // fileId → <div.preview-file-root> for page-view
-    _sheetRoots: new Map(),   // fileId → <div.preview-file-root> for sheet-view
+    _pageRoots:       new Map(),   // fileId → <div.preview-file-root> for page-view
+    _sheetRoots:      new Map(),   // fileId → <div.preview-file-root> for sheet-view
+    _sheetFingerprints: new Map(), // fileId → last-rendered sheet layout fingerprint string
 
     init() {
         this._container = document.getElementById('preview-panel');
@@ -3938,6 +3939,35 @@ const PreviewPanelModule = {
             _teardownTogether(fileEntry);
         }
 
+        // ── SHEET CACHE-HIT: skip full rebuild on pure tab-switch ────────────────
+        // Compute a cheap fingerprint of all state that affects sheet layout.
+        // If it matches the last-rendered fingerprint for this file AND the DOM root
+        // already exists, just show/hide roots and re-enqueue visible blobs.
+        const _fp = [
+            fileEntry.pageOrder.join(','),
+            [...fileEntry.selectedPages].sort((a,b)=>a-b).join(','),
+            [...(fileEntry.singleSidedPages||new Set())].sort((a,b)=>a-b).join(','),
+            [...(fileEntry.pageRotations||new Map()).entries()].sort((a,b)=>a[0]-b[0]).map(([k,v])=>`${k}:${v}`).join(','),
+            fileEntry.landscapeMode,
+            AppState.printMode,
+        ].join('|');
+        const _existingRoot = this._sheetRoots.get(fileEntry.id);
+        if (_existingRoot && this._sheetFingerprints.get(fileEntry.id) === _fp) {
+            // Layout is valid — just switch visibility and re-render visible blobs
+            this._renderQueue  = [];
+            this._activeRenders = 0;
+            for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
+            this._renderTasks.clear();
+            this._currentFileId = fileEntry.id;
+            for (const r of this._pageRoots.values())   r.classList.add('preview-file-root--hidden');
+            for (const [fid, r] of this._sheetRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
+            _existingRoot.classList.remove('preview-file-root--hidden');
+            this._container.scrollTop = 0;
+            requestAnimationFrame(() => this._renderVisible());
+            return;
+        }
+        // ── END SHEET CACHE-HIT ──────────────────────────────────────────────────
+
         this._renderQueue = [];
         this._activeRenders = 0;
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
@@ -3950,7 +3980,7 @@ const PreviewPanelModule = {
 
         const sheetRoot = this._getOrCreateSheetRoot(fileEntry);
         sheetRoot.classList.remove('preview-file-root--hidden');
-        sheetRoot.innerHTML = ''; // sheet layout always rebuilds — depends on selection/blank/rotation state
+        sheetRoot.innerHTML = ''; // layout must rebuild — fingerprint mismatch or first load
 
         // Clear stale _pageEls entries for this file IMMEDIATELY after innerHTML = ''.
         // _renderSheetView is async — scroll events during the upcoming await may iterate
@@ -4316,6 +4346,9 @@ const PreviewPanelModule = {
         inner.appendChild(ejectedCol);
         sheetRoot.appendChild(inner);
 
+        // Store fingerprint so next render() for this file can skip rebuild on cache-hit
+        this._sheetFingerprints.set(fileEntry.id, _fp);
+
         this._container.scrollTop = 0;
         requestAnimationFrame(() => this._renderVisible());
     },
@@ -4652,6 +4685,7 @@ const PreviewPanelModule = {
 
         const sheetRoot = this._sheetRoots.get(fileId);
         if (sheetRoot) { sheetRoot.remove(); this._sheetRoots.delete(fileId); }
+        this._sheetFingerprints.delete(fileId);
 
         // Remove _pageEls entries for this file
         for (const key of [...this._pageEls.keys()]) {
@@ -4689,6 +4723,7 @@ const PreviewPanelModule = {
         // Reset per-file DOM roots (all files removed — maps now stale)
         this._pageRoots.clear();
         this._sheetRoots.clear();
+        this._sheetFingerprints.clear();
         this._pageEls.clear();
         this._sheetEls.clear();
     },
