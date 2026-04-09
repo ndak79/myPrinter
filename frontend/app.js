@@ -4964,7 +4964,7 @@ const ThumbStripModule = {
         if (!f) return;
         const activeRoot = this._fileRoots?.get(f.id) ?? this._container;
 
-        const cRect = activeRoot.getBoundingClientRect();
+        const cRect = this._container.getBoundingClientRect();
         const buffer = cRect.height * 4; // keep 4 screens of thumbs
 
         activeRoot.querySelectorAll('.thumb-item.rendered').forEach(el => {
