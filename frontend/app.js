@@ -3726,6 +3726,8 @@ const PreviewPanelModule = {
     _viewMode: 'page',
     _sheetEls: new Map(),              // sheetIndex → .sheet-card el
     _isDeleting: false,
+    _pageRoots:  new Map(),   // fileId → <div.preview-file-root> for page-view
+    _sheetRoots: new Map(),   // fileId → <div.preview-file-root> for sheet-view
 
     init() {
         this._container = document.getElementById('preview-panel');
@@ -3762,6 +3764,17 @@ const PreviewPanelModule = {
         }, { passive: true });
     },
 
+    _getOrCreatePageRoot(fileEntry) {
+        let root = this._pageRoots.get(fileEntry.id);
+        if (root) return { root, isNew: false };
+        root = document.createElement('div');
+        root.className = 'preview-file-root';
+        root.dataset.fileId = fileEntry.id;
+        this._pageRoots.set(fileEntry.id, root);
+        this._container.appendChild(root);
+        return { root, isNew: true };
+    },
+
     // Render all pages of active file
     render(fileEntry) {
         // Invariant 3: reset blankAbsorbedBy before each rebuild
@@ -3781,15 +3794,61 @@ const PreviewPanelModule = {
         }
         if (!this._container || !fileEntry?.pdfDoc) return;
 
-        // Cancel queue and in-flight tasks
+        // Cancel queue and in-flight tasks (still needed — even on cache-hit, old tasks must stop)
         this._renderQueue = [];
-        this._activeRenders = 0;
+        this._activeRenders = 0;  // ← MUST be reset; stale count blocks _drainQueue()
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
         this._renderTasks.clear();
+
+        // Hide all roots; show only target file's page root
+        for (const [fid, r] of this._pageRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
+        for (const r of this._sheetRoots.values()) r.classList.add('preview-file-root--hidden');
+
         this._currentFileId = fileEntry.id;
 
-        this._pageEls.clear();
-        this._container.innerHTML = '';
+        const { root, isNew } = this._getOrCreatePageRoot(fileEntry);
+
+        if (!isNew) {
+            // Validate that DOM card count matches totalPageCount.
+            // Compare against totalPageCount (NOT pageOrder.length):
+            //   - page-view cards are created for real pages 1..totalPageCount only
+            //   - blank pages (pageOrder entries === 0) have NO page-view card
+            //   - totalPageCount is immutable for a loaded PDF
+            //   - pageOrder.length > totalPageCount after blank insertion, causing a
+            //     false mismatch and unnecessary rebuild if compared against pageOrder.length
+            const domCardCount = root.querySelectorAll('.preview-page-card').length;
+            if (domCardCount === fileEntry.totalPageCount) {
+                // DOM card structure is valid. However, _pageEls may contain stale sheet-view
+                // card references if the user previously switched to sheet-view and back
+                // (sheet-view D14 fix clears _pageEls for this file; sheet cards overwrite
+                // page cards with the same keys). Repopulate _pageEls from the DOM if needed.
+                const firstKey = `${fileEntry.id}-1`;
+                const firstEl  = this._pageEls.get(firstKey);
+                if (!firstEl || firstEl.querySelector('img.sheet-page-img')) {
+                    // _pageEls is empty for this file OR contains stale sheet cards —
+                    // rebuild the map from the actual page-view DOM cards in pageRoot.
+                    for (const k of [...this._pageEls.keys()]) {
+                        if (k.startsWith(fileEntry.id + '-')) this._pageEls.delete(k);
+                    }
+                    root.querySelectorAll('.preview-page-card').forEach(card => {
+                        const p = parseInt(card.dataset.page);
+                        if (p) this._pageEls.set(`${fileEntry.id}-${p}`, card);
+                    });
+                }
+                // DOM is valid and _pageEls is now correct — re-sync state only, no rebuild
+                this._syncSelectionUI();
+                this._container.scrollTop = 0;
+                requestAnimationFrame(() => this._renderVisible());
+                return;
+            }
+            // totalPageCount changed (shouldn't happen for loaded PDFs, but be safe) —
+            // fall through to rebuild this root
+            root.innerHTML = '';
+            for (const k of [...this._pageEls.keys()]) {
+                if (k.startsWith(fileEntry.id + '-')) this._pageEls.delete(k);
+            }
+        }
+        // First time or card count mismatch: build/rebuild the page root below
 
         // Create all placeholder cards immediately
         for (let p = 1; p <= fileEntry.totalPageCount; p++) {
@@ -3826,7 +3885,7 @@ const PreviewPanelModule = {
 
             const key = `${fileEntry.id}-${p}`;
             this._pageEls.set(key, card);
-            this._container.appendChild(card);
+            root.appendChild(card);
         }
 
         // Scroll to top, then render visible pages
@@ -4506,11 +4565,15 @@ const PreviewPanelModule = {
     // Keeps placeholder div with correct height so scroll position is preserved
     _unmountOffScreen() {
         if (!this._container || !this._currentFileId) return;
+        const activeRoot = this._pageRoots.get(this._currentFileId)
+                        ?? this._sheetRoots.get(this._currentFileId);
+        if (!activeRoot) return;
         const cRect = this._container.getBoundingClientRect();
         const buffer = cRect.height * 3; // keep 3 screens worth of rendered canvases
 
         this._pageEls.forEach((el, key) => {
             if (!key.startsWith(this._currentFileId + '-')) return;
+            if (!activeRoot.contains(el)) return; // never measure hidden roots — offsetHeight returns 0 there
             if (!el.classList.contains('rendered')) return;
             const eRect = el.getBoundingClientRect();
             const isFar = eRect.bottom < cRect.top - buffer || eRect.top > cRect.bottom + buffer;
@@ -4541,6 +4604,11 @@ const PreviewPanelModule = {
                     <span>Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
                 </div>`;
         }
+        // Reset per-file DOM roots (all files removed — maps now stale)
+        this._pageRoots.clear();
+        this._sheetRoots.clear();
+        this._pageEls.clear();
+        this._sheetEls.clear();
     },
 };
 
