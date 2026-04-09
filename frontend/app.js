@@ -1319,6 +1319,13 @@ const UploadModule = {
     },
 
     removeFile(index) {
+        // Capture id BEFORE AppState.removeFile() splices the array
+        const removedId = AppState.files[index]?.id;
+        if (removedId) {
+            PreviewPanelModule.removeFileRoot(removedId);
+            ThumbStripModule.removeFileRoot(removedId);
+        }
+
         AppState.removeFile(index);
         if (AppState.files.length === 0) {
             const fi = document.getElementById('file-input');
@@ -1553,7 +1560,9 @@ const TabsModule = {
 
         // Instant scroll sideview to page 1 of the newly active file
         requestAnimationFrame(() => {
-            const firstThumb = ThumbStripModule._container?.querySelector(
+            const _activeRoot = ThumbStripModule._fileRoots?.get(AppState.activeFile?.id)
+                             ?? ThumbStripModule._container;
+            const firstThumb = _activeRoot?.querySelector(
                 `.thumb-item[data-file-index="${idx}"][data-page="1"]`
             );
             if (firstThumb) {
@@ -1576,7 +1585,6 @@ const PreviewModule = {
             const loadTask = pdfjsLib.getDocument({
                 url,
                 rangeChunkSize:           65536,  // 64 KB chunks
-                disableAutoFetch:         true,   // Only fetch pages when needed
                 disableStream:            false,  // Enable streaming
                 isOffscreenCanvasSupported: true, // Render off main thread
                 useWasm:                  true,   // WASM decoders for JBIG2/JPEG2000
@@ -1602,12 +1610,19 @@ const PreviewModule = {
             const loadTask = pdfjsLib.getDocument({
                 url,
                 rangeChunkSize:           65536,  // 64 KB chunks
-                disableAutoFetch:         true,   // Only fetch pages when needed
                 disableStream:            false,  // Enable streaming
                 isOffscreenCanvasSupported: true, // Render off main thread
                 useWasm:                  true,   // WASM decoders for JBIG2/JPEG2000
             });
             entry.pdfDoc           = await loadTask.promise;
+            // Warm page 1 in background — pre-populates PDF.js internal page cache
+            // Use setTimeout (not queueMicrotask) to yield to active file's own render first
+            setTimeout(async () => {
+                try {
+                    const page = await entry.pdfDoc?.getPage(1);
+                    if (page) page.cleanup();
+                } catch (_) {}
+            }, 100);
             entry.totalPageCount   = entry.pdfDoc.numPages;
             entry.pageOrder        = Array.from({ length: entry.totalPageCount }, (_, i) => i + 1);
             entry.selectedPages    = new Set(entry.pageOrder);
@@ -3726,6 +3741,9 @@ const PreviewPanelModule = {
     _viewMode: 'page',
     _sheetEls: new Map(),              // sheetIndex → .sheet-card el
     _isDeleting: false,
+    _pageRoots:       new Map(),   // fileId → <div.preview-file-root> for page-view
+    _sheetRoots:      new Map(),   // fileId → <div.preview-file-root> for sheet-view
+    _sheetFingerprints: new Map(), // fileId → last-rendered sheet layout fingerprint string
 
     init() {
         this._container = document.getElementById('preview-panel');
@@ -3762,6 +3780,36 @@ const PreviewPanelModule = {
         }, { passive: true });
     },
 
+    _getOrCreatePageRoot(fileEntry) {
+        let root = this._pageRoots.get(fileEntry.id);
+        if (root) {
+            // Re-attach if sheet-view's innerHTML='' detached this root from the container
+            if (!this._container.contains(root)) {
+                this._container.appendChild(root);
+            }
+            return { root, isNew: false };
+        }
+        root = document.createElement('div');
+        root.className = 'preview-file-root';
+        root.dataset.fileId = fileEntry.id;
+        this._pageRoots.set(fileEntry.id, root);
+        this._container.appendChild(root);
+        return { root, isNew: true };
+    },
+
+    _getOrCreateSheetRoot(fileEntry) {
+        let root = this._sheetRoots.get(fileEntry.id);
+        if (!root) {
+            root = document.createElement('div');
+            root.className = 'preview-file-root preview-file-root--hidden';
+            root.dataset.fileId = fileEntry.id;
+            root.dataset.viewMode = 'sheet';
+            this._sheetRoots.set(fileEntry.id, root);
+            this._container.appendChild(root);
+        }
+        return root;
+    },
+
     // Render all pages of active file
     render(fileEntry) {
         // Invariant 3: reset blankAbsorbedBy before each rebuild
@@ -3781,15 +3829,61 @@ const PreviewPanelModule = {
         }
         if (!this._container || !fileEntry?.pdfDoc) return;
 
-        // Cancel queue and in-flight tasks
+        // Cancel queue and in-flight tasks (still needed — even on cache-hit, old tasks must stop)
         this._renderQueue = [];
-        this._activeRenders = 0;
+        this._activeRenders = 0;  // ← MUST be reset; stale count blocks _drainQueue()
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
         this._renderTasks.clear();
+
+        // Hide all roots; show only target file's page root
+        for (const [fid, r] of this._pageRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
+        for (const r of this._sheetRoots.values()) r.classList.add('preview-file-root--hidden');
+
         this._currentFileId = fileEntry.id;
 
-        this._pageEls.clear();
-        this._container.innerHTML = '';
+        const { root, isNew } = this._getOrCreatePageRoot(fileEntry);
+
+        if (!isNew) {
+            // Validate that DOM card count matches totalPageCount.
+            // Compare against totalPageCount (NOT pageOrder.length):
+            //   - page-view cards are created for real pages 1..totalPageCount only
+            //   - blank pages (pageOrder entries === 0) have NO page-view card
+            //   - totalPageCount is immutable for a loaded PDF
+            //   - pageOrder.length > totalPageCount after blank insertion, causing a
+            //     false mismatch and unnecessary rebuild if compared against pageOrder.length
+            const domCardCount = root.querySelectorAll('.preview-page-card').length;
+            if (domCardCount === fileEntry.totalPageCount) {
+                // DOM card structure is valid. However, _pageEls may contain stale sheet-view
+                // card references if the user previously switched to sheet-view and back
+                // (sheet-view D14 fix clears _pageEls for this file; sheet cards overwrite
+                // page cards with the same keys). Repopulate _pageEls from the DOM if needed.
+                const firstKey = `${fileEntry.id}-1`;
+                const firstEl  = this._pageEls.get(firstKey);
+                if (!firstEl || firstEl.querySelector('img.sheet-page-img')) {
+                    // _pageEls is empty for this file OR contains stale sheet cards —
+                    // rebuild the map from the actual page-view DOM cards in pageRoot.
+                    for (const k of [...this._pageEls.keys()]) {
+                        if (k.startsWith(fileEntry.id + '-')) this._pageEls.delete(k);
+                    }
+                    root.querySelectorAll('.preview-page-card').forEach(card => {
+                        const p = parseInt(card.dataset.page);
+                        if (p) this._pageEls.set(`${fileEntry.id}-${p}`, card);
+                    });
+                }
+                // DOM is valid and _pageEls is now correct — re-sync state only, no rebuild
+                this._syncSelectionUI();
+                this._container.scrollTop = 0;
+                requestAnimationFrame(() => this._renderVisible());
+                return;
+            }
+            // totalPageCount changed (shouldn't happen for loaded PDFs, but be safe) —
+            // fall through to rebuild this root
+            root.innerHTML = '';
+            for (const k of [...this._pageEls.keys()]) {
+                if (k.startsWith(fileEntry.id + '-')) this._pageEls.delete(k);
+            }
+        }
+        // First time or card count mismatch: build/rebuild the page root below
 
         // Create all placeholder cards immediately
         for (let p = 1; p <= fileEntry.totalPageCount; p++) {
@@ -3826,7 +3920,7 @@ const PreviewPanelModule = {
 
             const key = `${fileEntry.id}-${p}`;
             this._pageEls.set(key, card);
-            this._container.appendChild(card);
+            root.appendChild(card);
         }
 
         // Scroll to top, then render visible pages
@@ -3845,16 +3939,60 @@ const PreviewPanelModule = {
             _teardownTogether(fileEntry);
         }
 
+        // ── SHEET CACHE-HIT: skip full rebuild on pure tab-switch ────────────────
+        // Compute a cheap fingerprint of all state that affects sheet layout.
+        // If it matches the last-rendered fingerprint for this file AND the DOM root
+        // already exists, just show/hide roots and re-enqueue visible blobs.
+        const _fp = [
+            fileEntry.pageOrder.join(','),
+            [...fileEntry.selectedPages].sort((a,b)=>a-b).join(','),
+            [...(fileEntry.singleSidedPages||new Set())].sort((a,b)=>a-b).join(','),
+            [...(fileEntry.pageRotations||new Map()).entries()].sort((a,b)=>a[0]-b[0]).map(([k,v])=>`${k}:${v}`).join(','),
+            fileEntry.landscapeMode,
+            AppState.printMode,
+        ].join('|');
+        const _existingRoot = this._sheetRoots.get(fileEntry.id);
+        if (_existingRoot && this._sheetFingerprints.get(fileEntry.id) === _fp) {
+            // Layout is valid — just switch visibility and re-render visible blobs
+            this._renderQueue  = [];
+            this._activeRenders = 0;
+            for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
+            this._renderTasks.clear();
+            this._currentFileId = fileEntry.id;
+            for (const r of this._pageRoots.values())   r.classList.add('preview-file-root--hidden');
+            for (const [fid, r] of this._sheetRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
+            _existingRoot.classList.remove('preview-file-root--hidden');
+            this._container.scrollTop = 0;
+            requestAnimationFrame(() => this._renderVisible());
+            return;
+        }
+        // ── END SHEET CACHE-HIT ──────────────────────────────────────────────────
+
         this._renderQueue = [];
         this._activeRenders = 0;
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
         this._renderTasks.clear();
         this._currentFileId = fileEntry.id;
-        this._pageEls.clear();
-        this._sheetEls.clear();
-        this._container.innerHTML = '';
 
-        // NEW: reset blob pipeline to prevent stale renders draining into new cycle
+        // Hide all roots; show only this file's sheet root
+        for (const r of this._pageRoots.values())   r.classList.add('preview-file-root--hidden');
+        for (const [fid, r] of this._sheetRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
+
+        const sheetRoot = this._getOrCreateSheetRoot(fileEntry);
+        sheetRoot.classList.remove('preview-file-root--hidden');
+        sheetRoot.innerHTML = ''; // layout must rebuild — fingerprint mismatch or first load
+
+        // Clear stale _pageEls entries for this file IMMEDIATELY after innerHTML = ''.
+        // _renderSheetView is async — scroll events during the upcoming await may iterate
+        // _pageEls and call getBoundingClientRect() on now-detached elements (returns zeros),
+        // which would cause phantom _enqueueBlob() calls. (per D14)
+        for (const k of [...this._pageEls.keys()]) {
+            if (k.startsWith(fileEntry.id + '-')) this._pageEls.delete(k);
+        }
+
+        this._sheetEls.clear();
+
+        // Reset blob pipeline (was previously resetting this._container globally)
         this._blobQueue = [];
         this._activeBlobRenders = 0;
 
@@ -3889,6 +4027,7 @@ const PreviewPanelModule = {
         }
         // Guard: user may have switched file during async detection
         if (this._currentFileId !== fileEntry.id) return;
+        if (this._viewMode !== 'sheet') return;  // view mode changed back to page — abort
 
         // ── TOGETHER MODE: snapshot → inject CCW90 → invalidate cache ──────────
         if (fileEntry.landscapeMode === 'together') {
@@ -3922,6 +4061,7 @@ const PreviewPanelModule = {
             // 2. Mode switch: landscapeMode changed to 'separate' during await.
             //    Without check 2, step [4] would inject CCW90 in separate mode.
             if (this._currentFileId !== fileEntry.id) return;
+            if (this._viewMode !== 'sheet') return;  // view mode changed — abort
             if (fileEntry.landscapeMode !== 'together') return;
 
             // F1 fix: commit the pending map only AFTER guards pass. If the user switched
@@ -4204,7 +4344,10 @@ const PreviewPanelModule = {
 
         inner.appendChild(sheetsCol);
         inner.appendChild(ejectedCol);
-        this._container.appendChild(inner);
+        sheetRoot.appendChild(inner);
+
+        // Store fingerprint so next render() for this file can skip rebuild on cache-hit
+        this._sheetFingerprints.set(fileEntry.id, _fp);
 
         this._container.scrollTop = 0;
         requestAnimationFrame(() => this._renderVisible());
@@ -4336,7 +4479,7 @@ const PreviewPanelModule = {
 
         try {
             await task.promise;
-            const blob = await off.convertToBlob({ type: 'image/jpeg', quality: 0.88 });
+            const blob = await off.convertToBlob({ type: 'image/webp', quality: 0.82 });
             const url  = URL.createObjectURL(blob);
             const entry = { canvas: off, url };
             cacheRef.set(key, entry);
@@ -4506,11 +4649,15 @@ const PreviewPanelModule = {
     // Keeps placeholder div with correct height so scroll position is preserved
     _unmountOffScreen() {
         if (!this._container || !this._currentFileId) return;
+        const activeRoot = this._pageRoots.get(this._currentFileId)
+                        ?? this._sheetRoots.get(this._currentFileId);
+        if (!activeRoot) return;
         const cRect = this._container.getBoundingClientRect();
         const buffer = cRect.height * 3; // keep 3 screens worth of rendered canvases
 
         this._pageEls.forEach((el, key) => {
             if (!key.startsWith(this._currentFileId + '-')) return;
+            if (!activeRoot.contains(el)) return; // never measure hidden roots — offsetHeight returns 0 there
             if (!el.classList.contains('rendered')) return;
             const eRect = el.getBoundingClientRect();
             const isFar = eRect.bottom < cRect.top - buffer || eRect.top > cRect.bottom + buffer;
@@ -4532,6 +4679,38 @@ const PreviewPanelModule = {
         });
     },
 
+    removeFileRoot(fileId) {
+        const pageRoot = this._pageRoots.get(fileId);
+        if (pageRoot) { pageRoot.remove(); this._pageRoots.delete(fileId); }
+
+        const sheetRoot = this._sheetRoots.get(fileId);
+        if (sheetRoot) { sheetRoot.remove(); this._sheetRoots.delete(fileId); }
+        this._sheetFingerprints.delete(fileId);
+
+        // Remove _pageEls entries for this file
+        for (const key of [...this._pageEls.keys()]) {
+            if (key.startsWith(fileId + '-')) this._pageEls.delete(key);
+        }
+
+        // Cancel in-flight render tasks and recalculate active render counter
+        for (const [taskKey, task] of [...this._renderTasks.entries()]) {
+            if (taskKey.startsWith(fileId + '-')) {  // '+'-' prevents prefix collision (e.g. id='f1' matching 'f10-...')
+                try { task.cancel(); } catch(_) {}
+                this._renderTasks.delete(taskKey);
+            }
+        }
+        // Recalculate counters — cancelled tasks may not decrement via .finally()
+        this._activeRenders     = this._renderTasks.size;
+        this._activeBlobRenders = 0; // blob tasks not tracked by key; safe to reset
+
+        // Drain queues
+        this._blobQueue   = (this._blobQueue   ?? []).filter(j => j.fileId !== fileId);
+        this._renderQueue = this._renderQueue.filter(j => j.fileId !== fileId);
+
+        // Evict pixel cache for this file
+        this._cache.deleteByPrefix(fileId + '-');
+    },
+
     clear() {
         if (this._observer) { this._observer.disconnect(); this._observer = null; }
         if (this._container) {
@@ -4541,6 +4720,12 @@ const PreviewPanelModule = {
                     <span>Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
                 </div>`;
         }
+        // Reset per-file DOM roots (all files removed — maps now stale)
+        this._pageRoots.clear();
+        this._sheetRoots.clear();
+        this._sheetFingerprints.clear();
+        this._pageEls.clear();
+        this._sheetEls.clear();
     },
 };
 
@@ -4551,6 +4736,7 @@ const PreviewPanelModule = {
 // ═══════════════════════════════════════════════════════════════════
 const ThumbStripModule = {
     _container:    null,
+    _fileRoots:    new Map(),   // fileId → <div.thumb-file-root>
     _scrollRAF:    false,
     _scrollIdleTimer: null,
     _renderTasks:  new Map(),
@@ -4558,6 +4744,37 @@ const ThumbStripModule = {
     _renderQueue:  [],
     _activeRenders: 0,
     _MAX_CONCURRENT: 8,
+
+    removeFileRoot(fileId) {
+        const root = this._fileRoots?.get(fileId);
+        if (root) { root.remove(); this._fileRoots.delete(fileId); }
+
+        for (const [key, task] of [...this._renderTasks.entries()]) {
+            if (key.startsWith(fileId + '-')) {  // '+'-' prevents prefix collision (e.g. id='f1' matching 'f10-...')
+                try { task.cancel(); } catch(_) {}
+                this._renderTasks.delete(key);
+            }
+        }
+        // NOTE: _renderThumb tasks run as bare awaits (not in _renderTasks Map).
+        // Setting _activeRenders = 0 is correct — their .finally() decrements are
+        // benign on detached nodes and will not over-decrement below 0 because
+        // _drainQueue checks _activeRenders < _MAX_CONCURRENT before spawning.
+        this._activeRenders = 0;
+
+        this._renderQueue = this._renderQueue.filter(j => j.fileId !== fileId);
+        this._cache.deleteByPrefix(fileId + '-');
+    },
+
+    _getOrCreateThumbRoot(fileEntry) {
+        let root = this._fileRoots.get(fileEntry.id);
+        if (root) return { root, isNew: false };
+        root = document.createElement('div');
+        root.className = 'thumb-file-root';
+        root.dataset.fileId = fileEntry.id;
+        this._fileRoots.set(fileEntry.id, root);
+        this._container.appendChild(root);
+        return { root, isNew: true };
+    },
 
     init() {
         this._container = document.getElementById('thumb-strip');
@@ -4588,9 +4805,10 @@ const ThumbStripModule = {
         this._renderTasks.clear();
         this._renderQueue = [];
         this._activeRenders = 0;
-        this._container.innerHTML = '';
 
         if (AppState.files.length === 0) {
+            // All files removed — reset Maps to prevent stale DOM on next upload
+            this._fileRoots?.clear();
             this._container.innerHTML = `
                 <div class="preview-empty" style="padding:16px;text-align:center">
                     <span class="preview-empty-icon">📄</span>
@@ -4599,11 +4817,27 @@ const ThumbStripModule = {
             return;
         }
 
-        // Render only the active file — single-file thumbstrip
         const f = AppState.activeFile;
         if (!f) return;
 
-        // No file-name divider — single file only
+        // Hide all file roots except the active one
+        for (const [fid, r] of this._fileRoots) {
+            r.classList.toggle('thumb-file-root--hidden', fid !== f.id);
+        }
+        const { root, isNew } = this._getOrCreateThumbRoot(f);
+        if (!isNew) {
+            // Already built — refresh data-file-index (may have changed after drag-to-reorder)
+            // then re-sync selection highlights and re-render visible thumbs
+            const currentIdx = AppState.activeFileIndex;
+            root.querySelectorAll('.thumb-item').forEach(el => {
+                el.dataset.fileIndex = currentIdx;
+            });
+            this._syncSelectionHighlights();
+            requestAnimationFrame(() => this._renderVisible());
+            return;
+        }
+        // else: first time for this file — fall through to item creation loop below
+
         for (let p = 1; p <= f.totalPageCount; p++) {
             const item = document.createElement('div');
             item.className        = 'thumb-item';
@@ -4632,7 +4866,7 @@ const ThumbStripModule = {
                 e.preventDefault();
                 ContextMenu.show(e, p);
             });
-            this._container.appendChild(item);
+            root.appendChild(item);
         }
 
         // rAF to ensure layout, then render visible thumbs
@@ -4645,7 +4879,11 @@ const ThumbStripModule = {
         const cRect     = this._container.getBoundingClientRect();
         const lookahead = cRect.height * 2; // 2 screens ahead (was 1)
 
-        this._container.querySelectorAll('.thumb-item:not(.rendered)').forEach(el => {
+        // Scope to visible root only — hidden roots' items return getBoundingClientRect() as zeros
+        const activeFileId = AppState.activeFile?.id;
+        const activeThumbRoot = activeFileId ? this._fileRoots?.get(activeFileId) : null;
+        const searchRoot = activeThumbRoot ?? this._container;
+        searchRoot.querySelectorAll('.thumb-item:not(.rendered)').forEach(el => {
             const eRect = el.getBoundingClientRect();
             if (eRect.bottom >= cRect.top - lookahead && eRect.top <= cRect.bottom + lookahead) {
                 const fileId  = el.dataset.fileId;
@@ -4723,9 +4961,11 @@ const ThumbStripModule = {
     },
 
     _setActiveHighlight(fileIndex, pageNum) {
-        this._container.querySelectorAll('.thumb-item.active')
+        const activeId   = AppState.activeFile?.id;
+        const searchRoot = (activeId && this._fileRoots?.get(activeId)) || this._container;
+        searchRoot.querySelectorAll('.thumb-item.active')
             .forEach(el => el.classList.remove('active'));
-        const target = this._container.querySelector(
+        const target = searchRoot.querySelector(
             `.thumb-item[data-file-index="${fileIndex}"][data-page="${pageNum}"]`
         );
         target?.classList.add('active');
@@ -4740,7 +4980,9 @@ const ThumbStripModule = {
     // Sync selection CSS + rotation badges on all thumb items
     _syncSelectionHighlights() {
         if (!this._container) return;
-        this._container.querySelectorAll('.thumb-item').forEach(el => {
+        const _activeId   = AppState.activeFile?.id;
+        const _activeRoot = _activeId ? (this._fileRoots?.get(_activeId) ?? this._container) : this._container;
+        _activeRoot.querySelectorAll('.thumb-item').forEach(el => {
             const fileId  = el.dataset.fileId;
             const pageNum = parseInt(el.dataset.page);
             const entry   = AppState.files.find(f => f.id === fileId);
@@ -4759,16 +5001,20 @@ const ThumbStripModule = {
     // Virtual scrolling: release canvas memory for thumbnails far off-screen
     _unmountOffScreen() {
         if (!this._container) return;
+        const f = AppState.activeFile;
+        if (!f) return;
+        const activeRoot = this._fileRoots?.get(f.id) ?? this._container;
+
         const cRect = this._container.getBoundingClientRect();
         const buffer = cRect.height * 4; // keep 4 screens of thumbs
 
-        this._container.querySelectorAll('.thumb-item.rendered').forEach(el => {
+        activeRoot.querySelectorAll('.thumb-item.rendered').forEach(el => {
             const eRect = el.getBoundingClientRect();
             const isFar = eRect.bottom < cRect.top - buffer || eRect.top > cRect.bottom + buffer;
             if (isFar) {
                 const img = el.querySelector('img.thumb-img');
                 if (img && img.src) {
-                    el.style.minHeight = `${el.offsetHeight}px`;
+                    el.style.minHeight = `${el.offsetHeight}px`; // measured on visible element — safe
                     img.src = ''; // release decoded bitmap memory
                     el.classList.remove('rendered');
                 }

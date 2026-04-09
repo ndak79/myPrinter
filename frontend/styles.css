@@ -2429,9 +2429,19 @@ kbd {
   display:          flex;
   flex-direction:   column;
   align-items:      stretch;   /* let cards use margin:auto for centering */
-  gap:              20px;
+  gap:              0; /* gap now lives on file roots */
   scrollbar-width:  thin;
   scrollbar-color:  var(--color-border) transparent;
+}
+
+/* Per-file page-view root */
+.preview-file-root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.preview-file-root--hidden {
+  display: none;
 }
 
 .preview-page-card {
@@ -2978,3 +2988,15 @@ kbd {
   text-align:       center;
   white-space:      nowrap;
 }
+
+.thumb-file-root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* spacing between thumb items within a file */
+}
+.thumb-file-root--hidden {
+  display: none;
+}
+
+.preview-page-card { contain: layout paint; }
+.thumb-item        { contain: layout paint; }
