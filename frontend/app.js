@@ -78,6 +78,7 @@ const AppState = {
             landscapeMode: 'together',   // 'separate' | 'together' — per-file, default matches current global default
             copies:        1,            // int 1–99 — per-file copy count
             collate:       true,         // bool — per-file collate setting
+            _scrollPos: null,            // null = never rendered; { page, sheet, thumb } after first render
         };
     },
 
@@ -1526,6 +1527,10 @@ const TabsModule = {
     // Switch to file at given index — updates tabs, thumbs, and preview panel
     setActive(idx) {
         if (idx < 0 || idx >= AppState.files.length) return;
+        const outgoingFile = AppState.activeFile;
+        if (outgoingFile?._scrollPos && ThumbStripModule._container) {
+            outgoingFile._scrollPos.thumb = ThumbStripModule._container.scrollTop;
+        }
         AppState.activeFileIndex = idx;
 
         // Update file-info display (legacy elements — may not exist)
@@ -1559,15 +1564,21 @@ const TabsModule = {
         PrintModule.updateButton();
 
         // Instant scroll sideview to page 1 of the newly active file
+        const _targetFile = AppState.files[idx];
+        const _targetFileId = _targetFile?.id;
         requestAnimationFrame(() => {
-            const _activeRoot = ThumbStripModule._fileRoots?.get(AppState.activeFile?.id)
-                             ?? ThumbStripModule._container;
-            const firstThumb = _activeRoot?.querySelector(
-                `.thumb-item[data-file-index="${idx}"][data-page="1"]`
-            );
-            if (firstThumb) {
-                firstThumb.scrollIntoView({ behavior: 'auto', block: 'start' });
-                ThumbStripModule._setActiveHighlight(idx, 1);
+            if (AppState.activeFile?.id !== _targetFileId) return;
+            const _liveIdx = AppState.files.findIndex(f => f.id === _targetFileId);
+            if (_liveIdx < 0) return;
+            const _activeRoot = ThumbStripModule._fileRoots?.get(_targetFileId) ?? ThumbStripModule._container;
+            const savedThumb = _targetFile?._scrollPos?.thumb ?? 0;
+            if (savedThumb > 0 && ThumbStripModule._container) {
+                ThumbStripModule._setActiveHighlight(_liveIdx, 1, false);
+                ThumbStripModule._container.scrollTop = savedThumb;
+            } else {
+                const firstThumb = _activeRoot?.querySelector(`.thumb-item[data-file-index="${_liveIdx}"][data-page="1"]`);
+                if (firstThumb) firstThumb.scrollIntoView({ behavior: 'auto', block: 'start' });
+                ThumbStripModule._setActiveHighlight(_liveIdx, 1);
             }
         });
     },
@@ -3744,6 +3755,9 @@ const PreviewPanelModule = {
     _pageRoots:       new Map(),   // fileId → <div.preview-file-root> for page-view
     _sheetRoots:      new Map(),   // fileId → <div.preview-file-root> for sheet-view
     _sheetFingerprints: new Map(), // fileId → last-rendered sheet layout fingerprint string
+    _modeJustToggled: false,       // one-shot flag — set by toggle handler, cleared by every render path
+    _sheetRenderGen: 0,            // 0 = no pending async sheet rebuild; non-zero = active rebuild token
+    _nextSheetRenderGen: 0,        // monotonically increasing; each full-rebuild gets a unique token
 
     init() {
         this._container = document.getElementById('preview-panel');
@@ -3824,10 +3838,21 @@ const PreviewPanelModule = {
             }
         }
 
+        if (fileEntry && this._currentFileId && this._currentFileId !== fileEntry.id && this._container && !this._modeJustToggled) {
+            const outgoing = AppState.files.find(f => f.id === this._currentFileId);
+            if (outgoing?._scrollPos) {
+                outgoing._scrollPos[this._viewMode] = this._container.scrollTop;
+            }
+        }
+
+        if (!this._container || !fileEntry?.pdfDoc) {
+            this._modeJustToggled = false;
+            return;
+        }
+
         if (this._viewMode === 'sheet') {
             return this._renderSheetView(fileEntry); // Invariant 10: return Promise
         }
-        if (!this._container || !fileEntry?.pdfDoc) return;
 
         // Cancel queue and in-flight tasks (still needed — even on cache-hit, old tasks must stop)
         this._renderQueue = [];
@@ -3839,6 +3864,7 @@ const PreviewPanelModule = {
         for (const [fid, r] of this._pageRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
         for (const r of this._sheetRoots.values()) r.classList.add('preview-file-root--hidden');
 
+        const _prevFileId = this._currentFileId;
         this._currentFileId = fileEntry.id;
 
         const { root, isNew } = this._getOrCreatePageRoot(fileEntry);
@@ -3872,7 +3898,10 @@ const PreviewPanelModule = {
                 }
                 // DOM is valid and _pageEls is now correct — re-sync state only, no rebuild
                 this._syncSelectionUI();
-                this._container.scrollTop = 0;
+                if (_prevFileId !== fileEntry.id || this._modeJustToggled) {
+                    this._container.scrollTop = fileEntry._scrollPos?.page ?? 0;
+                    this._modeJustToggled = false;
+                }
                 requestAnimationFrame(() => this._renderVisible());
                 return;
             }
@@ -3924,7 +3953,13 @@ const PreviewPanelModule = {
         }
 
         // Scroll to top, then render visible pages
-        this._container.scrollTop = 0;
+        if (fileEntry._scrollPos === null) {
+            fileEntry._scrollPos = { page: 0, sheet: 0, thumb: 0 };
+            this._container.scrollTop = 0;
+        } else {
+            this._container.scrollTop = fileEntry._scrollPos.page;
+        }
+        this._modeJustToggled = false;
         // rAF ensures DOM has been laid out before we measure visibility
         requestAnimationFrame(() => this._renderVisible());
     },
@@ -3958,11 +3993,16 @@ const PreviewPanelModule = {
             this._activeRenders = 0;
             for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
             this._renderTasks.clear();
+            const _prevFileId = this._currentFileId;
             this._currentFileId = fileEntry.id;
             for (const r of this._pageRoots.values())   r.classList.add('preview-file-root--hidden');
             for (const [fid, r] of this._sheetRoots)    r.classList.toggle('preview-file-root--hidden', fid !== fileEntry.id);
             _existingRoot.classList.remove('preview-file-root--hidden');
-            this._container.scrollTop = 0;
+            if (_prevFileId !== fileEntry.id || this._modeJustToggled) {
+                this._container.scrollTop = fileEntry._scrollPos?.sheet ?? 0;
+                this._modeJustToggled = false;
+            }
+            this._sheetRenderGen = 0;
             requestAnimationFrame(() => this._renderVisible());
             return;
         }
@@ -3972,6 +4012,17 @@ const PreviewPanelModule = {
         this._activeRenders = 0;
         for (const t of this._renderTasks.values()) { try { t.cancel(); } catch(_){} }
         this._renderTasks.clear();
+        const _prevFileId = this._currentFileId;
+        // Save current sheet scroll before rebuild — same-file state-change only.
+        // _existingRoot: skips first-time sheet render (no prior sheet DOM).
+        // _prevFileId === fileEntry.id: true only for same-file rebuilds; captured
+        //   BEFORE L3975 so it still holds the ID of the file the container was
+        //   showing. False for tab-switch (would save outgoing file's scroll into
+        //   incoming file's slot).
+        // !_modeJustToggled: skips mode-toggle context (Task 2f saved correctly).
+        if (fileEntry._scrollPos && _existingRoot && _prevFileId === fileEntry.id && !this._modeJustToggled) {
+            fileEntry._scrollPos.sheet = this._container.scrollTop;
+        }
         this._currentFileId = fileEntry.id;
 
         // Hide all roots; show only this file's sheet root
@@ -3991,6 +4042,14 @@ const PreviewPanelModule = {
         }
 
         this._sheetEls.clear();
+
+        // Invalidate the cached fingerprint — prevents same-file reverted-state render
+        // from false-cache-hitting against the already-cleared root DOM.
+        // _sheetFingerprints is only re-written on successful Task 3c completion.
+        this._sheetFingerprints.delete(fileEntry.id);
+
+        const _myGen = ++this._nextSheetRenderGen;
+        this._sheetRenderGen = _myGen;
 
         // Reset blob pipeline (was previously resetting this._container globally)
         this._blobQueue = [];
@@ -4026,8 +4085,16 @@ const PreviewPanelModule = {
             }
         }
         // Guard: user may have switched file during async detection
-        if (this._currentFileId !== fileEntry.id) return;
-        if (this._viewMode !== 'sheet') return;  // view mode changed back to page — abort
+        if (this._currentFileId !== fileEntry.id) {
+            this._modeJustToggled = false;
+            if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+            return;
+        }
+        if (this._viewMode !== 'sheet') {
+            this._modeJustToggled = false;
+            if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+            return;
+        }  // view mode changed back to page — abort
 
         // ── TOGETHER MODE: snapshot → inject CCW90 → invalidate cache ──────────
         if (fileEntry.landscapeMode === 'together') {
@@ -4060,9 +4127,21 @@ const PreviewPanelModule = {
             // 1. File switch: another file became active during await
             // 2. Mode switch: landscapeMode changed to 'separate' during await.
             //    Without check 2, step [4] would inject CCW90 in separate mode.
-            if (this._currentFileId !== fileEntry.id) return;
-            if (this._viewMode !== 'sheet') return;  // view mode changed — abort
-            if (fileEntry.landscapeMode !== 'together') return;
+            if (this._currentFileId !== fileEntry.id) {
+                this._modeJustToggled = false;
+                if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+                return;
+            }
+            if (this._viewMode !== 'sheet') {
+                this._modeJustToggled = false;
+                if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+                return;
+            }
+            if (fileEntry.landscapeMode !== 'together') {
+                this._modeJustToggled = false;
+                if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+                return;
+            }
 
             // F1 fix: commit the pending map only AFTER guards pass. If the user switched
             // together→separate during the intrinsic-detection await, _teardownTogether already
@@ -4097,6 +4176,22 @@ const PreviewPanelModule = {
             }
         }
         // ── END TOGETHER MODE ────────────────────────────────────────────────────
+
+        // Shared commit guard: abort before ANY state or DOM commit if either
+        // (1) a newer rebuild has taken over, OR
+        // (2) this file was deleted while the async rebuild was in flight.
+        // Without check (2), last-file deletion can still pass the `_currentFileId`
+        // and `_sheetRenderGen` guards if removal/clear did not schedule a newer
+        // render. A stale invocation could then overwrite blankAbsorbedBy, rebuild
+        // detached DOM, and re-add `_sheetFingerprints` for a file that no longer
+        // exists in `AppState.files`. After this point there are no more awaits →
+        // JS single-thread guarantees atomicity of all remaining commits.
+        const _fileStillExists = AppState.files.some(f => f.id === fileEntry.id);
+        if (this._sheetRenderGen !== _myGen || !_fileStillExists) {
+            this._modeJustToggled = false;
+            if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+            return;
+        }
 
         const printMode = AppState.printMode;
         const { sheets, blankAbsorbedBy, deselectedPages } = buildSheetLayout(fileEntry, printMode, orientationMap, fileEntry.landscapeMode);
@@ -4349,7 +4444,14 @@ const PreviewPanelModule = {
         // Store fingerprint so next render() for this file can skip rebuild on cache-hit
         this._sheetFingerprints.set(fileEntry.id, _fp);
 
-        this._container.scrollTop = 0;
+        if (fileEntry._scrollPos === null) {
+            fileEntry._scrollPos = { page: 0, sheet: 0, thumb: 0 };
+            this._container.scrollTop = 0;
+        } else {
+            this._container.scrollTop = fileEntry._scrollPos.sheet;
+        }
+        this._modeJustToggled = false;
+        this._sheetRenderGen = 0;
         requestAnimationFrame(() => this._renderVisible());
     },
 
@@ -4709,6 +4811,14 @@ const PreviewPanelModule = {
 
         // Evict pixel cache for this file
         this._cache.deleteByPrefix(fileId + '-');
+
+        // If the removed file currently owns the preview container, invalidate
+        // ownership immediately so any resumed async rebuild aborts safely.
+        if (this._currentFileId === fileId) {
+            this._currentFileId = null;
+            this._sheetRenderGen = 0;
+            this._modeJustToggled = false;
+        }
     },
 
     clear() {
@@ -4726,6 +4836,9 @@ const PreviewPanelModule = {
         this._sheetFingerprints.clear();
         this._pageEls.clear();
         this._sheetEls.clear();
+        this._currentFileId = null;
+        this._sheetRenderGen = 0;
+        this._modeJustToggled = false;
     },
 };
 
@@ -4960,7 +5073,7 @@ const ThumbStripModule = {
         this._setActiveHighlight(fileIndex, pageNum);
     },
 
-    _setActiveHighlight(fileIndex, pageNum) {
+    _setActiveHighlight(fileIndex, pageNum, scroll = true) {
         const activeId   = AppState.activeFile?.id;
         const searchRoot = (activeId && this._fileRoots?.get(activeId)) || this._container;
         searchRoot.querySelectorAll('.thumb-item.active')
@@ -4969,7 +5082,7 @@ const ThumbStripModule = {
             `.thumb-item[data-file-index="${fileIndex}"][data-page="${pageNum}"]`
         );
         target?.classList.add('active');
-        target?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        if (scroll) target?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     },
 
     // Called when preview panel scrolls — update active thumb highlight
@@ -5035,6 +5148,7 @@ const ViewModeModule = {
             if (!btn) return;
             const newMode = btn.dataset.view; // 'page' | 'sheet'
             if (newMode === AppState.viewMode) return;
+            if (AppState.activeFile && !AppState.activeFile.pdfDoc) return;
             AppState.viewMode = newMode;
             // Update button active state
             group.querySelectorAll('.view-toggle-btn').forEach(b => {
@@ -5044,8 +5158,17 @@ const ViewModeModule = {
             ViewModeModule._syncModeBar();
             // Re-render current file
             const file = AppState.activeFile;
-            if (file) {
-                PreviewPanelModule._viewMode = newMode;
+            // Sync _viewMode unconditionally (moved outside if(file) to fix no-file desync)
+            PreviewPanelModule._viewMode = newMode;
+            if (file?.pdfDoc) {
+                const _oldMode = newMode === 'sheet' ? 'page' : 'sheet';
+                if (!PreviewPanelModule._modeJustToggled && file._scrollPos && PreviewPanelModule._container) {
+                    file._scrollPos[_oldMode] = PreviewPanelModule._container.scrollTop;
+                }
+                PreviewPanelModule._modeJustToggled = true;
+                PreviewPanelModule.render(file);
+            } else if (file) {
+                // unreachable — Part 1 blocks this
                 PreviewPanelModule.render(file);
             }
         });
