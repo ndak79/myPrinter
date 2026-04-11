@@ -2561,7 +2561,9 @@ const PrintModule = {
                 // Compute duplexSide for together mode (spec §5.8)
                 let duplexSide = null;  // default: null = no override → backend uses printer default
                 // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for all non-together cases)
-                if (file.landscapeMode === 'together' && file._originalOrientationMap != null) {
+                if (mode !== 'booklet'
+                    && file.landscapeMode === 'together'
+                    && file._originalOrientationMap != null) {
                     let allLandscape = true;
                     // Check only pages actually being printed (Bug B8 fix):
                     // previously looped 1..totalPageCount, so unselected portrait pages in a mixed
@@ -2578,6 +2580,38 @@ const PrintModule = {
                     if (allLandscape) duplexSide = 'ShortEdge';
                 }
 
+                // Build request-local pageRotations — fallback for booklet+together when
+                // _originalOrientationMap is null (page view, or sheet view before first-render commit).
+                // MUST NOT mutate file.pageRotations — request-local only.
+                let pageRotationsForPrint = new Map(file.pageRotations);
+                if (mode === 'booklet'
+                    && file.landscapeMode === 'together'
+                    && file._originalOrientationMap == null
+                    && file.pdfDoc != null) {
+                    // Snapshot pdfDoc reference before first await — rest of UI can mutate live
+                    // file.* while the async loop yields to the event loop.
+                    const pdfDoc = file.pdfDoc;
+                    // Only check pages actually being printed — mirrors duplexSide pagesToCheck logic.
+                    const pagesToPrint = (sel.size > 0 && sel.size < file.totalPageCount)
+                        ? [...sel]
+                        : Array.from({ length: file.totalPageCount }, (_, idx) => idx + 1);
+                    // Sequential loop (not Promise.all) — avoids firing all pdfDoc.getPage() at once
+                    // on large documents; simpler and safer in a print path.
+                    for (const p of pagesToPrint) {
+                        try {
+                            const page = await pdfDoc.getPage(p);
+                            const vp = page.getViewport({ scale: 1, rotation: 0 });
+                            if (vp.width > vp.height && !pageRotationsForPrint.has(p)) {
+                                pageRotationsForPrint.set(p, 'CCW90');
+                            }
+                        } catch (err) {
+                            // getPage failed — treat as portrait (no CCW90 injected for this page).
+                            // Log so the failure is diagnosable; do not abort the whole print.
+                            console.warn(`[booklet-together] getPage(${p}) failed, skipping rotation:`, err);
+                        }
+                    }
+                }
+
                 const body = {
                     fileId:           file.id,
                     printerName:      AppState.selectedPrinter.name,
@@ -2590,8 +2624,8 @@ const PrintModule = {
                         const effective = buildEffectivePageOrder(file);
                         return effective.length > 0 ? effective : null;
                     })(),
-                    pageRotations:    file.pageRotations.size > 0
-                        ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
+                    pageRotations:    pageRotationsForPrint.size > 0
+                        ? Array.from(pageRotationsForPrint.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
                         : null,
                     duplexSide,           // null | 'ShortEdge'  (null = no override; 'LongEdge' is never sent explicitly)
                     manualFlipDir: duplexSide,  // same value; maps to PrintRequest.ManualFlipDir on backend
@@ -2770,7 +2804,9 @@ const PrintModule = {
                 : null;
 
             let duplexSide = null;
-            if (file.landscapeMode === 'together' && file._originalOrientationMap != null) {
+            if (mode !== 'booklet'
+                && file.landscapeMode === 'together'
+                && file._originalOrientationMap != null) {
                 let allLandscape = true;
                 const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
                     ? [...sel]
@@ -2779,6 +2815,33 @@ const PrintModule = {
                     if (file._originalOrientationMap.get(p) !== true) { allLandscape = false; break; }
                 }
                 if (allLandscape) duplexSide = 'ShortEdge';
+            }
+
+            // Request-local pageRotations fallback — same pattern as _startPrint.
+            // Uses captured `mode` (from modeCode, line 2755), NOT AppState.printMode.
+            let pageRotationsForPrint = new Map(file.pageRotations);
+            if (mode === 'booklet'
+                && file.landscapeMode === 'together'
+                && file._originalOrientationMap == null
+                && file.pdfDoc != null) {
+                // Snapshot pdfDoc reference before first await.
+                const pdfDoc = file.pdfDoc;
+                // Only check pages actually being printed — mirrors duplexSide pagesToCheck logic.
+                const pagesToPrint = (sel.size > 0 && sel.size < file.totalPageCount)
+                    ? [...sel]
+                    : Array.from({ length: file.totalPageCount }, (_, idx) => idx + 1);
+                // Sequential loop — avoids firing all pdfDoc.getPage() at once on large documents.
+                for (const p of pagesToPrint) {
+                    try {
+                        const page = await pdfDoc.getPage(p);
+                        const vp = page.getViewport({ scale: 1, rotation: 0 });
+                        if (vp.width > vp.height && !pageRotationsForPrint.has(p)) {
+                            pageRotationsForPrint.set(p, 'CCW90');
+                        }
+                    } catch (err) {
+                        console.warn(`[booklet-together] getPage(${p}) failed, skipping rotation:`, err);
+                    }
+                }
             }
 
             const body = {
@@ -2793,8 +2856,8 @@ const PrintModule = {
                     const effective = buildEffectivePageOrder(file);
                     return effective.length > 0 ? effective : null;
                 })(),
-                pageRotations:    file.pageRotations.size > 0
-                    ? Array.from(file.pageRotations.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
+                pageRotations:    pageRotationsForPrint.size > 0
+                    ? Array.from(pageRotationsForPrint.entries()).map(([pageNumber, rotation]) => ({ pageNumber, rotation }))
                     : null,
                 duplexSide,
                 manualFlipDir: duplexSide,  // B20-FE-1 fix: mirror _startPrint which sends both fields
