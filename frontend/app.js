@@ -5268,10 +5268,25 @@ const ViewModeModule = {
         const modeBar = document.getElementById('sheet-view-modebar');
         if (!modeBar) return;
         modeBar.style.display = AppState.viewMode === 'sheet' ? '' : 'none';
+
+        // Hide "separate" option in booklet mode — only "together" is supported
+        const separateBtn = modeBar.querySelector('[data-lsmode="separate"]');
+        if (separateBtn) {
+            const isBooklet = AppState.printMode === 'booklet';
+            separateBtn.style.display = isBooklet ? 'none' : '';
+            // If currently on "separate" and switching to booklet, force back to "together"
+            if (isBooklet && AppState.landscapeMode === 'separate') {
+                AppState.landscapeMode = 'together';
+                modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
+                    b.classList.toggle('active', b.dataset.lsmode === 'together');
+                });
+            }
+        }
     },
 
     // Call this when printMode changes while in sheet view
     onPrintModeChange() {
+        this._syncModeBar(); // Sync separate-btn visibility for booklet mode
         if (AppState.viewMode === 'sheet' && AppState.activeFile) {
             // §5.4b: Teardown together-mode state before switching print mode.
             // Only tear down files that are NOT in together-mode (their CCW90 is stale/unintended).
