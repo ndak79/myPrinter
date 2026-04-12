@@ -1222,6 +1222,7 @@ const PrinterModule = {
             AppState.selectedPrinter = def;
             PrintModule.updateButton();
             StepIndicatorModule.update();
+            sel.dispatchEvent(new Event('change')); // Fix: notify PrinterSettingsModule of auto-selection
         }
     },
 
@@ -5391,6 +5392,100 @@ const ViewModeModule = {
 // ═══════════════════════════════════════════════════════════════════
 // BOOTSTRAP — Init all modules on DOMContentLoaded
 // ═══════════════════════════════════════════════════════════════════
+
+// ── GuideModule ────────────────────────────────────────────────
+const GuideModule = {
+    _activeTab: 'overview',
+
+    init() {
+        document.getElementById('guide-btn')?.addEventListener('click', () => this.open());
+        document.getElementById('guide-modal-close')?.addEventListener('click', () => this.close());
+        document.getElementById('guide-modal-overlay')?.addEventListener('click', () => this.close());
+        document.querySelectorAll('.guide-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this._activeTab = btn.dataset.tab;
+                document.querySelectorAll('.guide-tab').forEach(b => b.classList.toggle('active', b === btn));
+                this.renderCurrentTab();
+            });
+        });
+        // Close on Escape key
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && !document.getElementById('guide-modal')?.classList.contains('hidden')) {
+                this.close();
+            }
+        });
+    },
+
+    open() {
+        document.getElementById('guide-modal')?.classList.remove('hidden');
+        this.renderCurrentTab();
+    },
+
+    close() {
+        document.getElementById('guide-modal')?.classList.add('hidden');
+    },
+
+    renderCurrentTab() {
+        const body = document.getElementById('guide-body');
+        if (!body) return;
+        const content = I18nModule.t(`guide.${this._activeTab}.content`);
+        body.innerHTML = typeof content === 'string' ? content : '';
+    },
+};
+
+// ── PrinterSettingsModule ──────────────────────────────────────
+const PrinterSettingsModule = {
+    init() {
+        const btn = document.getElementById('printer-settings-btn');
+        if (!btn) return;
+
+        // Initial state — sync with current printer select value
+        const printerSel = document.getElementById('printer-select');
+        btn.disabled = !printerSel?.value;
+
+        btn.addEventListener('click', async () => {
+            const printerName = document.getElementById('printer-select')?.value;
+            if (!printerName) return;
+            btn.disabled = true;
+            const originalText = btn.textContent;
+            btn.textContent = '⏳';
+            try {
+                const res = await fetch(`${API_BASE}/printer/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ printerName }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(I18nModule.t('toast.settingsOpened'));
+                } else {
+                    showToast(data.message || I18nModule.t('toast.settingsError'), 'error');
+                }
+            } catch (e) {
+                showToast(I18nModule.t('toast.settingsError'), 'error');
+            } finally {
+                btn.disabled = !document.getElementById('printer-select')?.value;
+                btn.textContent = originalText;
+            }
+        });
+
+        // Sync enabled state when printer selection changes
+        document.getElementById('printer-select')?.addEventListener('change', e => {
+            btn.disabled = !e.target.value;
+        });
+    },
+};
+
+// ── LangToggleModule ───────────────────────────────────────────
+const LangToggleModule = {
+    init() {
+        document.getElementById('lang-toggle-btn')?.addEventListener('click', () => {
+            const next = I18nModule._lang === 'vi' ? 'en' : 'vi';
+            I18nModule.setLang(next);
+        });
+    },
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     ThemeModule.init();
     PrinterModule.init();
@@ -5411,6 +5506,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ViewModeModule.init();
     SummaryModule.update();
     StepIndicatorModule.update();
+    GuideModule.init();
+    PrinterSettingsModule.init();
+    LangToggleModule.init();
+    I18nModule.init(); // Must be last — applies translations after all modules are wired
 
     // ── Mode select handler ───────────────────────────────────
     document.getElementById('mode-select')?.addEventListener('change', e => {
