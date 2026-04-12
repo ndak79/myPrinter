@@ -600,20 +600,20 @@ const PrintPreviewModule = {
             ?.addEventListener('click', () => {
                 AppState.selectAllPages(); AppState.singleSidedPages.clear();
                 this._syncAll();
-                showToast('Đã chọn tất cả in 2 mặt', 'success');
+                showToast(I18nModule.t('toast.allDouble'));
             });
         document.getElementById('preview-all-single-btn')
             ?.addEventListener('click', () => {
                 AppState.selectAllPages(); AppState.singleSidedPages = new Set(AppState.selectedPages);
                 this._syncAll();
-                showToast('Đã chọn tất cả in 1 mặt', 'success');
+                showToast(I18nModule.t('toast.allSingle'));
             });
         document.getElementById('preview-deselect-all-btn')
             ?.addEventListener('click', () => {
                 AppState.selectedPages.clear(); AppState.singleSidedPages.clear();
                 this._syncAll();
                 PrintModule.updateButton();
-                showToast('Đã bỏ chọn tất cả', 'info');
+                showToast(I18nModule.t('toast.deselectAll'));
             });
 
         // Keyboard: Arrow keys navigate pages
@@ -1194,13 +1194,13 @@ const PrinterModule = {
                 PrintModule.updateButton();
                 StepIndicatorModule.update();
                 if (AppState.selectedPrinter) {
-                    SRModule.announce(`Đã chọn máy in: ${AppState.selectedPrinter.name}`);
+                    SRModule.announce(I18nModule.t('sr.printerSelected')(AppState.selectedPrinter.name));
                 }
             });
 
             this.startPolling();
         } catch (err) {
-            showToast(`Lỗi tải danh sách máy in: ${err.message}`, 'error');
+            showToast(I18nModule.t('toast.printerLoadError')(err.message), 'error');
         }
     },
 
@@ -1255,7 +1255,7 @@ const PrinterModule = {
                             if (sel) sel.value = '';
                             PrintModule.updateButton();
                             StepIndicatorModule.update();
-                            showToast('Máy in đã chọn không còn khả dụng. Vui lòng chọn lại.', 'warning');
+                            showToast(I18nModule.t('toast.printerLost'), 'warning');
                         }
                     }
                 }
@@ -1298,13 +1298,13 @@ const UploadModule = {
     async _upload(file) {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         if (!['.doc', '.docx', '.pdf', '.jpg', '.jpeg', '.png', '.tif', '.tiff', '.bmp', '.webp'].includes(ext)) {
-            showToast('Loại file không được hỗ trợ: ' + file.name, 'error');
+            showToast(I18nModule.t('toast.fileTypeUnsupported')(file.name), 'error');
             return;
         }
 
         // BUG-U3 fix: reject oversized files immediately before attempting upload
         if (file.size > 100 * 1024 * 1024) {
-            showToast(`File quá lớn (tối đa 100MB): ${file.name}`, 'error');
+            showToast(I18nModule.t('toast.fileTooLarge')(file.name), 'error');
             return;
         }
 
@@ -1343,7 +1343,7 @@ const UploadModule = {
             if (wrap) wrap.classList.add('hidden');
             if (bar) { bar.classList.remove('uploading'); bar.style.width = '0%'; }
 
-            if (!result.success) { showToast('Lỗi: ' + result.message, 'error'); return; }
+            if (!result.success) { showToast(I18nModule.t('toast.uploadError')(result.message), 'error'); return; }
 
             // Create and register file entry
             const entry = AppState.createFileEntry(result.fileId, result.originalFileName, ext !== '.pdf');
@@ -1351,14 +1351,14 @@ const UploadModule = {
 
             // Convert if needed
             if (entry.needsConversion) {
-                showToast(`Đang chuyển đổi ${entry.name}...`, 'info');
+                showToast(I18nModule.t('toast.converting')(entry.name));
                 // BUG-U1 fix: check convert response — failure must remove the orphaned entry
                 const convertRes = await fetch(`${API_BASE}/convert?fileId=${entry.id}`, { method: 'POST' });
                 if (!convertRes.ok) {
                     const idx = AppState.files.indexOf(entry);
                     if (idx !== -1) AppState.removeFile(idx);
                     TabsModule.render();
-                    showToast(`Lỗi chuyển đổi: ${entry.name}`, 'error');
+                    showToast(I18nModule.t('toast.convertError')(entry.name), 'error');
                     return;
                 }
             }
@@ -1392,13 +1392,13 @@ const UploadModule = {
                     b.classList.toggle('active', b.dataset.lsmode === lsMode);
                 });
             }
-            showToast(`Đã tải: ${entry.name} (${entry.totalPageCount} trang)`, 'success');
+            showToast(I18nModule.t('toast.uploadSuccess')(entry.name, entry.totalPageCount));
             StepIndicatorModule.update();
-            SRModule.announce(`Đã tải file ${entry.name}, ${entry.totalPageCount} trang`);
+            SRModule.announce(I18nModule.t('sr.fileLoaded')(entry.name, entry.totalPageCount));
         } catch (err) {
             const card = document.getElementById('upload-area')?.closest('.card');
             showCardError(card, `Lỗi khi tải file: ${err.message}`, () => document.getElementById('file-input')?.click());
-            showToast('Lỗi khi tải file: ' + err.message, 'error');
+            showToast(I18nModule.t('toast.fileLoadError')(err.message), 'error');
         }
     },
 
@@ -1691,10 +1691,10 @@ const PreviewModule = {
 
             PageSelectModule.updateDisplay();
 
-            showToast(`Đã tải ${AppState.totalPageCount} trang`, 'success');
+            showToast(I18nModule.t('toast.pdfLoaded')(AppState.totalPageCount));
         } catch (err) {
             console.error('Error loading PDF:', err);
-            showToast('Lỗi khi tải PDF: ' + err.message, 'error');
+            showToast(I18nModule.t('toast.fileLoadError')(err.message), 'error');
         }
     },
 
@@ -1728,7 +1728,7 @@ const PreviewModule = {
             }
         } catch (err) {
             console.error('Error loading PDF entry:', err);
-            showToast('Lỗi khi tải PDF: ' + err.message, 'error');
+            showToast(I18nModule.t('toast.fileLoadError')(err.message), 'error');
         }
     },
 
@@ -1899,7 +1899,7 @@ const PageSelectModule = {
         const el2  = document.getElementById('inline-selected');
         if (el1) el1.textContent = text;
         if (el2) el2.textContent = all ? 'Da chon: Tat ca' : `Da chon: ${text}`;
-        SRModule.announce(all ? 'Đã chọn tất cả trang' : `Đã chọn ${AppState.selectedPages.size} trang`);
+        SRModule.announce(all ? I18nModule.t('sr.allSelected') : I18nModule.t('sr.selected')(AppState.selectedPages.size));
     },
 
     _parseRange(text, maxPage = AppState.totalPageCount) {
@@ -1949,7 +1949,7 @@ const ZoomModal = {
             ThumbStripModule._syncSelectionHighlights?.();
             if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
             else PreviewPanelModule.onStateChanged();
-            showToast('Da chon tat ca in 2 mat', 'success');
+            showToast(I18nModule.t('toast.allDouble'));
         });
 
         document.getElementById('all-single-btn')?.addEventListener('click', () => {
@@ -1958,7 +1958,7 @@ const ZoomModal = {
             ThumbStripModule._syncSelectionHighlights?.();
             if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
             else PreviewPanelModule.onStateChanged();
-            showToast('Da chon tat ca in 1 mat', 'success');
+            showToast(I18nModule.t('toast.allSingle'));
         });
 
         // FIX: Deselect All truly empties selection
@@ -1969,7 +1969,7 @@ const ZoomModal = {
             if (AppState.viewMode === 'sheet' && AppState.activeFile) PreviewPanelModule.render(AppState.activeFile);
             else PreviewPanelModule.onStateChanged();
             PrintModule.updateButton();
-            showToast('Da bo chon tat ca. Chon trang de in.', 'info');
+            showToast(I18nModule.t('toast.deselectAll'));
         });
     },
 
@@ -2205,18 +2205,18 @@ const ContextMenu = {
         switch (action) {
             case 'all-double-sided':
                 AppState.selectAllPages(); AppState.singleSidedPages.clear();
-                showToast('Đã chọn tất cả in 2 mặt', 'success'); break;
+                showToast(I18nModule.t('toast.allDouble')); break;
             case 'all-single-sided':
                 AppState.selectAllPages(); AppState.singleSidedPages = new Set(AppState.selectedPages);
-                showToast('Đã chọn tất cả in 1 mặt', 'success'); break;
+                showToast(I18nModule.t('toast.allSingle')); break;
             case 'deselect-all':
                 AppState.selectedPages.clear(); AppState.singleSidedPages.clear();
                 PrintModule.updateButton();
-                showToast('Đã bỏ chọn tất cả', 'info'); break;
+                showToast(I18nModule.t('toast.deselectAll')); break;
             case 'double-sided':
-                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); if (AppState.activeFile) unsetSingleSided(AppState.activeFile, [n]); showToast(`Trang ${n} sẽ in 2 mặt`, 'info'); } break;
+                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); if (AppState.activeFile) unsetSingleSided(AppState.activeFile, [n]); showToast(I18nModule.t('toast.pageDuplex')(n)); } break;
             case 'single-sided':
-                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); if (AppState.activeFile) setSingleSided(AppState.activeFile, n); showToast(`Trang ${n} sẽ in 1 mặt`, 'info'); } break;
+                if (n) { if (!AppState.selectedPages.has(n)) AppState.selectedPages.add(n); if (AppState.activeFile) setSingleSided(AppState.activeFile, n); showToast(I18nModule.t('toast.pageSimplex')(n)); } break;
             case 'rotate-cw90':     this._applyRotation(n, 'CW90'); break;
             case 'rotate-ccw90':    this._applyRotation(n, 'CCW90'); break;
             case 'rotate-fliph':    this._applyRotation(n, 'FlipHorizontal'); break;
@@ -2279,7 +2279,7 @@ const ContextMenu = {
         }
 
         this.hide();
-        showToast('Đã chèn trang trắng', 'success');
+        showToast(I18nModule.t('toast.blankInserted'));
         if (AppState.viewMode === 'sheet' && file) {
             PreviewPanelModule.render(file);
         }
@@ -2298,11 +2298,17 @@ const ContextMenu = {
         if (pageNum === null || pageNum === 0) return;
         if (rotation === null) {
             AppState.pageRotations.delete(pageNum);
-            showToast(`Trang ${pageNum}: đã reset xoay`, 'info');
+            showToast(I18nModule.t('toast.rotateReset')(pageNum));
         } else {
             AppState.pageRotations.set(pageNum, rotation);
-            const labels = { CW90: 'Xoay phải 90°', CCW90: 'Xoay trái 90°', Rotate180: 'Xoay 180°', FlipHorizontal: 'Lật ngang', FlipVertical: 'Lật dọc' };
-            showToast(`Trang ${pageNum}: ${labels[rotation] || rotation}`, 'info');
+            const labels = {
+                CW90: I18nModule.t('ctx.rotateCW'),
+                CCW90: I18nModule.t('ctx.rotateCCW'),
+                Rotate180: I18nModule.t('ctx.rotate180'),
+                FlipHorizontal: I18nModule.t('ctx.flipH'),
+                FlipVertical: I18nModule.t('ctx.flipV'),
+            };
+            showToast(I18nModule.t('toast.rotated')(pageNum, labels[rotation] || rotation), 'info');
         }
 
         // Invalidate cached renders for this page
@@ -2418,7 +2424,7 @@ const HistoryModule = {
         document.getElementById('history-clear-btn')?.addEventListener('click', () => {
             this._save([]);
             this._render();
-            showToast('Đã xóa lịch sử', 'info');
+            showToast(I18nModule.t('toast.historyCleared'), 'info');
         });
         document.getElementById('history-toggle-btn')?.addEventListener('click', () => {
             document.getElementById('history-panel')?.classList.toggle('hidden');
@@ -2437,7 +2443,7 @@ const HistoryModule = {
         items.splice(index, 1);
         this._save(items);
         this._render();
-        showToast('Đã xóa mục lịch sử', 'info');
+        showToast(I18nModule.t('toast.historyItemRemoved'), 'info');
     },
 
     _reprint(index) {
@@ -2492,8 +2498,8 @@ const HistoryModule = {
         const rangeSkipped = item.pageRange && !fileMatches;
         showToast(
             rangeSkipped
-                ? `Đã khôi phục cài đặt in "${item.file}" (bỏ qua dải trang vì file đang mở khác)`
-                : `Đã khôi phục cài đặt in "${item.file}"`,
+                ? I18nModule.t('toast.reprintSuccessMixed')(item.file)
+                : I18nModule.t('toast.reprintSuccess')(item.file),
             'info'
         );
         PrintModule.updateButton();
@@ -2551,10 +2557,10 @@ const PrintModule = {
                 (async () => {
                     try {
                         await fetch(`${API_BASE}/print/cancel?jobId=${AppState.currentJob.jobId}`, { method: 'DELETE' });
-                        showToast('Đã hủy lệnh in', 'info');
-                        SRModule.announce('Đã hủy lệnh in');
+                        showToast(I18nModule.t('toast.printCancelled'), 'info');
+                        SRModule.announce(I18nModule.t('sr.printCancelled'));
                     } catch {
-                        showToast('Không thể hủy lệnh in', 'error');
+                        showToast(I18nModule.t('toast.printCancelFailed'), 'error');
                     }
                     AppState.currentJob = null;
                     AppState.pendingPrintQueue = null;  // B18-FE-1 fix: clear stale queue on cancel
@@ -2598,12 +2604,12 @@ const PrintModule = {
     },
 
     async _startPrint() {
-        if (!AppState.selectedPrinter) { showToast('Chọn máy in trước', 'error'); return; }
+        if (!AppState.selectedPrinter) { showToast(I18nModule.t('toast.selectPrinterFirst'), 'error'); return; }
 
         // Collect all files with at least 1 selected page
         const filesToPrint = AppState.files.filter(f => f.selectedPages.size > 0);
         if (filesToPrint.length === 0) {
-            showToast('Không có trang nào được chọn để in', 'error');
+            showToast(I18nModule.t('toast.noPagesSelected'), 'error');
             return;
         }
 
@@ -2714,14 +2720,14 @@ const PrintModule = {
                     manualFlipDir: duplexSide,  // same value; maps to PrintRequest.ManualFlipDir on backend
                 };
 
-                showToast(`Đang gửi lệnh in: ${file.name}...`, 'info');
-                SRModule.announce(`Đang in file ${file.name}`);
+                showToast(I18nModule.t('toast.sendingFile')(file.name), 'info');
+                SRModule.announce(I18nModule.t('sr.printingFile')(file.name));
 
                 const res    = await fetch(`${API_BASE}/print`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                 const result = await res.json();
 
                 if (!result.success) {
-                    showToast(`Lỗi in file ${file.name}: ${result.message}`, 'error');
+                    showToast(I18nModule.t('toast.printFileError')(file.name, result.message), 'error');
                     btn.disabled = false;
                     btn.textContent = originalText;
                     btn.style.opacity = '';
@@ -2756,7 +2762,7 @@ const PrintModule = {
                     btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
                     btn.disabled = false;
                     btn.style.opacity = '1';
-                    showToast('Đã in mặt lẻ! Vui lòng làm theo hướng dẫn.', 'info');
+                    showToast(I18nModule.t('toast.frontDone'), 'info');
                     // Stop multi-file loop — _continuePrint will resume the queue
                     return;
                 }
@@ -2785,8 +2791,8 @@ const PrintModule = {
             btn.textContent = fileCount > 1 ? `✓ Đã in ${fileCount} file!` : '✓ Đã gửi lệnh in!';
             btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
             btn.style.opacity = '1';
-            showToast(fileCount > 1 ? `In thành công ${fileCount} file!` : 'In thành công!', 'success');
-            SRModule.announce('In thành công!');
+            showToast(fileCount > 1 ? I18nModule.t('toast.printSuccess')(fileCount) : I18nModule.t('toast.printSuccess')(1), 'success');
+            SRModule.announce(I18nModule.t('sr.printSuccess'));
 
             setTimeout(() => {
                 btn.disabled = false;
@@ -2797,7 +2803,7 @@ const PrintModule = {
             }, 2000);
 
         } catch (err) {
-            showToast('Lỗi khi in: ' + err.message, 'error');
+            showToast(I18nModule.t('toast.printError')(err.message), 'error');
             const actionSec = document.querySelector('.action-section') || document.getElementById('print-btn')?.closest('.card');
             showCardError(actionSec, `Lệnh in thất bại: ${err.message}`, () => document.getElementById('print-btn')?.click());
             btn.disabled = false;
@@ -2810,7 +2816,7 @@ const PrintModule = {
         // BUG-1 fix: guard against null currentJob (timer race after cancel, or ESC edge case)
         if (!AppState.currentJob) return;
         try {
-            showToast('Dang in mat chan...', 'info');
+            showToast(I18nModule.t('toast.printingBack'), 'info');
             const res    = await fetch(`${API_BASE}/print/continue?jobId=${AppState.currentJob.jobId}`, { method: 'POST' });
             const result = await res.json();
             const btn = document.getElementById('print-btn');
@@ -2824,7 +2830,7 @@ const PrintModule = {
                 }
             };
             if (result.success) {
-                showToast('In hoan tat!', 'success');
+                showToast(I18nModule.t('toast.printComplete'), 'success');
                 // B28-FE-2 fix: capture history entry BEFORE resetBtn() nulls currentJob.
                 const histEntry = AppState.currentJob?._historyEntry;
                 resetBtn();
@@ -2845,13 +2851,13 @@ const PrintModule = {
                 AppState.pendingPrintQueue = null;
             } else {
                 // BUG-2 fix: reset button even on failure so UI doesn't get stuck
-                showToast('Loi: ' + result.message, 'error');
+                showToast(I18nModule.t('toast.uploadError')(result.message), 'error');
                 AppState.pendingPrintQueue = null;
                 resetBtn();
             }
         } catch (err) {
             // BUG-2 fix: also reset on network error
-            showToast('Loi khi tiep tuc in: ' + err.message, 'error');
+            showToast(I18nModule.t('toast.continueError')(err.message), 'error');
             AppState.currentJob = null;
             AppState.pendingPrintQueue = null;
             const btn = document.getElementById('print-btn');
@@ -2951,7 +2957,7 @@ const PrintModule = {
                 const result = await res.json();
 
                 if (!result.success) {
-                    showToast(`Lỗi in file ${file.name}: ${result.message}`, 'error');
+                    showToast(I18nModule.t('toast.printFileError')(file.name, result.message), 'error');
                     if (btn) { btn.disabled = false; btn.textContent = originalText; btn.style.opacity = ''; }
                     return;
                 }
@@ -2982,7 +2988,7 @@ const PrintModule = {
                         btn.disabled = false;
                         btn.style.opacity = '1';
                     }
-                    showToast('Đã in mặt lẻ! Vui lòng làm theo hướng dẫn.', 'info');
+                    showToast(I18nModule.t('toast.frontDone'), 'info');
                     return;
                 }
 
@@ -3000,7 +3006,7 @@ const PrintModule = {
 
                 if (!isLast) await new Promise(r => setTimeout(r, 500));
             } catch (err) {
-                showToast(`Lỗi in file ${file.name}: ${err.message}`, 'error');
+                showToast(I18nModule.t('toast.printFileError')(file.name, err.message), 'error');
                 if (btn) { btn.disabled = false; btn.textContent = originalText; btn.style.opacity = ''; }
                 return;
             }
@@ -3013,7 +3019,7 @@ const PrintModule = {
             btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
             btn.style.opacity = '1';
         }
-        showToast(fileCount > 1 ? `In thành công ${fileCount} file!` : 'In thành công!', 'success');
+        showToast(fileCount > 1 ? I18nModule.t('toast.printSuccess')(fileCount) : I18nModule.t('toast.printSuccess')(1), 'success');
         setTimeout(() => {
             if (btn) {
                 btn.disabled = false;
@@ -3715,7 +3721,7 @@ const DragReorderModule = {
             // Also re-order main view pages
             PrintPreviewModule._reorderMainView(newOrder);
 
-            showToast('Đã đổi thứ tự trang', 'info');
+            showToast(I18nModule.t('toast.pageReordered'), 'info');
             // Rebuild SheetView if active — pageOrder changed (Invariant 7)
             if (AppState.viewMode === 'sheet' && AppState.activeFile) {
                 PreviewPanelModule.render(AppState.activeFile);
