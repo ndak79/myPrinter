@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using System.Runtime.Versioning;
 using System.Text.Json.Serialization;
+using System.Diagnostics;
 
 namespace PrinterApp;
 
@@ -357,6 +358,29 @@ public static class BackendStartup
 
             sessions.RemoveJob(jobId);
             return Results.Ok(new PrintResponse { Success = true, Message = "Đã hủy lệnh in" });
+        });
+
+        app.MapPost("/api/printer/settings", (PrinterSettingsRequest req) =>
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(req.PrinterName))
+                    return Results.BadRequest(new { success = false, message = "Printer name is required" });
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "rundll32.exe",
+                    Arguments = $"printui.dll,PrintUIEntry /p /n \"{req.PrinterName}\"",
+                    UseShellExecute = true,
+                };
+                Process.Start(psi);
+
+                return Results.Ok(new { success = true, message = "Printer settings dialog opened" });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem($"Failed to open printer settings: {ex.Message}");
+            }
         });
 
         return app;

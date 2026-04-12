@@ -331,4 +331,6 @@ namespace PrinterApp.Models
         public string FilePath  { get; set; }  = "";
         public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     }
+
+    public record PrinterSettingsRequest(string PrinterName);
 }
