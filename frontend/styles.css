@@ -2229,6 +2229,72 @@ kbd {
 .btn-print:active:not(:disabled) { transform: translateY(0); }
 .btn-print:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* ── Icon-style small buttons (Settings, Guide, Language) ── */
+.btn-icon-sm {
+  height:           34px;
+  padding:          0 12px;
+  border:           1.5px solid #93c5fd;
+  border-radius:    8px;
+  background:       #ffffff;
+  color:            #1e3a5f;
+  font-family:      var(--font-system);
+  font-size:        13px;
+  font-weight:      500;
+  cursor:           pointer;
+  white-space:      nowrap;
+  transition:       background 0.15s, border-color 0.15s;
+  flex-shrink:      0;
+}
+.btn-icon-sm:hover          { background: #eff6ff; border-color: #3b82f6; }
+.btn-icon-sm:active         { background: #dbeafe; }
+.btn-icon-sm:disabled       { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Guide modal ───────────────────────────────────────────── */
+.modal-guide {
+  max-width:        720px;
+  width:            90vw;
+  max-height:       85vh;
+  display:          flex;
+  flex-direction:   column;
+}
+.guide-tabs {
+  display:          flex;
+  gap:              4px;
+  padding:          0 20px;
+  border-bottom:    1px solid #e2e8f0;
+  flex-shrink:      0;
+  overflow-x:       auto;
+  white-space:      nowrap;
+}
+.guide-tab {
+  padding:          10px 16px;
+  border:           none;
+  background:       none;
+  cursor:           pointer;
+  color:            #64748b;
+  font-family:      var(--font-system);
+  font-size:        13px;
+  font-weight:      500;
+  border-bottom:    2px solid transparent;
+  transition:       color 0.15s, border-color 0.15s;
+  white-space:      nowrap;
+  flex-shrink:      0;
+}
+.guide-tab:hover            { color: #2563eb; }
+.guide-tab.active           { color: #2563eb; border-bottom-color: #2563eb; }
+.guide-body {
+  flex:             1;
+  overflow-y:       auto;
+  padding:          20px 24px;
+  line-height:      1.75;
+  color:            #1e3a5f;
+}
+.guide-body h3              { margin: 0 0 12px; font-size: 16px; color: #1e40af; }
+.guide-body h4              { margin: 16px 0 8px; font-size: 14px; color: #1e3a5f; }
+.guide-body p               { margin: 0 0 10px; }
+.guide-body ul, .guide-body ol { margin: 0 0 10px; padding-left: 24px; }
+.guide-body li              { margin-bottom: 6px; }
+
 /* ── Header Row 2: File tabs ────────────────────────────────── */
 .file-tabs-bar {
   display:          flex;
