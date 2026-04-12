@@ -643,7 +643,7 @@ const PrintPreviewModule = {
         if (!thumbGrid || !mainContainer) return;
 
         thumbGrid.innerHTML    = '';
-        mainContainer.innerHTML = '<div class="loading" style="padding:2rem;text-align:center;color:var(--text-muted)">Đang tải...</div>';
+        mainContainer.innerHTML = `<div class="loading" style="padding:2rem;text-align:center;color:var(--text-muted)">${I18nModule.t('preview.loading')}</div>`;
 
         const order = AppState.pageOrder.length > 0 ? AppState.pageOrder : Array.from({ length: AppState.totalPageCount }, (_, i) => i + 1);
 
@@ -801,7 +801,7 @@ const PrintPreviewModule = {
 
         const badge = document.createElement('div');
         badge.className   = isSingle ? 'single-sided-badge' : 'double-sided-badge';
-        badge.textContent = isSingle ? '1 MẶT' : '2 MẶT';
+        badge.textContent = isSingle ? I18nModule.t('zoom.singleSided') : I18nModule.t('zoom.doubleSided');
         if (!isSel) badge.style.opacity = '0.3';
         header.appendChild(badge);
 
@@ -945,7 +945,7 @@ const PrintPreviewModule = {
             const badge = el.querySelector('.single-sided-badge, .double-sided-badge');
             if (badge) {
                 badge.className   = isSingle ? 'single-sided-badge' : 'double-sided-badge';
-                badge.textContent = isSingle ? '1 MẶT' : '2 MẶT';
+                badge.textContent = isSingle ? I18nModule.t('zoom.singleSided') : I18nModule.t('zoom.doubleSided');
                 badge.style.opacity = isSel ? '1' : '0.3';
             }
             // update rotation on canvas
@@ -975,7 +975,7 @@ const PrintPreviewModule = {
         const el1   = document.getElementById('preview-modal-page-count');
         const el2   = document.getElementById('preview-modal-selected-count');
         if (el1) el1.textContent = `${total} trang`;
-        if (el2) el2.textContent = sel === total ? 'Tất cả được chọn' : `${sel}/${total} trang được chọn`;
+        if (el2) el2.textContent = sel === total ? I18nModule.t('summary.allSelected') : I18nModule.t('summary.selected')(sel, total);
     },
 
     _updateFooterSummary() {
@@ -1208,7 +1208,7 @@ const PrinterModule = {
     _renderPrinters(printers, forceDefault = false) {
         const sel = document.getElementById('printer-select');
         if (!sel) return;
-        sel.innerHTML = '<option value="">🖨 Chọn máy in…</option>';
+        sel.innerHTML = `<option value="">${I18nModule.t('header.printer.placeholder')}</option>`;
         printers.forEach(p => {
             const opt = document.createElement('option');
             opt.value       = p.name;
@@ -1367,9 +1367,7 @@ const UploadModule = {
             const fnEl = document.getElementById('file-name');
             const fsEl = document.getElementById('file-status');
             if (fnEl) fnEl.textContent = entry.name;
-            if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
-            document.getElementById('upload-area')?.classList.add('hidden');
-            document.getElementById('file-info')?.classList.remove('hidden');
+            if (fsEl) fsEl.textContent = I18nModule.t('file.ready');
 
             // Load PDF for this file entry
             await PreviewModule.renderEntry(entry);
@@ -1433,8 +1431,7 @@ const UploadModule = {
                 const fnEl = document.getElementById('file-name');
                 const fsEl = document.getElementById('file-status');
                 if (fnEl) fnEl.textContent = active.name;
-                if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
-            }
+                if (fsEl) fsEl.textContent = I18nModule.t('file.ready');            }
             ThumbStripModule.render();
             if (typeof PreviewPanelModule !== 'undefined') {
                 PreviewPanelModule.render(AppState.activeFile);
@@ -1531,7 +1528,7 @@ const TabsModule = {
                 const badge = document.createElement('span');
                 badge.className = 'file-tab-landscape-badge';
                 badge.textContent = '🌄';
-                badge.title = 'File này toàn trang ngang — tự động lật theo cạnh ngắn khi in 2 mặt';
+                badge.title = I18nModule.t('tab.landscapeBadge');
                 tab.appendChild(badge);
             }
             tab.appendChild(name);
@@ -1539,7 +1536,7 @@ const TabsModule = {
             const closeBtn = document.createElement('button');
             closeBtn.className   = 'file-tab-close';
             closeBtn.textContent = '×';
-            closeBtn.title       = 'Đóng file';
+            closeBtn.title       = I18nModule.t('tab.close');
             closeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 UploadModule.removeFile(idx); // self-contained: renders tabs internally
@@ -1622,7 +1619,7 @@ const TabsModule = {
             const fnEl = document.getElementById('file-name');
             const fsEl = document.getElementById('file-status');
             if (fnEl) fnEl.textContent = active.name;
-            if (fsEl) fsEl.textContent = 'Đã sẵn sàng';
+            if (fsEl) fsEl.textContent = I18nModule.t('file.ready');
         }
 
         // Sync modebar to new active file's landscapeMode (§9)
@@ -1779,7 +1776,7 @@ const PreviewModule = {
             const isLandscape = viewport.width > viewport.height;
             const badge = document.createElement('div');
             badge.className = `orientation-badge${isLandscape ? ' landscape' : ''}`;
-            badge.textContent = isLandscape ? '▭ Ngang' : '▯ Dọc';
+            badge.textContent = isLandscape ? I18nModule.t('orientation.landscape') : I18nModule.t('orientation.portrait');
             thumb.appendChild(badge);
         } catch (err) {
             console.error(`Error rendering page ${pageNum}:`, err);
@@ -2036,7 +2033,7 @@ const ZoomModal = {
 
         const badge = document.createElement('div');
         badge.className   = isSingle ? 'single-sided-badge' : 'double-sided-badge';
-        badge.textContent = isSingle ? '1 MAT' : '2 MAT';
+        badge.textContent = isSingle ? I18nModule.t('zoom.singleSided') : I18nModule.t('zoom.doubleSided');
         if (!isSel) badge.style.opacity = '0.3';
 
         const canvas = document.createElement('canvas');
@@ -2148,7 +2145,7 @@ const ContextMenu = {
         // Update header
         const header = document.getElementById('context-menu-header');
         if (header) {
-            header.textContent = (pageNum === 0) ? 'Trang trắng' : `Trang ${pageNum}`;
+            header.textContent = (pageNum === 0) ? I18nModule.t('ctx.blankPage') : I18nModule.t('ctx.page')(pageNum);
         }
 
         // Update single/double check marks
@@ -2510,18 +2507,22 @@ const HistoryModule = {
         if (!container) return;
         const items = this._load();
         if (items.length === 0) {
-            container.innerHTML = '<div class="history-empty">Chưa có lịch sử in</div>';
+            container.innerHTML = `<div class="history-empty">${I18nModule.t('history.empty')}</div>`;
             return;
         }
-        const modeLabel = { normal: 'In thông minh', duplex: 'In thông minh', booklet: 'Sách A5' };
+        const modeLabel = {
+            normal: I18nModule.t('mode.smart'),
+            duplex: I18nModule.t('mode.smart'),
+            booklet: I18nModule.t('mode.booklet'),
+        };
         container.innerHTML = items.map((item, idx) => `
             <div class="history-item">
                 <div class="history-item-actions">
-                    <button class="history-action-btn history-reprint-btn" data-idx="${idx}" title="In lại">🔁</button>
-                    <button class="history-action-btn" data-delete="${idx}" title="Xóa">✕</button>
+                    <button class="history-action-btn history-reprint-btn" data-idx="${idx}" title="${I18nModule.t('historyItem.reprint')}">🔁</button>
+                    <button class="history-action-btn" data-delete="${idx}" title="${I18nModule.t('historyItem.delete')}">✕</button>
                 </div>
                 <div class="history-file">📄 ${item.file}</div>
-                <div class="history-meta">🖨️ ${item.printer} · ${item.pages} trang · ${modeLabel[item.mode] || item.mode} · ${item.copies} bản</div>
+                <div class="history-meta">🖨️ ${item.printer} · ${I18nModule.t('historyItem.pages')(item.pages)} · ${modeLabel[item.mode] || item.mode} · ${I18nModule.t('historyItem.copies')(item.copies)}</div>
                 <div class="history-time">${item.time}</div>
             </div>
         `).join('');
@@ -2566,8 +2567,7 @@ const PrintModule = {
                     AppState.pendingPrintQueue = null;  // B18-FE-1 fix: clear stale queue on cancel
                     btn.dataset.mode = '';
                     btn.classList.remove('cancellable');
-                    btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
-                    document.getElementById('flip-modal')?.classList.add('hidden');
+                    btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
                     PrintModule.updateButton();
                 })();
                 return;
@@ -2639,8 +2639,8 @@ const PrintModule = {
                 const isLast = i === filesToPrint.length - 1;
 
                 btn.textContent = filesToPrint.length > 1
-                    ? `⏳ Đang in file ${i + 1}/${filesToPrint.length}...`
-                    : '⏳ Đang gửi lệnh in...';
+                    ? I18nModule.t('print.printing')(i + 1, filesToPrint.length)
+                    : I18nModule.t('print.sendingSingle');
 
                 const sel = file.selectedPages;
                 const pageRange = (sel.size > 0 && sel.size < file.totalPageCount)
@@ -2759,7 +2759,7 @@ const PrintModule = {
                     this._showFlipModal(result.jobState.instruction);
                     btn.dataset.mode = 'cancellable';
                     btn.classList.add('cancellable');
-                    btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
+                    btn.textContent = I18nModule.t('print.cancel');
                     btn.disabled = false;
                     btn.style.opacity = '1';
                     showToast(I18nModule.t('toast.frontDone'), 'info');
@@ -2788,7 +2788,7 @@ const PrintModule = {
 
             // All files printed successfully
             const fileCount = filesToPrint.length;
-            btn.textContent = fileCount > 1 ? `✓ Đã in ${fileCount} file!` : '✓ Đã gửi lệnh in!';
+            btn.textContent = I18nModule.t('print.done')(fileCount);
             btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
             btn.style.opacity = '1';
             showToast(fileCount > 1 ? I18nModule.t('toast.printSuccess')(fileCount) : I18nModule.t('toast.printSuccess')(1), 'success');
@@ -2805,7 +2805,7 @@ const PrintModule = {
         } catch (err) {
             showToast(I18nModule.t('toast.printError')(err.message), 'error');
             const actionSec = document.querySelector('.action-section') || document.getElementById('print-btn')?.closest('.card');
-            showCardError(actionSec, `Lệnh in thất bại: ${err.message}`, () => document.getElementById('print-btn')?.click());
+            showCardError(actionSec, I18nModule.t('error.printFailed')(err.message), () => document.getElementById('print-btn')?.click());
             btn.disabled = false;
             btn.textContent = originalText;
             btn.style.opacity = '';
@@ -2825,7 +2825,7 @@ const PrintModule = {
                 if (btn) {
                     btn.dataset.mode = '';
                     btn.classList.remove('cancellable');
-                    btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
+                    btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
                     PrintModule.updateButton();
                 }
             };
@@ -2864,7 +2864,7 @@ const PrintModule = {
             if (btn) {
                 btn.dataset.mode = '';
                 btn.classList.remove('cancellable');
-                btn.innerHTML = '<span class="btn-icon">🖨️</span> Bắt Đầu In';
+                btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
                 PrintModule.updateButton();
             }
         }
@@ -2882,7 +2882,7 @@ const PrintModule = {
             const isLast = i === files.length - 1;
 
             if (btn) {
-                btn.textContent = `⏳ Đang in file ${i + 1}/${files.length}...`;
+                btn.textContent = I18nModule.t('print.printing')(i + 1, files.length);
                 btn.disabled = true;
                 btn.style.opacity = '0.7';
             }
@@ -2984,7 +2984,7 @@ const PrintModule = {
                     if (btn) {
                         btn.dataset.mode = 'cancellable';
                         btn.classList.add('cancellable');
-                        btn.innerHTML = '<span class="btn-icon">✕</span> Huỷ In';
+                        btn.innerHTML = `<span class="btn-icon">✕</span> ${I18nModule.t('print.cancel')}`;
                         btn.disabled = false;
                         btn.style.opacity = '1';
                     }
@@ -3015,7 +3015,7 @@ const PrintModule = {
         // All remaining files printed
         const fileCount = files.length;
         if (btn) {
-            btn.textContent = fileCount > 1 ? `✓ Đã in ${fileCount} file!` : '✓ Đã gửi lệnh in!';
+            btn.textContent = I18nModule.t('print.done')(fileCount);
             btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
             btn.style.opacity = '1';
         }
@@ -3044,14 +3044,14 @@ const PrintModule = {
                     <g class="flip-paper-anim">
                         <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
                         <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
-                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">Giấy đã in</text>
-                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">mặt 1 ✓</text>
+                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">${I18nModule.t('flip.paperPrinted')}</text>
+                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">${I18nModule.t('flip.side1Done')}</text>
                     </g>
                     <path d="M 58 80 L 30 80" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
                     <path d="M 202 80 L 230 80" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
                     <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
-                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">Khay giấy</text>
-                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">Lấy ra → Lật ngang → Đặt lại</text>
+                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">${I18nModule.t('flip.paperTray')}</text>
+                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">${I18nModule.t('flip.horizontalSteps')}</text>
                 </svg>
             `
             : `
@@ -3064,18 +3064,18 @@ const PrintModule = {
                     <g class="flip-paper-anim">
                         <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
                         <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
-                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">Giấy đã in</text>
-                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">mặt 1 ✓</text>
+                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">${I18nModule.t('flip.paperPrinted')}</text>
+                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">${I18nModule.t('flip.side1Done')}</text>
                     </g>
                     <path d="M 130 125 L 130 155" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
                     <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
-                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">Khay giấy</text>
-                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">Lấy ra → Lật → Đặt lại</text>
+                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">${I18nModule.t('flip.paperTray')}</text>
+                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">${I18nModule.t('flip.verticalSteps')}</text>
                 </svg>
             `;
 
         document.getElementById('instruction-text').textContent =
-            instruction || 'Lấy giấy ra và đặt thẳng lại vào khay (mặt đã in hướng xuống). KHÔNG cần xoay giấy.';
+            instruction || I18nModule.t('flip.defaultInstruction');
 
         // Reset checklist
         ['flip-check-1', 'flip-check-2', 'flip-check-3'].forEach(id => {
@@ -3246,20 +3246,20 @@ const SummaryModule = {
         // Estimate time: ~15s per sheet (realistic for manual duplex + processing)
         const totalSec = totalSheets * 15;
         const timeStr = totalSec < 60
-            ? `< 1 phút`
+            ? I18nModule.t('summary.lessThanMinute')
             : totalSec < 3600
-                ? `~${Math.ceil(totalSec / 60)} phút`
-                : `~${Math.floor(totalSec / 3600)}h ${Math.ceil((totalSec % 3600) / 60)}m`;
+                ? I18nModule.t('summary.minutes')(Math.ceil(totalSec / 60))
+                : I18nModule.t('summary.hoursMinutes')(Math.floor(totalSec / 3600), Math.ceil((totalSec % 3600) / 60));
 
         el.classList.remove('hidden');
         el.innerHTML = `
-            <span>📄 ${totalPages} trang</span>
+            <span>${I18nModule.t('summary.pages')(totalPages)}</span>
             <span>·</span>
-            <span>🗒️ ${totalSheets} tờ</span>
+            <span>${I18nModule.t('summary.sheets')(totalSheets)}</span>
             <span>·</span>
             <span>⏱ ${timeStr}</span>
-            ${copies !== null && copies > 1 ? `<span>· ${copies} bản</span>` : ''}
-            ${multiFile ? `<span>· ${activeFiles.length} file</span>` : ''}
+            ${copies !== null && copies > 1 ? `<span>${I18nModule.t('summary.copies')(copies)}</span>` : ''}
+            ${multiFile ? `<span>${I18nModule.t('summary.files')(activeFiles.length)}</span>` : ''}
             ${printer ? `<span>· 🖨️ ${printer.name}</span>` : ''}
         `;
     },
@@ -3338,7 +3338,7 @@ function showCardError(cardEl, message, retryFn) {
     errEl.innerHTML = `
         <span class="error-icon">⚠️</span>
         <span class="error-text">${message}</span>
-        ${retryFn ? '<button class="card-error-retry">Thử lại</button>' : ''}
+        ${retryFn ? `<button class="card-error-retry">${I18nModule.t('error.retry')}</button>` : ''}
     `;
     if (retryFn) {
         errEl.querySelector('.card-error-retry').addEventListener('click', () => {
@@ -3397,10 +3397,14 @@ const ConfirmPrintModal = {
 
         const mode    = AppState.printMode || 'duplex'; // B26-FE-2: read from AppState not DOM
         const printer = AppState.selectedPrinter;
-        const modeLabel = { duplex: 'In thông minh', normal: 'In thông minh', booklet: 'Sách A5 (Booklet)' };
+        const modeLabel = {
+            duplex: I18nModule.t('mode.smart'),
+            normal: I18nModule.t('mode.smart'),
+            booklet: I18nModule.t('mode.bookletFull'),
+        };
         const filesToPrint = AppState.files.filter(f => f.selectedPages.size > 0);
         if (filesToPrint.length === 0) {
-            container.innerHTML = '<div class="confirm-row"><span>Không có trang nào để in.</span></div>';
+            container.innerHTML = `<div class="confirm-row"><span>${I18nModule.t('confirm.noPages')}</span></div>`;
             return;
         }
         const multiFile = filesToPrint.length > 1;
@@ -3424,8 +3428,9 @@ const ConfirmPrintModal = {
         const copies = filesToPrint.length === 1 ? (filesToPrint[0]?.copies ?? 1) : null; // null = mixed
 
         const totalSec = sheets * 15;
-        const timeStr  = totalSec < 60 ? '< 1 phút'
-            : `~${Math.ceil(totalSec / 60)} phút`;
+        const timeStr  = totalSec < 60
+            ? I18nModule.t('summary.lessThanMinute')
+            : I18nModule.t('summary.minutes')(Math.ceil(totalSec / 60));
 
         // File label — use filesToPrint[0].name (not AppState.uploadedFile which proxies activeFile)
         const fileLabel = multiFile
@@ -3434,43 +3439,45 @@ const ConfirmPrintModal = {
 
         // Page range label (only meaningful for single-file)
         const sel = multiFile ? null : Array.from(filesToPrint[0]?.selectedPages ?? []).sort((a,b)=>a-b);
-        const rangeStr = multiFile ? 'Tất cả các file'
-            : sel?.length === filesToPrint[0]?.totalPageCount ? 'Tất cả'
+        const rangeStr = multiFile ? I18nModule.t('confirmRow.rangeAllFiles')
+            : sel?.length === filesToPrint[0]?.totalPageCount ? I18nModule.t('confirmRow.rangeAll')
             // B31-FE-6 fix: use _formatRange to show "1-5, 8, 10-12" instead of a raw
             // comma-separated list of integers which is unreadable for large selections.
-            : (PageSelectModule._formatRange(sel) || 'Tất cả');
+            : (PageSelectModule._formatRange(sel) || I18nModule.t('confirmRow.rangeAll'));
 
-        const copiesStr = copies !== null ? `${sheets} tờ × ${copies} bản` : `${sheets} tờ (mỗi file khác nhau)`;
+        const copiesStr = copies !== null
+            ? I18nModule.t('confirmRow.sheets')(sheets, copies)
+            : I18nModule.t('confirmRow.sheetsMixed')(sheets);
 
         container.innerHTML = `
             <div class="confirm-row">
                 <span class="confirm-row-icon">📄</span>
-                <span class="confirm-row-label">File:</span>
+                <span class="confirm-row-label">${I18nModule.t('confirmRow.file')}</span>
                 <span class="confirm-row-value">${fileLabel}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">🖨️</span>
-                <span class="confirm-row-label">Máy in:</span>
+                <span class="confirm-row-label">${I18nModule.t('confirmRow.printer')}</span>
                 <span class="confirm-row-value">${printer?.name || '—'}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">📋</span>
-                <span class="confirm-row-label">Chế độ:</span>
+                <span class="confirm-row-label">${I18nModule.t('confirmRow.mode')}</span>
                 <span class="confirm-row-value">${modeLabel[mode] || mode}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">📖</span>
-                <span class="confirm-row-label">Trang:</span>
-                <span class="confirm-row-value">${pages} trang (${rangeStr})</span>
+                <span class="confirm-row-label">${I18nModule.t('confirmRow.pagesLabel')}</span>
+                <span class="confirm-row-value">${I18nModule.t('confirmRow.pages')(pages, rangeStr)}</span>
             </div>
             <div class="confirm-row highlight">
                 <span class="confirm-row-icon">🗒️</span>
-                <span class="confirm-row-label">Số tờ:</span>
+                <span class="confirm-row-label">${I18nModule.t('confirmRow.sheetsLabel')}</span>
                 <span class="confirm-row-value">${copiesStr}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">⏱️</span>
-                <span class="confirm-row-label">Thời gian:</span>
+                <span class="confirm-row-label">${I18nModule.t('confirmRow.time')}</span>
                 <span class="confirm-row-value">${timeStr}</span>
             </div>
         `;
@@ -4368,9 +4375,9 @@ const PreviewPanelModule = {
             const totalSheets = sheets.length;
 
             if (sheet.isBooklet) {
-                label.textContent = `Tờ ${sheet.sheetIndex}/${totalSheets} · Booklet`;
+                label.textContent = I18nModule.t('sheet.bookletLabel')(sheet.sheetIndex, totalSheets);
             } else {
-                label.textContent = `Tờ ${sheet.sheetIndex}/${totalSheets}`;
+                label.textContent = I18nModule.t('sheet.label')(sheet.sheetIndex, totalSheets);
             }
             sheetCard.appendChild(label);
 
@@ -4405,7 +4412,7 @@ const PreviewPanelModule = {
                         const xBtn = document.createElement('button');
                         xBtn.className = 'blank-delete-btn';
                         xBtn.textContent = '×';
-                        xBtn.title = 'Xóa trang trắng';
+                        xBtn.title = I18nModule.t('sheet.deleteBlank');
                         xBtn.addEventListener('click', (e) => {
                             e.stopPropagation();
                             e.preventDefault();
@@ -4498,24 +4505,24 @@ const PreviewPanelModule = {
                 frontGroup.className = 'sheet-face-group';
                 const frontLabel = document.createElement('div');
                 frontLabel.className = 'sheet-face-group-label';
-                frontLabel.textContent = 'Mặt trước';
+                frontLabel.textContent = I18nModule.t('sheet.front');
                 frontGroup.appendChild(frontLabel);
                 const frontRow = document.createElement('div');
                 frontRow.className = 'sheet-face-group-row';
-                frontRow.appendChild(makeFace(sheet.front, `Trang ${sheet.front ?? '—'}`));
-                frontRow.appendChild(makeFace(sheet.front2, `Trang ${sheet.front2 ?? '—'}`));
+                frontRow.appendChild(makeFace(sheet.front, I18nModule.t('sheet.bookletFacePage')(sheet.front)));
+                frontRow.appendChild(makeFace(sheet.front2, I18nModule.t('sheet.bookletFacePage')(sheet.front2)));
                 frontGroup.appendChild(frontRow);
 
                 const backGroup = document.createElement('div');
                 backGroup.className = 'sheet-face-group';
                 const backLabel2 = document.createElement('div');
                 backLabel2.className = 'sheet-face-group-label';
-                backLabel2.textContent = 'Mặt sau';
+                backLabel2.textContent = I18nModule.t('sheet.back');
                 backGroup.appendChild(backLabel2);
                 const backRow = document.createElement('div');
                 backRow.className = 'sheet-face-group-row';
-                backRow.appendChild(makeFace(sheet.back, `Trang ${sheet.back ?? '—'}`));
-                backRow.appendChild(makeFace(sheet.back2, `Trang ${sheet.back2 ?? '—'}`));
+                backRow.appendChild(makeFace(sheet.back, I18nModule.t('sheet.bookletFacePage')(sheet.back)));
+                backRow.appendChild(makeFace(sheet.back2, I18nModule.t('sheet.bookletFacePage')(sheet.back2)));
                 backGroup.appendChild(backRow);
 
                 facesRow.appendChild(frontGroup);
@@ -4525,7 +4532,7 @@ const PreviewPanelModule = {
                 // BUG-3 fix: pass isLandscapeHint to front face so user-blank fronts (front===0)
                 // get correct landscape aspect-ratio when the sheet is landscape
                 const frontIsLandscape = sheet.isLandscape ?? (orientationMap?.get(sheet.front) ?? false);
-                const frontFace = makeFace(sheet.front, `Mặt trước · Trang ${sheet.front}`, frontIsLandscape);
+                const frontFace = makeFace(sheet.front, I18nModule.t('sheet.page')(sheet.front), frontIsLandscape);
                 // Add page-curl hint on front card (duplex always has back)
                 const frontCard = frontFace.querySelector('.preview-page-card');
                 if (frontCard) frontCard.classList.add('with-curl');
@@ -4533,8 +4540,8 @@ const PreviewPanelModule = {
                 {
                     const backPageNum = sheet.back;
                     const backFaceLabel = backPageNum
-                        ? `Mặt sau · Trang ${backPageNum}`
-                        : sheet.isSingleForced ? 'Mặt sau · (in 1 mặt)' : 'Mặt sau · Trang trắng';
+                        ? I18nModule.t('sheet.backPage')(backPageNum)
+                        : sheet.isSingleForced ? I18nModule.t('sheet.backSimplex') : I18nModule.t('sheet.backBlank');
                     const backIsLandscape = sheet.isLandscape ?? (orientationMap?.get(sheet.front) ?? false);
                     facesRow.appendChild(makeFace(backPageNum, backFaceLabel, backIsLandscape));
                 }
@@ -4553,7 +4560,7 @@ const PreviewPanelModule = {
         if (deselectedPages.length > 0) {
             const header = document.createElement('div');
             header.className = 'ejected-column-header';
-            header.textContent = 'Không in';
+            header.textContent = I18nModule.t('sheet.noprint');
             ejectedCol.appendChild(header);
 
             deselectedPages.forEach(pageNum => {
@@ -4561,11 +4568,11 @@ const PreviewPanelModule = {
                 card.className = 'ejected-card';
                 card.dataset.fileId = fileEntry.id;   // required for _renderSheetPage
                 card.dataset.page = pageNum;           // required for _renderSheetPage
-                card.title = `Trang ${pageNum} — nhấn để thêm vào bản in`;
+                card.title = I18nModule.t('sheet.ejectHint')(pageNum);
 
                 const lbl = document.createElement('div');
                 lbl.className = 'ejected-card-label';
-                lbl.textContent = `Trang ${pageNum}`;
+                lbl.textContent = I18nModule.t('sheet.ejectLabel')(pageNum);
                 card.appendChild(lbl);
 
                 const img = document.createElement('img');
@@ -4979,7 +4986,7 @@ const PreviewPanelModule = {
             this._container.innerHTML = `
                 <div class="preview-empty">
                     <span class="preview-empty-icon">🖨</span>
-                    <span>Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
+                    <span>${I18nModule.t('preview.empty')}</span>
                 </div>`;
         }
         // Reset per-file DOM roots (all files removed — maps now stale)
@@ -5077,7 +5084,7 @@ const ThumbStripModule = {
             this._container.innerHTML = `
                 <div class="preview-empty" style="padding:16px;text-align:center">
                     <span class="preview-empty-icon">📄</span>
-                    <span style="font-size:12px">Chưa có file</span>
+                    <span style="font-size:12px">${I18nModule.t('preview.thumbEmpty')}</span>
                 </div>`;
             return;
         }
