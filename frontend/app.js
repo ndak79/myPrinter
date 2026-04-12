@@ -22,6 +22,88 @@ window.addEventListener('pdfjsReady', _initPdfWorker);
 // Also try immediately in case script already loaded
 _initPdfWorker();
 
+// ── i18n ─────────────────────────────────────────────────────────
+const I18nModule = {
+    _lang: localStorage.getItem('lang') || 'vi',
+    _strings: {},
+
+    init() {
+        this.setLang(this._lang);
+    },
+
+    t(key) {
+        // Support dot-notation keys like 'btn.print'
+        const val = key.split('.').reduce((o, k) => o?.[k], this._strings);
+        return (val !== undefined && val !== null) ? val : key;
+    },
+
+    setLang(lang) {
+        this._lang = lang;
+        this._strings = (lang === 'en' ? window.EN_STRINGS : window.VI_STRINGS) || {};
+        localStorage.setItem('lang', lang);
+        this.applyAll();
+        this._updateToggleBtn();
+    },
+
+    applyAll() {
+        // Update document title
+        document.title = this.t('app.title');
+        // Static text nodes (auto-detect HTML to use innerHTML vs textContent)
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.dataset.i18n;
+            const text = this.t(key);
+            if (text !== key) {
+                if (typeof text === 'string' && text.includes('<')) {
+                    el.innerHTML = text;
+                } else {
+                    el.textContent = text;
+                }
+            }
+        });
+        // Placeholders
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            const key = el.dataset.i18nPlaceholder;
+            const text = this.t(key);
+            if (text !== key) el.placeholder = text;
+        });
+        // Title attributes
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            const key = el.dataset.i18nTitle;
+            const text = this.t(key);
+            if (text !== key) el.title = text;
+        });
+        // Aria-label attributes
+        document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+            const key = el.dataset.i18nAria;
+            const text = this.t(key);
+            if (text !== key) el.setAttribute('aria-label', text);
+        });
+        // Re-render guide body if guide modal is open
+        if (!document.getElementById('guide-modal')?.classList.contains('hidden')) {
+            GuideModule.renderCurrentTab();
+        }
+        // Update printer select placeholder option
+        const printerSel = document.getElementById('printer-select');
+        if (printerSel) {
+            const placeholderOpt = printerSel.querySelector('option[value=""]');
+            if (placeholderOpt) placeholderOpt.textContent = this.t('header.printer.placeholder');
+        }
+        // Update mode select options
+        const modeSel = document.getElementById('mode-select');
+        if (modeSel) {
+            modeSel.querySelectorAll('option').forEach(opt => {
+                if (opt.value === 'duplex') opt.textContent = this.t('header.mode.duplex');
+                if (opt.value === 'booklet') opt.textContent = this.t('header.mode.booklet');
+            });
+        }
+    },
+
+    _updateToggleBtn() {
+        const btn = document.getElementById('lang-toggle-btn');
+        if (btn) btn.textContent = `🌐 ${this._lang.toUpperCase()}`;
+    },
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // AppState — All application state centralized here
 // ═══════════════════════════════════════════════════════════════════
