@@ -22,60 +22,66 @@
 <body>
 <div class="app-shell">
 
-  <!-- ── Row 1: Settings bar ────────────────────────────── -->
-  <header class="header-settings">
-    <!-- Printer selector -->
-    <select id="printer-select" class="header-select" aria-label="Chọn máy in">
-      <option value="">🖨 Chọn máy in…</option>
-    </select>
+<!-- ── Row 1: Settings bar ────────────────────────────── -->
+<header class="header-settings">
+  <!-- Printer selector -->
+  <select id="printer-select" class="header-select" aria-label="Chọn máy in" data-i18n-aria="header.printer.ariaLabel">
+    <option value="" data-i18n="header.printer.placeholder">🖨 Chọn máy in…</option>
+  </select>
 
-    <!-- Print mode selector -->
-    <select id="mode-select" class="header-select" aria-label="Chế độ in">
-      <option value="duplex">In thông minh</option>
-      <option value="booklet">In Sách</option>
-    </select>
+  <!-- Print mode selector -->
+  <select id="mode-select" class="header-select" aria-label="Chế độ in">
+    <option value="duplex" data-i18n="header.mode.duplex">In thông minh</option>
+    <option value="booklet" data-i18n="header.mode.booklet">In Sách</option>
+  </select>
 
-    <!-- Page range -->
-    <input id="page-range-input"
-           class="header-select"
-           type="text"
-           placeholder="Trang: 1-∞"
-           aria-label="Chọn trang"
-           style="width:110px; padding-right:8px; background-image:none;">
+  <!-- Page range -->
+  <input id="page-range-input"
+         class="header-select"
+         type="text"
+         placeholder="Trang: 1-∞"
+         data-i18n-placeholder="header.pageRange.placeholder"
+         aria-label="Chọn trang"
+         style="width:110px; padding-right:8px; background-image:none;">
 
-    <div class="header-spacer"></div>
+  <div class="header-spacer"></div>
 
-    <!-- View mode toggle -->
-    <div class="view-toggle-group" id="view-toggle-group" title="Chế độ xem">
-      <button class="view-toggle-btn active" id="view-btn-page" data-view="page">📄 Xem nội dung</button>
-      <button class="view-toggle-btn" id="view-btn-sheet" data-view="sheet">🖨 Xem trước khi in</button>
-    </div>
+  <!-- View mode toggle -->
+  <div class="view-toggle-group" id="view-toggle-group" data-i18n-title="header.viewGroup.title" title="Chế độ xem">
+    <button class="view-toggle-btn active" id="view-btn-page" data-view="page" data-i18n="view.page">📄 Xem nội dung</button>
+    <button class="view-toggle-btn" id="view-btn-sheet" data-view="sheet" data-i18n="view.sheet">🖨 Xem trước khi in</button>
+  </div>
 
-    <!-- Landscape mode toggle (only visible in sheet view) -->
-    <div class="sheet-view-modebar" id="sheet-view-modebar" style="display:none">
-      <span class="sheet-modebar-label">Trang ngang:</span>
-      <button class="sheet-modebar-btn active" data-lsmode="together">🔀 In cùng trang dọc</button>
-      <button class="sheet-modebar-btn" data-lsmode="separate">⬜ In tờ riêng</button>
-    </div>
+  <!-- Landscape mode toggle (only visible in sheet view) -->
+  <div class="sheet-view-modebar" id="sheet-view-modebar" style="display:none">
+    <span class="sheet-modebar-label" data-i18n="landscape.label">Trang ngang:</span>
+    <button class="sheet-modebar-btn active" data-lsmode="together" data-i18n="landscape.together">🔀 In cùng trang dọc</button>
+    <button class="sheet-modebar-btn" data-lsmode="separate" data-i18n="landscape.separate">⬜ In tờ riêng</button>
+  </div>
 
-    <!-- Print button -->
-    <button id="print-btn" class="btn-print" disabled>🖨 In</button>
-  </header>
+  <!-- Settings, Guide, Language buttons -->
+  <button id="printer-settings-btn" class="btn-icon-sm" disabled data-i18n="btn.settings">⚙️ Cài đặt</button>
+  <button id="guide-btn" class="btn-icon-sm" data-i18n="btn.guide">❓ Hướng dẫn</button>
+  <button id="lang-toggle-btn" class="btn-icon-sm">🌐 VI</button>
+
+  <!-- Print button -->
+  <button id="print-btn" class="btn-print" disabled data-i18n="btn.print">🖨 In</button>
+</header>
 
   <!-- ── Row 2: File tabs ───────────────────────────────── -->
   <div id="file-tabs" class="file-tabs-bar" role="tablist" aria-label="Các file đang mở">
     <div id="file-tab-list" class="file-tab-list"></div>
-    <button id="file-tab-add-btn" class="file-tab-add" type="button" title="Thêm file">+ Thêm file</button>
+    <button id="file-tab-add-btn" class="file-tab-add" type="button" data-i18n="btn.addFile" data-i18n-title="tab.addTitle">+ Thêm file</button>
     <!-- Copies widget (per-file) -->
     <div class="copies-widget" id="copies-widget">
-      <span class="copies-label">Số bản:</span>
+      <span class="copies-label" data-i18n="copies.label">Số bản:</span>
       <div class="copies-control">
-        <button class="copies-btn" id="copies-dec" title="Giảm số bản">−</button>
+        <button class="copies-btn" id="copies-dec" data-i18n-title="copies.decTitle" title="Giảm số bản">−</button>
         <span class="copies-val" id="copies-display">1</span>
-        <button class="copies-btn" id="copies-inc" title="Tăng số bản">+</button>
+        <button class="copies-btn" id="copies-inc" data-i18n-title="copies.incTitle" title="Tăng số bản">+</button>
       </div>
       <label class="collate-label" id="collate-label" style="display:none">
-        <input type="checkbox" id="collate-check" checked> Ghép bộ
+        <input type="checkbox" id="collate-check" checked><span data-i18n="copies.collate"> Ghép bộ</span>
       </label>
     </div>
   </div>
@@ -89,7 +95,7 @@
         <!-- Rendered by ThumbStripModule -->
         <div class="preview-empty" style="padding:16px;text-align:center">
           <span class="preview-empty-icon">📄</span>
-          <span>Chưa có file</span>
+          <span data-i18n="preview.thumbEmpty">Chưa có file</span>
         </div>
       </div>
     </nav>
@@ -98,14 +104,14 @@
     <main id="preview-panel" class="preview-panel" aria-label="Xem trước tài liệu">
       <div class="preview-empty">
         <span class="preview-empty-icon">🖨</span>
-        <span>Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
+        <span data-i18n="preview.empty">Kéo file vào đây hoặc nhấn <strong>+ Thêm file</strong></span>
       </div>
 
       <!-- Print History (collapsible at bottom of preview) -->
       <div class="history-section" style="margin-top:auto;">
         <div class="history-header">
-          <button class="btn-outline" id="history-toggle-btn" type="button">📋 Lịch sử in</button>
-          <button class="btn-outline" id="history-clear-btn" type="button" style="color:#ef4444;border-color:rgba(239,68,68,0.4)">Xóa</button>
+          <button class="btn-outline" id="history-toggle-btn" type="button" data-i18n="btn.historyToggle">📋 Lịch sử in</button>
+          <button class="btn-outline" id="history-clear-btn" type="button" data-i18n="btn.historyClear" style="color:#ef4444;border-color:rgba(239,68,68,0.4)">Xóa</button>
         </div>
         <div id="history-panel" class="history-panel hidden">
           <div id="history-list"></div>
@@ -125,7 +131,7 @@
 <!-- ── Upload drop overlay ───────────────────────────── -->
 <div class="upload-drop-hint" id="drop-hint">
   <span style="font-size:32px">📄</span>
-  <span style="font-size:18px; color:var(--color-accent); margin-left:12px">Thả file vào đây</span>
+  <span style="font-size:18px; color:var(--color-accent); margin-left:12px" data-i18n="preview.dropHint">Thả file vào đây</span>
 </div>
 
 <!-- ── Toast container ───────────────────────────────── -->
@@ -136,15 +142,15 @@
     <div class="modal-overlay" id="zoom-modal-overlay"></div>
     <div class="modal-content modal-zoom">
         <div class="modal-header">
-            <h2 id="zoom-page-title">Tất cả trang</h2>
+            <h2 id="zoom-page-title" data-i18n="zoom.allPages">Tất cả trang</h2>
             <button class="modal-close" id="zoom-modal-close">✕</button>
         </div>
         <div class="modal-body modal-zoom-body">
             <div class="zoom-toolbar">
-                <button class="zoom-action-btn" id="all-double-btn">Tất cả 2 mặt</button>
-                <button class="zoom-action-btn" id="all-single-btn">Tất cả 1 mặt</button>
-                <button class="zoom-action-btn" id="deselect-all-btn">✕ Bỏ chọn tất cả</button>
-                <span class="zoom-page-info" id="zoom-page-info">Click phải vào trang để chọn in 1 mặt</span>
+                <button class="zoom-action-btn" id="all-double-btn" data-i18n="zoom.allDouble">Tất cả 2 mặt</button>
+                <button class="zoom-action-btn" id="all-single-btn" data-i18n="zoom.allSingle">Tất cả 1 mặt</button>
+                <button class="zoom-action-btn" id="deselect-all-btn" data-i18n="zoom.deselectAll">✕ Bỏ chọn tất cả</button>
+                <span class="zoom-page-info" id="zoom-page-info" data-i18n="zoom.hint">Click phải vào trang để chọn in 1 mặt</span>
             </div>
             <div class="zoom-canvas-container">
                 <canvas id="zoom-canvas"></canvas>
@@ -158,7 +164,7 @@
     <div class="modal-overlay"></div>
     <div class="modal-content modal-flip">
         <div class="modal-header">
-            <h2>📄 Hướng Dẫn Đặt Giấy</h2>
+            <h2 data-i18n="flip.title">📄 Hướng Dẫn Đặt Giấy</h2>
         </div>
         <div class="modal-body">
             <!-- Animated flip diagram -->
@@ -169,29 +175,29 @@
             <div class="flip-checklist" id="flip-checklist">
                 <label class="flip-check-item">
                     <input type="checkbox" class="flip-checkbox" id="flip-check-1">
-                    <span class="flip-check-label">1. Chờ máy in xong — đèn ngừng nhấp nháy</span>
+                    <span class="flip-check-label" data-i18n="flip.check1">1. Chờ máy in xong — đèn ngừng nhấp nháy</span>
                 </label>
                 <label class="flip-check-item">
                     <input type="checkbox" class="flip-checkbox" id="flip-check-2">
-                    <span class="flip-check-label">2. Lấy chồng giấy ra — theo đúng hướng mũi tên</span>
+                    <span class="flip-check-label" data-i18n="flip.check2">2. Lấy chồng giấy ra — theo đúng hướng mũi tên</span>
                 </label>
                 <label class="flip-check-item">
                     <input type="checkbox" class="flip-checkbox" id="flip-check-3">
-                    <span class="flip-check-label">3. Đặt lại vào khay — mặt trắng ngửa lên</span>
+                    <span class="flip-check-label" data-i18n="flip.check3">3. Đặt lại vào khay — mặt trắng ngửa lên</span>
                 </label>
             </div>
 
             <!-- Auto-continue timer (optional) -->
             <label class="flip-timer-toggle">
                 <input type="checkbox" id="flip-timer-enable">
-                <span>Tự động tiếp tục sau <strong>30 giây</strong></span>
+                <span data-i18n="flip.autoTimer">Tự động tiếp tục sau <strong>30 giây</strong></span>
             </label>
             <div class="flip-timer-bar hidden" id="flip-timer-bar">
                 <div class="flip-timer-fill" id="flip-timer-fill"></div>
             </div>
         </div>
         <div class="modal-footer">
-            <button id="continue-btn" class="btn-primary flip-continue-btn">✓ Đã Đặt Giấy - Tiếp Tục In</button>
+            <button id="continue-btn" class="btn-primary flip-continue-btn" data-i18n="flip.continue">✓ Đã Đặt Giấy - Tiếp Tục In</button>
         </div>
     </div>
 </div>
@@ -203,32 +209,32 @@
     <!-- Mặt in: 2 mặt / 1 mặt -->
     <div class="context-menu-item cm-has-sub" data-submenu="sub-sides">
         <span class="context-menu-icon">📄</span>
-        <span>Mặt in</span>
+        <span data-i18n="ctx.sides">Mặt in</span>
         <span class="context-menu-arrow">›</span>
         <div class="context-submenu hidden" id="sub-sides">
             <div class="context-menu-item" data-action="double-sided">
                 <span class="context-menu-icon">📄</span>
-                <span>2 mặt</span>
+                <span data-i18n="ctx.double">2 mặt</span>
                 <span class="context-menu-check" id="check-double">✓</span>
             </div>
             <div class="context-menu-item" data-action="single-sided">
                 <span class="context-menu-icon">📃</span>
-                <span>1 mặt</span>
+                <span data-i18n="ctx.single">1 mặt</span>
                 <span class="context-menu-check" id="check-single"></span>
             </div>
             <div class="context-menu-separator"></div>
             <div class="context-menu-item" data-action="all-double-sided">
                 <span class="context-menu-icon">📑</span>
-                <span>Tất cả: 2 mặt</span>
+                <span data-i18n="ctx.allDouble">Tất cả: 2 mặt</span>
             </div>
             <div class="context-menu-item" data-action="all-single-sided">
                 <span class="context-menu-icon">📋</span>
-                <span>Tất cả: 1 mặt</span>
+                <span data-i18n="ctx.allSingle">Tất cả: 1 mặt</span>
             </div>
             <div class="context-menu-separator"></div>
             <div class="context-menu-item" data-action="deselect-all">
                 <span class="context-menu-icon">✕</span>
-                <span>Bỏ chọn tất cả</span>
+                <span data-i18n="ctx.deselectAll">Bỏ chọn tất cả</span>
             </div>
         </div>
     </div>
@@ -236,34 +242,34 @@
     <!-- Xoay -->
     <div class="context-menu-item cm-has-sub" data-submenu="sub-rotate">
         <span class="context-menu-icon">🔄</span>
-        <span>Xoay trang</span>
+        <span data-i18n="ctx.rotate">Xoay trang</span>
         <span class="context-menu-arrow">›</span>
         <div class="context-submenu hidden" id="sub-rotate">
             <div class="context-menu-item" data-action="rotate-cw90">
                 <span class="context-menu-icon">↻</span>
-                <span>Xoay phải 90°</span>
+                <span data-i18n="ctx.rotateCW">Xoay phải 90°</span>
             </div>
             <div class="context-menu-item" data-action="rotate-ccw90">
                 <span class="context-menu-icon">↺</span>
-                <span>Xoay trái 90°</span>
+                <span data-i18n="ctx.rotateCCW">Xoay trái 90°</span>
             </div>
             <div class="context-menu-item" data-action="rotate-180">
                 <span class="context-menu-icon">🔃</span>
-                <span>Xoay 180°</span>
+                <span data-i18n="ctx.rotate180">Xoay 180°</span>
             </div>
             <div class="context-menu-separator"></div>
             <div class="context-menu-item" data-action="rotate-fliph">
                 <span class="context-menu-icon">↔</span>
-                <span>Lật ngang</span>
+                <span data-i18n="ctx.flipH">Lật ngang</span>
             </div>
             <div class="context-menu-item" data-action="rotate-flipv">
                 <span class="context-menu-icon">↕</span>
-                <span>Lật dọc</span>
+                <span data-i18n="ctx.flipV">Lật dọc</span>
             </div>
             <div class="context-menu-separator"></div>
             <div class="context-menu-item" data-action="rotate-reset">
                 <span class="context-menu-icon">↩</span>
-                <span>Reset về gốc</span>
+                <span data-i18n="ctx.rotateReset">Reset về gốc</span>
             </div>
         </div>
     </div>
@@ -271,25 +277,25 @@
     <!-- Chèn — chỉ hiện trong sheet view -->
     <div class="context-menu-item cm-has-sub cm-sheet-only" data-submenu="sub-insert">
         <span class="context-menu-icon">➕</span>
-        <span>Chèn</span>
+        <span data-i18n="ctx.insert">Chèn</span>
         <span class="context-menu-arrow">›</span>
         <div class="context-submenu hidden" id="sub-insert">
             <div class="context-menu-item" data-action="insert-blank-before">
                 <span class="context-menu-icon">📄</span>
-                <span>Trang trắng trước</span>
+                <span data-i18n="ctx.blankBefore">Trang trắng trước</span>
             </div>
             <div class="context-menu-item" data-action="insert-blank-after">
                 <span class="context-menu-icon">📄</span>
-                <span>Trang trắng sau</span>
+                <span data-i18n="ctx.blankAfter">Trang trắng sau</span>
             </div>
             <div class="context-menu-separator"></div>
             <div class="context-menu-item" data-action="insert-image-before">
                 <span class="context-menu-icon">🖼</span>
-                <span>Ảnh trước</span>
+                <span data-i18n="ctx.imageBefore">Ảnh trước</span>
             </div>
             <div class="context-menu-item" data-action="insert-image-after">
                 <span class="context-menu-icon">🖼</span>
-                <span>Ảnh sau</span>
+                <span data-i18n="ctx.imageAfter">Ảnh sau</span>
             </div>
         </div>
     </div>
@@ -306,15 +312,15 @@
     <div class="modal-overlay" id="confirm-modal-overlay"></div>
     <div class="modal-content modal-confirm">
         <div class="modal-header">
-            <h2>🖨️ Xác Nhận Lệnh In</h2>
+            <h2 data-i18n="confirm.title">🖨️ Xác Nhận Lệnh In</h2>
             <button class="modal-close" id="confirm-modal-close">✕</button>
         </div>
         <div class="modal-body">
             <div id="confirm-print-summary" class="confirm-print-summary"></div>
         </div>
         <div class="modal-footer">
-            <button id="confirm-print-cancel-btn" class="btn-outline">Huỷ</button>
-            <button id="confirm-print-ok-btn" class="btn-primary">✓ Xác Nhận In</button>
+            <button id="confirm-print-cancel-btn" class="btn-outline" data-i18n="confirm.cancel">Huỷ</button>
+            <button id="confirm-print-ok-btn" class="btn-primary" data-i18n="confirm.ok">✓ Xác Nhận In</button>
         </div>
     </div>
 </div>
@@ -324,7 +330,29 @@
     <canvas id="hover-preview-canvas" width="280" height="360"></canvas>
 </div>
 
-<script src="app.js?v=19"></script>
+<!-- ── User Guide Modal ───────────────────────────────── -->
+<div id="guide-modal" class="modal hidden">
+    <div class="modal-overlay" id="guide-modal-overlay"></div>
+    <div class="modal-content modal-guide">
+        <div class="modal-header">
+            <h2 data-i18n="guide.title">Hướng dẫn sử dụng</h2>
+            <button class="modal-close" id="guide-modal-close">✕</button>
+        </div>
+        <div class="guide-tabs">
+            <button class="guide-tab active" data-tab="overview" data-i18n="guide.tab.overview">Tổng quan</button>
+            <button class="guide-tab" data-tab="smart" data-i18n="guide.tab.smart">In thông minh</button>
+            <button class="guide-tab" data-tab="booklet" data-i18n="guide.tab.booklet">In Sách</button>
+            <button class="guide-tab" data-tab="manual" data-i18n="guide.tab.manual">In thủ công</button>
+        </div>
+        <div class="modal-body guide-body" id="guide-body">
+            <!-- Content injected by GuideModule.renderCurrentTab() -->
+        </div>
+    </div>
+</div>
+
+<script src="i18n/vi.js"></script>
+<script src="i18n/en.js"></script>
+<script src="app.js?v=20"></script>
 </body>
 
 </html>
