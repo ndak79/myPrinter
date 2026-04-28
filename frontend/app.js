@@ -809,14 +809,6 @@ const PrintPreviewModule = {
 
         div.appendChild(header);
 
-        // Click = toggle selection (in main view)
-        div.addEventListener('click', (e) => {
-            if (e.button !== 0) return;
-            if (AppState.activeFile) togglePageSelection(AppState.activeFile, pageNum);
-            this._syncAll();
-            PrintModule.updateButton();
-        });
-
         // Right-click
         div.addEventListener('contextmenu', (e) => {
             e.preventDefault();
@@ -2053,13 +2045,7 @@ const ZoomModal = {
 
         div.appendChild(header); div.appendChild(badge); div.appendChild(canvas);
 
-        div.addEventListener('click', e => {
-            if (e.button !== 0) return;
-            if (AppState.activeFile) togglePageSelection(AppState.activeFile, n);
-            PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
-            PrintModule.updateButton(); this._updateModalStyles();
-        });
-        div.addEventListener('contextmenu', e => { e.preventDefault(); ContextMenu.show(e, n); });
+        div.addEventListener('contextmenu', function(e) { e.preventDefault(); ContextMenu.show(e, n); });
         return div;
     },
 
@@ -2170,7 +2156,22 @@ const ContextMenu = {
             sidesItem.style.display = (opts.isUserBlank) ? 'none' : '';
         }
 
-        // Close any open submenus
+
+        // Show/hide + toggle text for deselect-page / reselect-page
+        const deselectPageItem = document.getElementById('cm-deselect-page');
+        if (deselectPageItem) {
+            if (pageNum > 0 && !opts.isUserBlank) {
+                const isSelected = AppState.selectedPages.has(pageNum);
+                deselectPageItem.dataset.action = isSelected ? 'deselect-page' : 'reselect-page';
+                const span = deselectPageItem.querySelector('[data-i18n]');
+                if (span) span.textContent = isSelected
+                    ? I18nModule.t('ctx.deselectPage')
+                    : I18nModule.t('ctx.reselectPage');
+                deselectPageItem.style.display = '';
+            } else {
+                deselectPageItem.style.display = 'none';
+            }
+        }
         menu.querySelectorAll('.context-submenu').forEach(s => s.classList.add('hidden'));
 
         // Position
@@ -2226,6 +2227,25 @@ const ContextMenu = {
             case 'insert-blank-after':  this._insertBlank(n, 'after');  return;
             case 'insert-image-before': this._pickImage('before'); return;
             case 'insert-image-after':  this._pickImage('after');  return;
+            case 'deselect-page':
+                if (n && AppState.activeFile) {
+                    togglePageSelection(AppState.activeFile, n);
+                    PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
+                    ZoomModal._updateModalStyles(); this.hide();
+                    PrintPreviewModule.onStateChanged();
+                    ThumbStripModule._syncSelectionHighlights?.();
+                    if (AppState.viewMode === 'sheet' && AppState.activeFile) {
+                        PreviewPanelModule.render(AppState.activeFile);
+                    } else {
+                        PreviewPanelModule.onStateChanged();
+                    }
+                    PrintModule.updateButton();
+                    this._scrollAndBlinkEjected(n);
+                }
+                return;
+            case 'reselect-page':
+                if (n && AppState.activeFile) togglePageSelection(AppState.activeFile, n);
+                break;
         }
         PreviewModule.updateThumbnails(); PageSelectModule.updateDisplay();
         ZoomModal._updateModalStyles(); this.hide();
@@ -2345,11 +2365,27 @@ const ContextMenu = {
         }
         ZoomModal._updateModalStyles();
     },
+
+    _scrollAndBlinkEjected(pageNum) {
+        setTimeout(function() {
+            const card = document.querySelector('.ejected-card[data-page="' + pageNum + '"]');
+            if (!card) return;
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            const allCards = document.querySelectorAll('.ejected-card');
+            if (allCards.length <= 1) return;
+            let count = 0;
+            const iv = setInterval(function() {
+                card.style.outline = (count % 2 === 0) ? '2px solid rgba(239,68,68,0.75)' : 'none';
+                if (++count >= 12) { clearInterval(iv); card.style.outline = ''; }
+            }, 280);
+        }, 150);
+    },
+
 };
 
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 // CopiesModule — Copies counter + collate toggle
-// ═══════════════════════════════════════════════════════════════════
+// ===================================================================
 const CopiesModule = {
     get copies()  { return AppState.activeFile?.copies  ?? 1;    },
     get collate() { return AppState.activeFile?.collate ?? true;  },
@@ -4160,18 +4196,6 @@ const PreviewPanelModule = {
             if (fileEntry.singleSidedPages?.has(p) && fileEntry.selectedPages?.has(p))
                 card.classList.add('single-sided-print');
 
-            // Click = toggle page selection
-            card.addEventListener('click', (e) => {
-                if (e.button !== 0) return;
-                const pageNum = parseInt(card.dataset.page);
-                const entry   = AppState.files.find(f => f.id === card.dataset.fileId);
-                if (!entry) return;
-                togglePageSelection(entry, pageNum);
-                this._syncSelectionUI();
-                PrintModule.updateButton();
-                PageSelectModule.updateDisplay();
-            });
-
             // Right-click = context menu
             card.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
@@ -4545,17 +4569,6 @@ const PreviewPanelModule = {
                     if (fileEntry.singleSidedPages?.has(pageNum) && fileEntry.selectedPages?.has(pageNum))
                         card.classList.add('single-sided-print');
 
-                    card.addEventListener('click', (e) => {
-                        if (e.button !== 0) return;
-                        const entry = AppState.files.find(f => f.id === card.dataset.fileId);
-                        if (!entry) return;
-                        const pn = parseInt(card.dataset.page);
-                        togglePageSelection(entry, pn);
-                        PreviewPanelModule.render(entry); // B3 fix: rebuild layout + ejected-column
-                        PrintModule.updateButton();
-                        PageSelectModule.updateDisplay();
-                    });
-
                     card.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         ContextMenu.show(e, parseInt(card.dataset.page));
@@ -4671,7 +4684,13 @@ const PreviewPanelModule = {
             });
         }
 
+        // Vertical separator between sheets and ejected columns
+        const separator = document.createElement('div');
+        separator.className = 'ejected-separator';
+        separator.hidden = (deselectedPages.length === 0);
+
         inner.appendChild(sheetsCol);
+        inner.appendChild(separator);
         inner.appendChild(ejectedCol);
         sheetRoot.appendChild(inner);
 

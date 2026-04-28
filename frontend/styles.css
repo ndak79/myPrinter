@@ -3058,7 +3058,7 @@ kbd {
   display:          flex;
   flex-direction:   row;
   align-items:      flex-start;
-  gap:              24px;
+  gap:              0;
   width:            100%;
 }
 
@@ -3077,25 +3077,37 @@ kbd {
 
 /* ── Ejected column ────────────────────────────────────────────────── */
 .ejected-column {
-  width:            180px;
+  width:            200px;
   flex-shrink:      0;
   display:          flex;
   flex-direction:   column;
   gap:              12px;
   padding-top:      4px;
+  padding-left:     16px;
 }
 
 /* Fix: author display:flex defeats UA [hidden]{display:none} — must override explicitly */
 .ejected-column[hidden] { display: none; }
 
+/* Full-height vertical divider between sheets-column and ejected-column */
+.ejected-separator {
+  width:            2px;
+  flex-shrink:      0;
+  align-self:       stretch;
+  background:       var(--color-border-strong, #ced4da);
+  margin:           0 20px;
+}
+.ejected-separator[hidden] { display: none; }
+
 .ejected-column-header {
-  font-size:        11px;
-  font-weight:      600;
-  color:            var(--color-text-muted, #9ca3af);
+  font-size:        14px;
+  font-weight:      700;
+  color:            #9ca3af;
   text-transform:   uppercase;
-  letter-spacing:   0.06em;
-  padding:          0 2px 4px;
-  border-bottom:    1px solid rgba(255,255,255,0.08);
+  letter-spacing:   0.08em;
+  text-align:       center;
+  padding:          0 4px 8px;
+  border-bottom:    none;
 }
 
 .ejected-card {
@@ -3107,13 +3119,13 @@ kbd {
   border-radius:    8px;
   padding:          8px;
   background:       rgba(255,255,255,0.02);
-  border:           1px solid rgba(255,255,255,0.06);
+  border:           1px solid rgba(239,68,68,0.22);
   transition:       background 0.15s, border-color 0.15s;
 }
 
 .ejected-card:hover {
-  background:       rgba(102,126,234,0.10);
-  border-color:     rgba(102,126,234,0.35);
+  background:       rgba(239,68,68,0.08);
+  border-color:     rgba(239,68,68,0.50);
 }
 
 /* B2 fix: ejected card uses img.sheet-page-img — override opacity only */

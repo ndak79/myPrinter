@@ -94,6 +94,8 @@ window.VI_STRINGS = {
     imageBefore: 'Ảnh trước',
     imageAfter: 'Ảnh sau',
     blankPage: 'Trang trắng',
+    deselectPage: 'Bỏ in trang này',
+    reselectPage: 'In lại trang này',
     page: (n) => `Trang ${n}`,
   },
 

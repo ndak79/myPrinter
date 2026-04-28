@@ -83,6 +83,8 @@ window.EN_STRINGS = {
     imageBefore: 'Image before',
     imageAfter: 'Image after',
     blankPage: 'Blank page',
+    deselectPage: 'Skip this page',
+    reselectPage: 'Print this page',
     page: (n) => `Page ${n}`,
   },
 
