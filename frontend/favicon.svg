@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <!-- Green rounded background -->
+  <rect width="48" height="48" rx="10" fill="#10b981"/>
+  <!-- Paper input slot (top) -->
+  <rect x="13" y="7" width="22" height="5" rx="2" fill="#ecfdf5"/>
+  <!-- Printer body -->
+  <rect x="6" y="14" width="36" height="20" rx="5" fill="#059669"/>
+  <!-- Paper output slot opening -->
+  <rect x="10" y="19" width="28" height="11" rx="2" fill="#ecfdf5"/>
+  <!-- Text lines on paper -->
+  <rect x="13" y="22" width="18" height="2" rx="1" fill="#10b981" opacity=".55"/>
+  <rect x="13" y="26" width="13" height="2" rx="1" fill="#10b981" opacity=".55"/>
+  <!-- Status LED -->
+  <circle cx="36" cy="20" r="2.5" fill="#34d399"/>
+  <!-- Paper coming out bottom -->
+  <rect x="14" y="32" width="20" height="9" rx="2" fill="#ecfdf5"/>
+</svg>

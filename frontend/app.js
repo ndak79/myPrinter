@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════════
+﻿// ═══════════════════════════════════════════════════════════════════
 // myPrinter — app.js
 // Structure: AppState + 6 Module Objects + DOMContentLoaded init
 // Compatible with file:// (no ES import/export)
@@ -166,6 +166,7 @@ const AppState = {
 
     addFile(entry) {
         this.files.push(entry);
+        document.body.classList.add('has-files');
         this.activeFileIndex = this.files.length - 1;
     },
 
@@ -177,6 +178,7 @@ const AppState = {
             entry.pdfDoc = null;
         }
         this.files.splice(index, 1);
+        document.body.classList.toggle('has-files', this.files.length > 0);
         if (this.files.length === 0) {
             this.activeFileIndex = -1;
         } else if (index < this.activeFileIndex) {
@@ -2588,6 +2590,10 @@ const PrintModule = {
             await this._continuePrint();
             document.getElementById('flip-modal').classList.add('hidden');
         });
+        // Close button on flip modal (user can dismiss and reopen via Cancel Print)
+        document.getElementById('flip-modal-close')?.addEventListener('click', () => {
+            document.getElementById('flip-modal').classList.add('hidden');
+        });
     },
 
     updateButton() {
@@ -3032,51 +3038,120 @@ const PrintModule = {
     },
 
     _showFlipModal(instruction) {
-        const visualType = instruction?.visualType || 'vertical';
-        document.getElementById('instruction-visual').innerHTML = visualType === 'horizontal'
-            ? `
-                <svg width="260" height="180" viewBox="0 0 260 180">
-                    <defs>
-                        <marker id="arrow-flip" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-                            <polygon points="0 0,10 3.5,0 7" fill="#10b981"/>
-                        </marker>
-                    </defs>
-                    <g class="flip-paper-anim">
-                        <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
-                        <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
-                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">${I18nModule.t('flip.paperPrinted')}</text>
-                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">${I18nModule.t('flip.side1Done')}</text>
-                    </g>
-                    <path d="M 58 80 L 30 80" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
-                    <path d="M 202 80 L 230 80" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
-                    <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
-                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">${I18nModule.t('flip.paperTray')}</text>
-                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">${I18nModule.t('flip.horizontalSteps')}</text>
-                </svg>
-            `
-            : `
-                <svg width="260" height="180" viewBox="0 0 260 180">
-                    <defs>
-                        <marker id="arrow-flip" markerWidth="10" markerHeight="7" refX="0" refY="3.5" orient="auto">
-                            <polygon points="0 0,10 3.5,0 7" fill="#10b981"/>
-                        </marker>
-                    </defs>
-                    <g class="flip-paper-anim">
-                        <rect x="80" y="40" width="100" height="80" fill="#f8fafc" stroke="#64748b" stroke-width="2" rx="2"/>
-                        <rect x="83" y="43" width="94" height="74" fill="white" stroke="#94a3b8" stroke-width="1"/>
-                        <text x="130" y="82" font-size="13" text-anchor="middle" fill="#94a3b8">${I18nModule.t('flip.paperPrinted')}</text>
-                        <text x="130" y="98" font-size="11" text-anchor="middle" fill="#cbd5e1">${I18nModule.t('flip.side1Done')}</text>
-                    </g>
-                    <path d="M 130 125 L 130 155" stroke="#10b981" stroke-width="3" fill="none" marker-end="url(#arrow-flip)"/>
-                    <rect x="60" y="158" width="140" height="14" fill="#e2e8f0" stroke="#667eea" stroke-width="2" rx="3"/>
-                    <text x="130" y="169" font-size="10" text-anchor="middle" fill="#667eea">${I18nModule.t('flip.paperTray')}</text>
-                    <text x="130" y="25" font-size="12" text-anchor="middle" fill="#10b981" font-weight="bold">${I18nModule.t('flip.verticalSteps')}</text>
-                </svg>
-            `;
+        document.getElementById('instruction-visual').innerHTML = `
+        <div class="p3wrap">
+         <svg viewBox="0 0 420 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:260px">
+          <defs>
+           <linearGradient id="gTop" x1="0" y1="0" x2="1" y2="1">
+             <stop offset="0%"  stop-color="#c2692e"/>
+             <stop offset="100%" stop-color="#92400e"/>
+           </linearGradient>
+           <linearGradient id="gFront" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0%"  stop-color="#7c3910"/>
+             <stop offset="100%" stop-color="#5a2a07"/>
+           </linearGradient>
+           <linearGradient id="gRight" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0%"  stop-color="#5a2a07"/>
+             <stop offset="100%" stop-color="#3b1a04"/>
+           </linearGradient>
+           <linearGradient id="gPaper" x1="0" y1="0" x2="1" y2="1">
+             <stop offset="0%"  stop-color="#ffffff"/>
+             <stop offset="100%" stop-color="#f1f5f9"/>
+           </linearGradient>
+           <linearGradient id="gPaperR" x1="0" y1="0" x2="1" y2="0">
+             <stop offset="0%"  stop-color="#cbd5e1"/>
+             <stop offset="100%" stop-color="#94a3b8"/>
+           </linearGradient>
+           <linearGradient id="gPaperB" x1="0" y1="0" x2="0" y2="1">
+             <stop offset="0%"  stop-color="#cbd5e1"/>
+             <stop offset="100%" stop-color="#94a3b8"/>
+           </linearGradient>
+           <linearGradient id="gTrayOut" x1="0" y1="0" x2="1" y2="1">
+             <stop offset="0%"  stop-color="#34d399"/>
+             <stop offset="100%" stop-color="#059669"/>
+           </linearGradient>
+          </defs>
 
+          <!-- ===== PRINTER ISO (top-front-right view) ===== -->
+          <!-- Iso math: printer centered ~(210,140)
+               Top face    : parallelogram, skewed
+               Front face  : rectangle below top-front edge
+               Right face  : parallelogram, right of front
+          -->
+
+          <!-- RIGHT face (darkest) -->
+          <polygon points="270,80  310,100  310,180  270,160" fill="url(#gRight)" stroke="#1a0a00" stroke-width="1"/>
+
+          <!-- FRONT face -->
+          <polygon points="110,100  270,100  270,180  110,180" fill="url(#gFront)" stroke="#1a0a00" stroke-width="1"/>
+
+          <!-- TOP face (lightest, isometric top) -->
+          <polygon points="110,40   270,40   310,60   150,60" fill="url(#gTop)" stroke="#1a0a00" stroke-width="1"/>
+
+          <!-- Connecting edges top-to-body -->
+          <line x1="110" y1="40" x2="110" y2="100" stroke="#1a0a00" stroke-width="1"/>
+          <line x1="270" y1="40" x2="270" y2="100" stroke="#1a0a00" stroke-width="1"/>
+          <line x1="310" y1="60" x2="310" y2="100" stroke="#1a0a00" stroke-width="1"/>
+
+          <!-- OUTPUT TRAY slot on top face -->
+          <polygon points="140,46  230,46  256,57  166,57" fill="#3b1a04" stroke="#1a0a00" stroke-width="0.5"/>
+          <!-- Paper in output tray (white sheet, iso) -->
+          <polygon points="148,44  228,44  250,54  170,54" fill="white" stroke="#10b981" stroke-width="1.5"/>
+          <!-- Printed lines on output paper -->
+          <line x1="160" y1="47" x2="220" y2="47" stroke="#94a3b8" stroke-width="1"/>
+          <line x1="160" y1="50" x2="210" y2="50" stroke="#94a3b8" stroke-width="1"/>
+          <text x="232" y="52" font-size="7" fill="#10b981" font-weight="700">✓</text>
+
+          <!-- LED dot on front face -->
+          <circle cx="255" cy="115" r="5" fill="#10b981">
+            <animate attributeName="opacity" values="1;0.2;1" dur="1.4s" repeatCount="indefinite"/>
+          </circle>
+
+          <!-- INPUT TRAY: protrudes below front face -->
+          <!-- Tray top face (iso) -->
+          <polygon points="120,180  260,180  295,198  155,198" fill="#3d2c1e" stroke="#1a0a00" stroke-width="1"/>
+          <!-- Tray front face -->
+          <polygon points="120,180  260,180  260,195  120,195" fill="#4e3728" stroke="#1a0a00" stroke-width="1"/>
+          <!-- Tray right face -->
+          <polygon points="260,180  295,198  295,213  260,195" fill="#2c1a10" stroke="#1a0a00" stroke-width="1"/>
+          <!-- Slot opening on tray top -->
+          <polygon points="140,182  245,182  278,196  173,196" fill="#1a0a00" stroke="none"/>
+
+          <!-- Labels -->
+          <text x="190" y="25" font-size="10" text-anchor="middle" fill="#64748b">Khay ra (Output)</text>
+          <line x1="190" y1="27" x2="190" y2="42" stroke="#64748b" stroke-width="0.8" stroke-dasharray="2,2"/>
+          <text x="210" y="222" font-size="10" text-anchor="middle" fill="#64748b">Khay nạp (Input)</text>
+          <line x1="210" y1="218" x2="210" y2="200" stroke="#64748b" stroke-width="0.8" stroke-dasharray="2,2"/>
+
+          <!-- ===== ANIMATED PAPER (iso 3D sheet) ===== -->
+          <!-- Paper moves: start at output tray (top),
+               arc out toward viewer (scale up, move forward),
+               then into input tray (scale down, move back) -->
+          <g id="movingPaper">
+           <!-- Paper top face -->
+           <polygon class="mp-top"  points="0,0  60,0  72,8  12,8"  fill="url(#gPaper)" stroke="#94a3b8" stroke-width="1"/>
+           <!-- Paper right edge (thickness) -->
+           <polygon class="mp-rgt"  points="60,0  72,8  72,22  60,14" fill="url(#gPaperR)" stroke="#94a3b8" stroke-width="0.5"/>
+           <!-- Paper front face -->
+           <polygon class="mp-frt"  points="0,0  60,0  60,14  0,14"  fill="url(#gPaper)" stroke="#94a3b8" stroke-width="1"/>
+           <!-- Printed lines on paper face -->
+           <line class="mp-l1" x1="4" y1="4"  x2="54" y2="4"  stroke="#94a3b8" stroke-width="0.8"/>
+           <line class="mp-l2" x1="4" y1="7"  x2="44" y2="7"  stroke="#94a3b8" stroke-width="0.8"/>
+           <line class="mp-l3" x1="4" y1="10" x2="48" y2="10" stroke="#94a3b8" stroke-width="0.8"/>
+           <text class="mp-lbl" x="38" y="13" font-size="5" fill="#10b981" font-weight="700">✓M1</text>
+           <!-- Paper bottom face (visible when paper arcs toward viewer) -->
+           <polygon class="mp-bot" points="0,14  60,14  72,22  12,22" fill="url(#gPaperB)" stroke="#94a3b8" stroke-width="0.5"/>
+          </g>
+
+          <!-- Step labels -->
+          <text id="sl1" x="80"  y="248" font-size="10" text-anchor="middle" fill="#94a3b8">① Lấy từ khay ra</text>
+          <text id="sl2" x="340" y="248" font-size="10" text-anchor="middle" fill="#94a3b8">② Đưa vào khay nạp</text>
+
+         </svg>
+        </div>
+        `;
         document.getElementById('instruction-text').textContent =
-            instruction || I18nModule.t('flip.defaultInstruction');
-
+            (typeof instruction === 'object' ? instruction?.text || instruction?.Text : instruction) || I18nModule.t('flip.defaultInstruction');
         // Reset checklist
         ['flip-check-1', 'flip-check-2', 'flip-check-3'].forEach(id => {
             const el = document.getElementById(id);
@@ -5500,6 +5575,7 @@ const LangToggleModule = {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
+    I18nModule.init(); // Init first so _strings is ready for all other modules
     ThemeModule.init();
     PrinterModule.init();
     UploadModule.init();
@@ -5522,7 +5598,7 @@ document.addEventListener('DOMContentLoaded', () => {
     GuideModule.init();
     PrinterSettingsModule.init();
     LangToggleModule.init();
-    I18nModule.init(); // Must be last — applies translations after all modules are wired
+    // (I18nModule.init moved to top)
 
     // ── Mode select handler ───────────────────────────────────
     document.getElementById('mode-select')?.addEventListener('change', e => {

@@ -1,4 +1,4 @@
-using PrinterApp.Models;
+﻿using PrinterApp.Models;
 using PrinterApp.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Features;
@@ -370,7 +370,7 @@ public static class BackendStartup
                 var psi = new ProcessStartInfo
                 {
                     FileName = "rundll32.exe",
-                    Arguments = $"printui.dll,PrintUIEntry /p /n \"{req.PrinterName}\"",
+                    Arguments = $"printui.dll,PrintUIEntry /e /n \"{req.PrinterName}\"",
                     UseShellExecute = true,
                 };
                 Process.Start(psi);

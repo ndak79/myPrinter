@@ -1,4 +1,4 @@
-using Microsoft.Web.WebView2.Core;
+﻿using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace MyPrinter.Desktop;
@@ -20,31 +20,47 @@ public partial class MainForm : Form
     // ── Window chrome ──────────────────────────────────────────
     private void SetupWindow()
     {
-        Text          = "🖨️ Máy In Thông Minh";
+        Text          = "🖨 Máy In Thông Minh | Smart Printer";
         WindowState   = FormWindowState.Maximized;
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize   = new Size(900, 600);
         BackColor     = Color.FromArgb(15, 23, 42);
         ShowInTaskbar = true;
+        Icon          = CreatePrinterIcon();
     }
 
     // ── System Tray ────────────────────────────────────────────
     private void SetupTray()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Mở Máy In Thông Minh", null, (_, _) => ShowWindow());
+        menu.Renderer = new TrayMenuRenderer();
+        menu.Font = new Font("Segoe UI", 10.5f, FontStyle.Regular);
+
+        var openItem = new ToolStripMenuItem(
+            "Open  —  Smart Printer",
+            CreateMenuBitmap(Color.FromArgb(16, 185, 129), "+"),
+            (_, _) => ShowWindow());
+        openItem.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
+        menu.Items.Add(openItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Thoát", null, (_, _) => ExitApp());
+        menu.Items.Add(new ToolStripMenuItem(
+            "Hide",
+            CreateMenuBitmap(Color.FromArgb(100, 116, 139), "-"),
+            (_, _) => HideWindow()));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem(
+            "Exit",
+            CreateMenuBitmap(Color.FromArgb(239, 68, 68), "x"),
+            (_, _) => ExitApp()));
 
         _trayIcon = new NotifyIcon
         {
             Icon             = CreatePrinterIcon(),
-            Text             = "Máy In Thông Minh",
+            Text             = "Smart Printer",
             ContextMenuStrip = menu,
             Visible          = true,
         };
 
-        // Single click → show/hide toggle
         _trayIcon.Click += (_, e) =>
         {
             if (e is MouseEventArgs me && me.Button == MouseButtons.Left)
@@ -56,12 +72,43 @@ public partial class MainForm : Form
             }
         };
 
-        // Double-click → always show
         _trayIcon.DoubleClick += (_, _) => ShowWindow();
 
-        _trayIcon.BalloonTipTitle = "Máy In Thông Minh";
-        _trayIcon.BalloonTipText  = "Ứng dụng đang chạy. Click vào icon để mở.";
+        _trayIcon.BalloonTipTitle = "Smart Printer";
+        _trayIcon.BalloonTipText  = "App is running. Click the icon to open.";
         _trayIcon.ShowBalloonTip(2000);
+    }
+
+
+    private static Bitmap CreateMenuBitmap(Color color, string symbol)
+    {
+        const int S = 20;
+        var bmp = new Bitmap(S, S, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(Color.Transparent);
+        using var brush = new SolidBrush(color);
+        g.FillEllipse(brush, 1, 1, S - 2, S - 2);
+        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var font = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        using var textBrush = new SolidBrush(Color.White);
+        g.DrawString(symbol, font, textBrush, new RectangleF(0, 0, S, S), sf);
+        return bmp;
+    }
+
+    private class TrayMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public TrayMenuRenderer() : base(new TrayColorTable()) { }
+    }
+
+    private class TrayColorTable : ProfessionalColorTable
+    {
+        public override Color MenuItemSelected              => Color.FromArgb(232, 248, 244);
+        public override Color MenuItemSelectedGradientBegin => Color.FromArgb(232, 248, 244);
+        public override Color MenuItemSelectedGradientEnd   => Color.FromArgb(209, 243, 233);
+        public override Color MenuItemBorder                => Color.FromArgb(16, 185, 129);
+        public override Color MenuBorder                    => Color.FromArgb(220, 220, 220);
+        public override Color ToolStripDropDownBackground   => Color.White;
     }
 
     private void ShowWindow()
@@ -251,21 +298,41 @@ public partial class MainForm : Form
             CoreWebView2HostResourceAccessKind.Allow);
 
         _webView.CoreWebView2.Navigate($"https://app.local/index.html?port={Program.BackendPort}");
+        _webView.ZoomFactor = 1.1;  // slightly larger for readability
+
+        // Sync WinForms title bar when JS changes document.title (e.g. language switch)
+        wv.DocumentTitleChanged += (s, _) => {
+            if (InvokeRequired) Invoke(() => Text = wv.DocumentTitle);
+            else Text = wv.DocumentTitle;
+        };
+
 
         wv.NewWindowRequested += (s, args) => args.Handled = true;
+
     }
 
     // ── Frontend path resolution ───────────────────────────────
     private static string GetFrontendPath()
     {
         var exeDir    = AppContext.BaseDirectory;
+
+#if DEBUG
+        // In Debug mode: prefer the source frontend/ folder so edits are
+        // reflected immediately without copying to bin/Debug each time.
+        var devPath = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", "frontend"));
+        if (Directory.Exists(devPath)) return devPath;
+#endif
+
         var candidate = Path.Combine(exeDir, "frontend");
         if (Directory.Exists(candidate)) return candidate;
 
-        var devPath = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", "frontend"));
-        if (Directory.Exists(devPath)) return devPath;
+#if !DEBUG
+        var devPath2 = Path.GetFullPath(Path.Combine(exeDir, "..", "..", "..", "..", "frontend"));
+        if (Directory.Exists(devPath2)) return devPath2;
+#endif
 
-        throw new DirectoryNotFoundException(
-            $"Frontend folder not found. Checked:\n  {candidate}\n  {devPath}");
+        var checkedPath = Path.Combine(exeDir, "frontend");
+        throw new DirectoryNotFoundException($"Frontend folder not found. Checked:\n  {checkedPath}");
     }
 }
+

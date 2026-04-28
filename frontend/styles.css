@@ -1,4 +1,4 @@
-:root {
+﻿:root {
     /* Colors — Neutral base + Blue accent (header/tabs only) */
     --color-bg:            #f8f9fa;
     --color-surface:       #ffffff;
@@ -55,6 +55,7 @@
 
 body {
     font-family: var(--font-system);
+    font-size:   15px;
     background:  var(--color-bg);
     color:       var(--color-text-primary);
     height:      100vh;
@@ -814,6 +815,27 @@ input[name="print-mode"]:checked + .mode-card .mode-icon {
 .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* Cancel / secondary button (used in confirm modal footer) */
+.btn-cancel {
+    background: transparent;
+    color: var(--color-text-secondary, #495057);
+    border: 1.5px solid var(--color-border-strong, #ced4da);
+    padding: 0.6rem 1.5rem;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.btn-cancel:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: var(--color-danger, #ef4444);
 }
 
 .btn-icon {
@@ -1833,16 +1855,55 @@ kbd {
 
 /* ── Improved Flip Modal (3) ───────────────────────────────── */
 .modal-flip {
-    max-width: 500px;
+    max-width: 600px;
     width: 90vw;
 }
 
 .flip-diagram {
     display: flex;
     justify-content: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
+    min-height: 250px;
 }
 
+/* ---- Printer 3D Animation (SVG-based) ----------------------------- */
+.p3wrap {
+  width: 100%; max-width: 420px;
+  margin: 0 auto;
+}
+
+/* Moving paper: starts at output tray position, arcs to viewer, goes into input tray */
+/* Using CSS animation on SVG <g> transform */
+#movingPaper {
+  animation: isoJourney 3.2s cubic-bezier(0.4,0,0.2,1) infinite;
+  transform-origin: 36px 7px;
+  transform-box: fill-box;
+}
+
+@keyframes isoJourney {
+  /* Phase 1: At output tray - small, tucked in (iso position top) */
+  0%   { transform: translate(155px, 38px) scale(0.55); opacity: 0; }
+  5%   { transform: translate(155px, 38px) scale(0.55); opacity: 1; }
+  /* Phase 2: Sliding out of output tray toward viewer */
+  25%  { transform: translate(130px, 80px) scale(0.8);  opacity: 1; }
+  /* Phase 3: Closest to viewer - largest, between the two trays */
+  45%  { transform: translate(160px, 115px) scale(1.15); opacity: 1; }
+  /* Phase 4: Arc down toward input tray */
+  70%  { transform: translate(165px, 155px) scale(0.75); opacity: 1; }
+  /* Phase 5: Enter input tray - small, sliding in */
+  88%  { transform: translate(168px, 173px) scale(0.5);  opacity: 0.6; }
+  95%  { transform: translate(170px, 178px) scale(0.45); opacity: 0; }
+  100% { transform: translate(155px, 38px)  scale(0.55); opacity: 0; }
+}
+
+/* Step label highlights */
+#sl1 { animation: slOn 3.2s ease-in-out infinite 0s; }
+#sl2 { animation: slOn 3.2s ease-in-out infinite 1.6s; }
+@keyframes slOn {
+  0%,8%   { fill: #1e40af; font-weight: 700; }
+  40%,100% { fill: #94a3b8; }
+}
+}
 .flip-checklist {
     display: flex;
     flex-direction: column;
@@ -1923,15 +1984,30 @@ kbd {
 }
 
 /* Animated flip SVG */
+/* Animated paper flip SVG — lift up, translate, fade back */
+@keyframes paperLift {
+    0%   { transform: translateY(0)   scaleY(1);    opacity: 1; }
+    25%  { transform: translateY(-22px) scaleY(0.92); opacity: 0.9; }
+    50%  { transform: translateY(-22px) scaleY(0.85); opacity: 0.85; }
+    75%  { transform: translateY(-10px) scaleY(0.93); opacity: 0.95; }
+    100% { transform: translateY(0)   scaleY(1);    opacity: 1; }
+}
+
 @keyframes paperFlip {
-    0%   { transform: rotateY(0deg) translateY(0); }
-    40%  { transform: rotateY(90deg) translateY(-10px); }
-    60%  { transform: rotateY(90deg) translateY(-10px); }
-    100% { transform: rotateY(0deg) translateY(0); }
+    0%   { transform: translateY(0)   scaleX(1);    opacity: 1; }
+    20%  { transform: translateY(-18px) scaleX(1);    opacity: 0.9; }
+    40%  { transform: translateY(-18px) scaleX(0.1);  opacity: 0.6; }
+    60%  { transform: translateY(-18px) scaleX(-1);   opacity: 0.9; }
+    80%  { transform: translateY(-5px) scaleX(-1);   opacity: 0.95; }
+    100% { transform: translateY(0)   scaleX(-1);   opacity: 1; }
 }
 
 .flip-paper-anim {
-    animation: paperFlip 2s ease-in-out infinite;
+    animation: paperLift 2.4s ease-in-out infinite;
+    transform-origin: center bottom;
+}
+.flip-paper-anim-h {
+    animation: paperFlip 2.4s ease-in-out infinite;
     transform-origin: center;
 }
 
@@ -3066,3 +3142,8 @@ kbd {
 
 .preview-page-card { contain: layout paint; }
 .thumb-item        { contain: layout paint; }
+
+
+/* ── Hide empty-state placeholders + history bar once files are loaded ── */
+body.has-files .preview-empty { display: none !important; }
+body.has-files .history-section { display: none !important; }
