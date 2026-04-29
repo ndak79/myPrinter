@@ -5493,7 +5493,7 @@ const ViewModeModule = {
 
 // ── GuideModule ────────────────────────────────────────────────
 const GuideModule = {
-    _activeTab: 'overview',
+    _activeTab: 'start',
 
     init() {
         document.getElementById('guide-btn')?.addEventListener('click', () => this.open());

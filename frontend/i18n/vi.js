@@ -271,79 +271,178 @@ window.VI_STRINGS = {
   guide: {
     title: 'Hướng dẫn sử dụng',
     tab: {
-      overview: 'Tổng quan',
-      smart: 'In thông minh',
-      booklet: 'In Sách',
-      manual: 'In thủ công',
+      start:    'Bắt đầu',
+      modes:    'Chế độ in',
+      custom:   'Tùy chỉnh',
+      flip:     'Lật giấy',
+      tips:     'Mẹo hay',
     },
-    overview: { content: `
-      <h3>Tổng quan</h3>
-      <p>Ứng dụng <strong>Máy In Thông Minh</strong> được thiết kế dành riêng cho máy in 1 mặt, giúp bạn in 2 mặt thủ công hoặc in sách booklet A5 một cách dễ dàng.</p>
-      <h4>Các tính năng chính</h4>
+    start: { content: `
+      <h3>Bắt đầu</h3>
+
+      <h4>① Chọn máy in</h4>
+      <p>Chọn máy in từ danh sách ở thanh trên cùng. Nếu không thấy máy in, hãy kiểm tra kết nối và đảm bảo máy in đang bật.</p>
+
+      <h4>② Thêm tài liệu</h4>
       <ul>
-        <li>📄 <strong>Xem nội dung</strong> — xem từng trang tài liệu</li>
-        <li>🖨 <strong>Xem trước khi in</strong> — xem bố cục thực tế trên tờ giấy</li>
-        <li>🔀 <strong>Chọn trang in</strong> — click phải vào trang để in 1 mặt hoặc 2 mặt</li>
-        <li>📋 <strong>Lịch sử in</strong> — xem lại các lần in trước</li>
+        <li>Kéo thả file vào vùng xem trước, hoặc nhấn <strong>+ Thêm file</strong></li>
+        <li>Hỗ trợ: PDF, Word, Excel, PowerPoint — các định dạng Office được chuyển đổi tự động</li>
+        <li>Thêm nhiều file cùng lúc — mỗi file có một tab riêng</li>
       </ul>
-      <h4>Quy trình cơ bản</h4>
-      <ol>
-        <li>Chọn máy in từ danh sách</li>
-        <li>Kéo thả file vào hoặc nhấn <strong>+ Thêm file</strong></li>
-        <li>Chọn chế độ in (In thông minh hoặc In Sách)</li>
-        <li>Nhấn <strong>🖨 In</strong> và làm theo hướng dẫn</li>
-      </ol>
+
+      <h4>③ Chọn chế độ in</h4>
+      <p>Sử dụng bộ chọn chế độ ở góc trên bên phải:</p>
+      <ul>
+        <li>🔄 <strong>In thông minh (Duplex)</strong> — In 2 mặt thủ công trên máy in 1 mặt</li>
+        <li>📖 <strong>In Sách</strong> — In sách A5 gấp đôi từ giấy A4</li>
+      </ul>
+
+      <h4>④ Bắt đầu in!</h4>
+      <p>Nhấn nút <strong>🖨 In</strong> ở góc dưới bên phải. App sẽ in mặt trước trước, sau đó hướng dẫn bạn lật giấy để in mặt sau. Xem tab <em>"Lật giấy"</em> để biết chi tiết.</p>
+
+      <h4>📋 Xem lịch sử in</h4>
+      <p>Mọi lệnh in đều được ghi lại. Nhấn <strong>📋 Lịch sử in</strong> trên thanh tiêu đề để xem lại — tiện lợi để kiểm tra file nào đã in.</p>
     ` },
-    smart: { content: `
-      <h3>In thông minh</h3>
-      <p>Chế độ <strong>In thông minh</strong> giúp bạn in 2 mặt thủ công trên máy in 1 mặt.</p>
-      <h4>Cách hoạt động</h4>
+    modes: { content: `
+      <h3>🖨 Chế độ in</h3>
+
+      <h4>🔄 In thông minh (Duplex)</h4>
+      <p>Chế độ mặc định — biến máy in 1 mặt thành "máy in 2 mặt" bằng cách:</p>
       <ol>
-        <li>App in tất cả <strong>mặt trước</strong> trước (các trang lẻ)</li>
-        <li>Hướng dẫn animation xuất hiện — làm theo để lật giấy đúng cách</li>
-        <li>App tự động in <strong>mặt sau</strong> (các trang chẵn)</li>
+        <li><strong>Bước 1:</strong> App gửi tất cả <strong>mặt trước</strong> (trang 1, 3, 5…) đến máy in</li>
+        <li><strong>Bước 2:</strong> In xong → hướng dẫn lật giấy xuất hiện trên màn hình</li>
+        <li><strong>Bước 3:</strong> Bạn lật giấy theo hướng dẫn, đặt lại vào khay và nhấn "Tiếp tục"</li>
+        <li><strong>Bước 4:</strong> App in <strong>mặt sau</strong> (trang 2, 4, 6…) — xong!</li>
       </ol>
-      <h4>Lưu ý lật giấy</h4>
-      <ul>
-        <li>↕ <strong>Trang dọc (Portrait)</strong>: Lật theo cạnh dài (lật lên/xuống)</li>
-        <li>↔ <strong>Trang ngang (Landscape)</strong>: Lật theo cạnh ngắn (lật trái/phải)</li>
-      </ul>
-      <h4>Chọn trang in 1 mặt</h4>
-      <p>Click phải vào trang bất kỳ → chọn <em>Mặt in → 1 mặt</em> để bỏ qua trang đó khỏi in 2 mặt.</p>
+      <p>💡 <em>Kết quả: mỗi tờ giấy có nội dung cả 2 mặt, tiết kiệm 50% giấy!</em></p>
+
+      <h4>📖 In Sách (Booklet)</h4>
+      <p>Chế độ đặc biệt — in 4 trang A5 trên 2 mặt giấy A4; gấp đôi lại thành sách nhỏ.</p>
+      <p>App tự động tính thứ tự trang để khi gấp đôi, các trang nằm đúng vị trí:</p>
+      <table style="border-collapse:collapse; margin:10px 0; font-size:13px; width:100%">
+        <tr style="background:#e8f0fe">
+          <th style="padding:6px 12px; border:1px solid #c4d7f2; text-align:left">Tờ</th>
+          <th style="padding:6px 12px; border:1px solid #c4d7f2; text-align:center">Mặt trước</th>
+          <th style="padding:6px 12px; border:1px solid #c4d7f2; text-align:center">Mặt sau</th>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0">Tờ 1</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Trang 8 | Trang 1</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Trang 2 | Trang 7</td>
+        </tr>
+        <tr style="background:#f8fafc">
+          <td style="padding:6px 12px; border:1px solid #e2e8f0">Tờ 2</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Trang 6 | Trang 3</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Trang 4 | Trang 5</td>
+        </tr>
+      </table>
+      <p>💡 <em>Sau khi in, gấp đôi chồng giấy A4 → bạn có một cuốn sách A5 hoàn chỉnh!</em></p>
+
+      <h4>🔍 Xem trước khi in</h4>
+      <p>Nhấn <strong>🖨 Xem trước khi in</strong> trên thanh tiêu đề để xem bố cục thực tế trên tờ giấy. Bạn sẽ thấy chính xác mặt trước và mặt sau của mỗi tờ trước khi gửi đến máy in.</p>
     ` },
-    booklet: { content: `
-      <h3>In Sách (Booklet)</h3>
-      <p>Chế độ <strong>In Sách</strong> in 4 trang A5 trên 2 mặt giấy A4 — sau khi gấp đôi sẽ thành sách nhỏ.</p>
-      <h4>Thứ tự trang tự động</h4>
-      <p>App tự tính thứ tự trang để khi gấp đôi giấy A4, các trang theo đúng thứ tự 1, 2, 3, 4...</p>
-      <p><em>Ví dụ 8 trang:</em></p>
+    custom: { content: `
+      <h3>⚙ Tùy chỉnh</h3>
+
+      <h4>📄 Chọn / Bỏ chọn trang</h4>
+      <p><strong>Click phải</strong> vào bất kỳ trang nào ở khung xem trước bên trái → menu xuất hiện với các tùy chọn:</p>
       <ul>
-        <li>Tờ 1 Mặt trước: Trang 8 | Trang 1</li>
-        <li>Tờ 1 Mặt sau: Trang 2 | Trang 7</li>
-        <li>Tờ 2 Mặt trước: Trang 6 | Trang 3</li>
-        <li>Tờ 2 Mặt sau: Trang 4 | Trang 5</li>
+        <li>✅ <strong>Chọn / Bỏ chọn trang</strong> — trang bị bỏ chọn sẽ không được in</li>
+        <li>🔄 <strong>Mặt in → 1 mặt</strong> — trang đó chỉ in 1 mặt (mặt sau để trắng)</li>
+        <li>🔄 <strong>Mặt in → 2 mặt</strong> — khôi phục in 2 mặt bình thường cho trang đó</li>
       </ul>
-      <h4>Trang ngang trong booklet</h4>
-      <p>Chọn <strong>🔀 In cùng trang dọc</strong> để tự động xoay trang ngang, hiển thị cùng chiều với trang dọc trên cùng một tờ.</p>
+
+      <h4>📝 Nhập khoảng trang</h4>
+      <p>Sử dụng ô nhập trang trên thanh tiêu đề để chọn nhanh. Ví dụ:</p>
+      <ul>
+        <li><code>1-5</code> — in trang 1 đến 5</li>
+        <li><code>1,3,7</code> — chỉ in trang 1, 3 và 7</li>
+        <li><code>2-8,12</code> — in trang 2–8 và trang 12</li>
+      </ul>
+
+      <h4>📋 Số bản & Ghép bộ</h4>
+      <ul>
+        <li><strong>Số bản</strong> — Chọn số bản in cho mỗi file (1–99)</li>
+        <li><strong>Ghép bộ</strong> — Bật: in từng bộ hoàn chỉnh. Tắt: in tất cả trang 1, rồi tất cả trang 2…</li>
+      </ul>
+
+      <h4>🔄 Xoay trang</h4>
+      <p>Click phải vào trang → xoay 90° theo chiều kim đồng hồ hoặc ngược lại. Hữu ích khi trang PDF bị xoay sai hướng.</p>
+
+      <h4>🌄 Trang ngang</h4>
+      <p>App <strong>tự động nhận diện</strong> hướng trang. Khi chuyển sang Xem trước khi in:</p>
+      <ul>
+        <li>📃 File có <strong>toàn trang dọc</strong> hoặc <strong>hướng hỗn hợp</strong> → trang ngang tự động xoay để chia sẻ tờ giấy với trang dọc</li>
+        <li>🌄 File có <strong>toàn trang ngang</strong> → mỗi trang ngang in trên tờ riêng (giữ nguyên hướng ngang)</li>
+      </ul>
     ` },
-    manual: { content: `
-      <h3>In thủ công (Manual Duplex)</h3>
-      <p>Sau khi máy in xong mặt trước, app sẽ hiển thị hướng dẫn để bạn lật giấy đúng cách trước khi in mặt sau.</p>
-      <h4>Các bước thực hiện</h4>
+    flip: { content: `
+      <h3>🔄 Hướng dẫn lật giấy</h3>
+      <p>Đây là bước quan trọng nhất! Sau khi máy in xong mặt trước, bạn cần lật giấy đúng cách để in mặt sau.</p>
+
+      <h4>📺 Hướng dẫn trực quan</h4>
+      <p>App hiển thị <strong>hướng dẫn animation</strong> ngay trên màn hình — chỉ cần làm theo! Animation cho thấy:</p>
+      <ul>
+        <li>📍 Nơi lấy giấy ra (khay đầu ra)</li>
+        <li>🔄 Hướng lật giấy</li>
+        <li>📥 Khay đặt giấy vào, và mặt nào hướng lên</li>
+      </ul>
+
+      <h4>↕ Trang dọc</h4>
+      <p>Lật theo <strong>cạnh dài</strong> — lật lên/xuống (như đọc sách).</p>
+
+      <h4>↔ Trang ngang</h4>
+      <p>Lật theo <strong>cạnh ngắn</strong> — lật trái/phải (như lịch để bàn).</p>
+
+      <h4>✅ Từng bước thực hiện</h4>
       <ol>
-        <li>✅ <strong>Chờ máy in xong</strong> — đèn ngừng nhấp nháy</li>
-        <li>✅ <strong>Lấy chồng giấy ra</strong> — theo đúng hướng mũi tên trong animation</li>
-        <li>✅ <strong>Đặt lại vào khay</strong> — mặt trắng ngửa lên, đúng chiều</li>
-        <li>Nhấn <strong>✓ Đã Đặt Giấy - Tiếp Tục In</strong></li>
+        <li>⏳ <strong>Chờ máy in xong hoàn toàn</strong> — đèn ngừng nhấp nháy, tất cả trang đã ra</li>
+        <li>📤 <strong>Lấy chồng giấy ra</strong> — giữ nguyên thứ tự, không xáo trộn</li>
+        <li>🔄 <strong>Lật theo hướng dẫn animation</strong> — mặt trắng phải hướng lên</li>
+        <li>📥 <strong>Đặt lại vào khay giấy</strong> — đúng chiều, không thêm giấy mới</li>
+        <li>👆 Nhấn <strong>"✓ Đã Đặt Giấy - Tiếp Tục In"</strong></li>
       </ol>
-      <h4>Tự động tiếp tục</h4>
-      <p>Bật checkbox <em>"Tự động tiếp tục sau 30 giây"</em> để app tự động in mặt sau mà không cần nhấn nút.</p>
-      <h4>Lưu ý quan trọng</h4>
+
+      <h4>⏱ Tự động tiếp tục</h4>
+      <p>Bật <strong>"Tự động tiếp tục sau 30 giây"</strong> → app đếm ngược và tự động in mặt sau. Rất tiện khi bạn đã quen thao tác!</p>
+
+      <h4>⚠ In sai mặt?</h4>
+      <p>Không sao! Thử <strong>lật giấy theo chiều ngược lại</strong>. Mỗi dòng máy in có bố trí khay khác nhau — thường chỉ cần thử 1–2 lần là quen.</p>
+    ` },
+    tips: { content: `
+      <h3>💡 Mẹo hay</h3>
+
+      <h4>⌨ Phím tắt</h4>
       <ul>
-        <li>Không đặt thêm giấy mới — chỉ dùng tờ vừa in</li>
-        <li>Đảm bảo chiều giấy đúng theo hướng dẫn animation</li>
-        <li>Nếu in sai mặt, thử đổi chiều lật giấy</li>
+        <li><code>Ctrl + P</code> — In nhanh</li>
+        <li><code>Esc</code> — Đóng hộp thoại đang mở (hướng dẫn, cài đặt…)</li>
       </ul>
+
+      <h4>📑 Quản lý nhiều file</h4>
+      <ul>
+        <li>Kéo thả <strong>nhiều file</strong> cùng lúc</li>
+        <li><strong>Kéo tab</strong> để sắp xếp lại thứ tự file</li>
+        <li>Mỗi file giữ cài đặt riêng: chọn trang, số bản, xoay — không ảnh hưởng lẫn nhau</li>
+        <li>Nhấn <strong>×</strong> trên tab để xóa file đó</li>
+      </ul>
+
+      <h4>🖨 Định dạng hỗ trợ</h4>
+      <ul>
+        <li>📄 <strong>PDF</strong> — mở trực tiếp, nhanh nhất</li>
+        <li>📝 <strong>Word</strong> (.doc, .docx) — tự động chuyển đổi sang PDF</li>
+        <li>📊 <strong>Excel</strong> (.xls, .xlsx) — tự động chuyển đổi</li>
+        <li>💽 <strong>PowerPoint</strong> (.ppt, .pptx) — tự động chuyển đổi</li>
+      </ul>
+
+      <h4>🎯 Độ chính xác khi in</h4>
+      <ul>
+        <li>Luôn <strong>xem trước</strong> bằng chế độ "Xem trước khi in" trước khi nhấn In</li>
+        <li>Dùng <strong>1 mặt</strong> cho trang bìa hoặc trang cuối</li>
+        <li>In thử <strong>1–2 tờ</strong> trước khi in số lượng lớn</li>
+      </ul>
+
+      <h4>🌐 Ngôn ngữ</h4>
+      <p>Nhấn nút <strong>🌐</strong> trên thanh tiêu đề để chuyển đổi giữa Tiếng Việt và Tiếng Anh.</p>
     ` },
   },
 };

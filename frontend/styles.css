@@ -2370,6 +2370,21 @@ kbd {
 .guide-body p               { margin: 0 0 10px; }
 .guide-body ul, .guide-body ol { margin: 0 0 10px; padding-left: 24px; }
 .guide-body li              { margin-bottom: 6px; }
+.guide-author {
+  display:          flex;
+  justify-content:  center;
+  align-items:      center;
+  gap:              10px;
+  padding:          12px 24px;
+  border-top:       1px solid #e2e8f0;
+  background:       #f8fafc;
+  color:            #64748b;
+  font-size:        12px;
+  flex-shrink:      0;
+  border-radius:    0 0 12px 12px;
+}
+.guide-author span          { white-space: nowrap; }
+
 
 /* ── Header Row 2: File tabs ────────────────────────────────── */
 .file-tabs-bar {

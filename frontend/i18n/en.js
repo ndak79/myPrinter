@@ -245,79 +245,180 @@ window.EN_STRINGS = {
   guide: {
     title: 'User Guide',
     tab: {
-      overview: 'Overview',
-      smart: 'Smart Print',
-      booklet: 'Booklet',
-      manual: 'Manual Duplex',
+      start:    'Get Started',
+      modes:    'Print Modes',
+      custom:   'Customize',
+      flip:     'Paper Flip',
+      tips:     'Tips',
     },
-    overview: { content: `
-      <h3>Overview</h3>
-      <p><strong>Smart Printer</strong> is designed for single-sided printers, enabling manual duplex printing and booklet A5 creation.</p>
-      <h4>Key Features</h4>
+    start: { content: `
+      <h3>🚀 Getting Started</h3>
+      <p><strong>Smart Printer</strong> turns your regular single-sided printer into a "duplex printer" — in just a few simple steps.</p>
+
+      <h4>① Select a Printer</h4>
+      <p>Open the app → pick your printer from the dropdown in the top-left corner. The app remembers your last selection.</p>
+
+      <h4>② Add Files to Print</h4>
       <ul>
-        <li>📄 <strong>Page View</strong> — view document pages</li>
-        <li>🖨 <strong>Print Preview</strong> — see actual layout on paper</li>
-        <li>🔀 <strong>Page Selection</strong> — right-click pages to set 1-sided or 2-sided</li>
-        <li>📋 <strong>Print History</strong> — review past print jobs</li>
+        <li>📂 <strong>Drag & drop</strong> — Drop PDF, Word, Excel, or PowerPoint files onto the center of the screen</li>
+        <li>➕ <strong>"+ Add File" button</strong> — Click to open a traditional file picker dialog</li>
+        <li>📑 <strong>Multiple files</strong> — Add as many files as you like; each appears on its own tab</li>
       </ul>
-      <h4>Basic Workflow</h4>
-      <ol>
-        <li>Select a printer from the list</li>
-        <li>Drag & drop files or click <strong>+ Add File</strong></li>
-        <li>Choose print mode (Smart Print or Booklet)</li>
-        <li>Click <strong>🖨 Print</strong> and follow instructions</li>
-      </ol>
+
+      <h4>③ Choose a Print Mode</h4>
+      <p>Use the mode selector in the top-right:</p>
+      <ul>
+        <li>🔄 <strong>Smart Print (Duplex)</strong> — Manual two-sided printing on a single-sided printer</li>
+        <li>📖 <strong>Booklet</strong> — Print a folded A5 booklet from A4 paper</li>
+      </ul>
+
+      <h4>④ Hit Print!</h4>
+      <p>Click the <strong>🖨 Print</strong> button in the bottom-right. The app prints the front sides first, then guides you through flipping the paper for the back sides. See the <em>"Paper Flip"</em> tab for details.</p>
+
+      <h4>📋 Review Print History</h4>
+      <p>Every print job is logged. Click <strong>📋 Print History</strong> in the header bar to review past jobs — handy for checking which files you've already printed.</p>
     ` },
-    smart: { content: `
-      <h3>Smart Print</h3>
-      <p><strong>Smart Print</strong> enables manual duplex on a single-sided printer.</p>
-      <h4>How It Works</h4>
+    modes: { content: `
+      <h3>🖨 Print Modes</h3>
+
+      <h4>🔄 Smart Print (Duplex)</h4>
+      <p>The default mode — turns a single-sided printer into a "duplex printer" by:</p>
       <ol>
-        <li>App prints all <strong>front sides</strong> first (odd pages)</li>
-        <li>Animation guide appears — follow it to flip paper correctly</li>
-        <li>App automatically prints <strong>back sides</strong> (even pages)</li>
+        <li><strong>Step 1:</strong> App sends all <strong>front sides</strong> (pages 1, 3, 5…) to the printer</li>
+        <li><strong>Step 2:</strong> Printing finishes → a flip-guide animation appears on screen</li>
+        <li><strong>Step 3:</strong> You flip the paper as shown, place it back in the tray, and click "Continue"</li>
+        <li><strong>Step 4:</strong> App prints the <strong>back sides</strong> (pages 2, 4, 6…) — done!</li>
       </ol>
-      <h4>Paper Flip Direction</h4>
-      <ul>
-        <li>↕ <strong>Portrait pages</strong>: Flip along the long edge (flip up/down)</li>
-        <li>↔ <strong>Landscape pages</strong>: Flip along the short edge (flip left/right)</li>
-      </ul>
-      <h4>Single-Sided Pages</h4>
-      <p>Right-click any page → <em>Print sides → 1-sided</em> to exclude it from duplex printing.</p>
+      <p>💡 <em>Result: every sheet has content on both sides, saving 50% paper!</em></p>
+
+      <h4>📖 Booklet</h4>
+      <p>A special mode — prints 4 A5 pages on 2 sides of A4 paper; fold in half to make a compact book.</p>
+      <p>The app automatically calculates page ordering so everything falls in the right place after folding:</p>
+      <table style="border-collapse:collapse; margin:10px 0; font-size:13px; width:100%">
+        <tr style="background:#e8f0fe">
+          <th style="padding:6px 12px; border:1px solid #c4d7f2; text-align:left">Sheet</th>
+          <th style="padding:6px 12px; border:1px solid #c4d7f2; text-align:center">Front</th>
+          <th style="padding:6px 12px; border:1px solid #c4d7f2; text-align:center">Back</th>
+        </tr>
+        <tr>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0">Sheet 1</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Page 8 | Page 1</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Page 2 | Page 7</td>
+        </tr>
+        <tr style="background:#f8fafc">
+          <td style="padding:6px 12px; border:1px solid #e2e8f0">Sheet 2</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Page 6 | Page 3</td>
+          <td style="padding:6px 12px; border:1px solid #e2e8f0; text-align:center">Page 4 | Page 5</td>
+        </tr>
+      </table>
+      <p>💡 <em>After printing, fold the A4 stack in half → you get a complete A5 booklet!</em></p>
+
+      <h4>🔍 Print Preview</h4>
+      <p>Click <strong>🖨 Print Preview</strong> in the header to see the actual sheet layout. You'll see exactly what the front and back of each sheet look like before sending to the printer.</p>
     ` },
-    booklet: { content: `
-      <h3>Booklet Printing</h3>
-      <p><strong>Booklet</strong> mode prints 4 A5 pages on 2 sides of A4 paper — fold in half to get a small book.</p>
-      <h4>Automatic Page Order</h4>
-      <p>The app automatically calculates page order so that after folding, pages are in correct sequence 1, 2, 3, 4...</p>
-      <p><em>Example with 8 pages:</em></p>
+    custom: { content: `
+      <h3>⚙ Customization</h3>
+
+      <h4>📄 Select / Deselect Pages</h4>
+      <p><strong>Right-click</strong> any page in the left preview pane → a menu appears with options:</p>
       <ul>
-        <li>Sheet 1 Front: Page 8 | Page 1</li>
-        <li>Sheet 1 Back: Page 2 | Page 7</li>
-        <li>Sheet 2 Front: Page 6 | Page 3</li>
-        <li>Sheet 2 Back: Page 4 | Page 5</li>
+        <li>✅ <strong>Select / Deselect page</strong> — deselected pages won't be printed</li>
+        <li>🔄 <strong>Print sides → 1-sided</strong> — that page prints on one side only (back left blank)</li>
+        <li>🔄 <strong>Print sides → 2-sided</strong> — restore normal duplex for that page</li>
       </ul>
-      <h4>Landscape Pages in Booklet</h4>
-      <p>Choose <strong>🔀 Together with portrait</strong> to auto-rotate landscape pages so they appear correctly alongside portrait pages on the same sheet.</p>
+
+      <h4>📝 Page Range Input</h4>
+      <p>Use the page input field in the header for quick selection. Examples:</p>
+      <ul>
+        <li><code>1-5</code> — print pages 1 through 5</li>
+        <li><code>1,3,7</code> — print only pages 1, 3, and 7</li>
+        <li><code>2-8,12</code> — print pages 2–8 and page 12</li>
+      </ul>
+
+      <h4>📋 Copies & Collation</h4>
+      <ul>
+        <li><strong>Copies</strong> — Choose how many copies per file (1–99)</li>
+        <li><strong>Collate</strong> — On: prints complete sets one at a time. Off: prints all page 1s, then all page 2s…</li>
+      </ul>
+
+      <h4>🔄 Rotate Pages</h4>
+      <p>Right-click a page → rotate 90° clockwise or counter-clockwise. Useful when a PDF page is oriented incorrectly.</p>
+
+      <h4>🌄 Landscape Pages</h4>
+      <p>The app <strong>auto-detects</strong> page orientation. When switching to Print Preview:</p>
+      <ul>
+        <li>📃 Files with <strong>all portrait</strong> or <strong>mixed orientation</strong> → landscape pages auto-rotate to share sheets with portrait pages</li>
+        <li>🌄 Files with <strong>all landscape</strong> pages → each landscape page prints on its own sheet (preserving landscape orientation)</li>
+      </ul>
     ` },
-    manual: { content: `
-      <h3>Manual Duplex</h3>
-      <p>After printing the front side, the app shows instructions for flipping paper correctly before printing the back.</p>
-      <h4>Steps</h4>
+    flip: { content: `
+      <h3>🔄 Paper Flip Guide</h3>
+      <p>This is the most important step! After the printer finishes the front sides, you need to flip the paper correctly for the back sides.</p>
+
+      <h4>📺 Visual Animation</h4>
+      <p>The app shows an <strong>animated guide</strong> right on screen — just follow along! The animation shows:</p>
+      <ul>
+        <li>📍 Where to pick up the paper (output tray)</li>
+        <li>🔄 Which direction to flip</li>
+        <li>📥 Which tray to place it in, and which side faces up</li>
+      </ul>
+
+      <h4>↕ Portrait Pages</h4>
+      <p>Flip along the <strong>long edge</strong> — flip up/down (like reading a book).</p>
+
+      <h4>↔ Landscape Pages</h4>
+      <p>Flip along the <strong>short edge</strong> — flip left/right (like a desk calendar).</p>
+
+      <h4>✅ Step-by-Step</h4>
       <ol>
-        <li>✅ <strong>Wait for printing to finish</strong> — light stops blinking</li>
-        <li>✅ <strong>Remove paper stack</strong> — follow the arrow direction in the animation</li>
-        <li>✅ <strong>Place back in tray</strong> — blank side facing up, correct orientation</li>
-        <li>Click <strong>✓ Paper Placed - Continue Printing</strong></li>
+        <li>⏳ <strong>Wait for printing to finish completely</strong> — light stops blinking, all pages out</li>
+        <li>📤 <strong>Remove the paper stack</strong> — keep the order intact, don't shuffle</li>
+        <li>🔄 <strong>Flip following the animation</strong> — blank side must face up</li>
+        <li>📥 <strong>Place back in the paper tray</strong> — correct orientation, no new paper added</li>
+        <li>👆 Click <strong>"✓ Paper Placed - Continue Printing"</strong></li>
       </ol>
-      <h4>Auto-Continue</h4>
-      <p>Enable <em>"Auto-continue after 30 seconds"</em> to automatically start back-side printing without clicking.</p>
-      <h4>Important Notes</h4>
+
+      <h4>⏱ Auto-Continue</h4>
+      <p>Enable <strong>"Auto-continue after 30 seconds"</strong> → the app counts down and starts back-side printing automatically. Great once you've got the hang of it!</p>
+
+      <h4>⚠ Printed on the Wrong Side?</h4>
+      <p>No worries! Try <strong>flipping the paper the opposite way</strong>. Every printer model has a different tray layout — it usually takes 1–2 tries to figure out.</p>
+    ` },
+    tips: { content: `
+      <h3>💡 Tips & Tricks</h3>
+
+      <h4>⌨ Keyboard Shortcuts</h4>
       <ul>
-        <li>Do not add new paper — use only the just-printed sheets</li>
-        <li>Ensure paper orientation matches the animation guide</li>
-        <li>If printing on wrong side, try flipping in the opposite direction</li>
+        <li><code>Ctrl + P</code> — Quick print</li>
+        <li><code>Esc</code> — Close open dialogs (guide, settings…)</li>
       </ul>
+
+      <h4>📑 Managing Multiple Files</h4>
+      <ul>
+        <li>Drag & drop <strong>multiple files</strong> at once</li>
+        <li><strong>Drag tabs</strong> to reorder files</li>
+        <li>Each file remembers its own settings: page selection, copies, rotation — no cross-contamination</li>
+        <li>Click <strong>×</strong> on a tab to remove that file</li>
+      </ul>
+
+      <h4>🖨 Supported Formats</h4>
+      <ul>
+        <li>📄 <strong>PDF</strong> — opens directly, fastest</li>
+        <li>📝 <strong>Word</strong> (.doc, .docx) — auto-converted to PDF</li>
+        <li>📊 <strong>Excel</strong> (.xls, .xlsx) — auto-converted</li>
+        <li>💽 <strong>PowerPoint</strong> (.ppt, .pptx) — auto-converted</li>
+      </ul>
+
+      <h4>🎯 Printing Accuracy</h4>
+      <ul>
+        <li>Always <strong>preview</strong> using "Print Preview" mode before hitting Print</li>
+        <li>Use <strong>1-sided</strong> for cover pages or the last page</li>
+        <li>Test-print <strong>1–2 sheets</strong> before running a large job</li>
+      </ul>
+
+      <h4>🌐 Language</h4>
+      <p>Click the <strong>🌐</strong> button in the header to switch between Vietnamese and English.</p>
     ` },
   },
+
 };
