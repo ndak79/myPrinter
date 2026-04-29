@@ -4354,86 +4354,90 @@ const PreviewPanelModule = {
             return;
         }  // view mode changed back to page — abort
 
-        // ── TOGETHER MODE: snapshot → inject CCW90 → invalidate cache ──────────
-        if (fileEntry.landscapeMode === 'together') {
-            // [3] SNAPSHOT — taken once per file (null-guard prevents re-render overwrite)
-            if (fileEntry._originalOrientationMap == null) {  // == catches both null and undefined
-                // Detect INTRINSIC orientation (rotation=0, ignoring user pageRotations).
-                // Step [2]'s cache-fill applies current pageRotations, so a user-rotated
-                // portrait page could appear as landscape. The allLandscape check in _startPrint
-                // must use physical PDF dimensions only.
-                const intrinsicPromises = [];
-                for (let p = 1; p <= fileEntry.totalPageCount; p++) {
-                    intrinsicPromises.push(
-                        pdfDoc.getPage(p).then(page => {
-                            const vp = page.getViewport({ scale: 1, rotation: 0 });
-                            return { p, isLandscape: vp.width > vp.height };
-                        }).catch(() => ({ p, isLandscape: false }))
-                    );
-                }
-                const intrinsicResults = await Promise.all(intrinsicPromises);
-                const intrinsicMap = new Map();
-                for (const { p, isLandscape } of intrinsicResults) {
-                    intrinsicMap.set(p, isLandscape);
-                }
-                // NOTE: assignment deferred to after the guards below (F1 fix).
-                // See guard block immediately after this if-closure.
-                fileEntry._pendingOrientationMap = intrinsicMap;
-            }
-
-            // [6] Guard after intrinsic detection await — two checks required:
-            // 1. File switch: another file became active during await
-            // 2. Mode switch: landscapeMode changed to 'separate' during await.
-            //    Without check 2, step [4] would inject CCW90 in separate mode.
-            if (this._currentFileId !== fileEntry.id) {
-                this._modeJustToggled = false;
-                if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
-                return;
-            }
-            if (this._viewMode !== 'sheet') {
-                this._modeJustToggled = false;
-                if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
-                return;
-            }
-            if (fileEntry.landscapeMode !== 'together') {
-                this._modeJustToggled = false;
-                if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
-                return;
-            }
-
-            // F1 fix: commit the pending map only AFTER guards pass. If the user switched
-            // together→separate during the intrinsic-detection await, _teardownTogether already
-            // nulled _originalOrientationMap; the guard above returns before we reach here,
-            // so the stale map is never committed and the next together-mode entry will
-            // correctly re-run intrinsic detection from scratch.
-            if (fileEntry._pendingOrientationMap != null) {
-                fileEntry._originalOrientationMap = fileEntry._pendingOrientationMap;
-                fileEntry._pendingOrientationMap  = null;
-            }
+        // ── AUTO-DETECT LANDSCAPE MODE ────────────────────────────────────────
+        // Detect intrinsic orientation once per file, then auto-set landscapeMode:
+        //   - all landscape → separate
+        //   - all portrait or mixed → together
+        if (fileEntry._originalOrientationMap == null) {
+            const intrinsicPromises = [];
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
-                if (fileEntry._originalOrientationMap.get(p) === true) {  // intrinsically landscape
-                    if (!fileEntry.pageRotations.has(p)) {                // not manually rotated
+                intrinsicPromises.push(
+                    pdfDoc.getPage(p).then(page => {
+                        const vp = page.getViewport({ scale: 1, rotation: 0 });
+                        return { p, isLandscape: vp.width > vp.height };
+                    }).catch(() => ({ p, isLandscape: false }))
+                );
+            }
+            const intrinsicResults = await Promise.all(intrinsicPromises);
+            const intrinsicMap = new Map();
+            for (const { p, isLandscape } of intrinsicResults) {
+                intrinsicMap.set(p, isLandscape);
+            }
+            fileEntry._pendingOrientationMap = intrinsicMap;
+        }
+
+        // Guard after intrinsic detection await
+        if (this._currentFileId !== fileEntry.id) {
+            this._modeJustToggled = false;
+            if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+            return;
+        }
+        if (this._viewMode !== 'sheet') {
+            this._modeJustToggled = false;
+            if (this._sheetRenderGen === _myGen) this._sheetRenderGen = 0;
+            return;
+        }
+
+        // Commit pending intrinsic map
+        if (fileEntry._pendingOrientationMap != null) {
+            fileEntry._originalOrientationMap = fileEntry._pendingOrientationMap;
+            fileEntry._pendingOrientationMap  = null;
+        }
+
+        // Auto-set landscapeMode based on intrinsic orientation
+        if (fileEntry._originalOrientationMap != null) {
+            let allLandscape = true;
+            for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+                if (fileEntry._originalOrientationMap.get(p) !== true) {
+                    allLandscape = false;
+                    break;
+                }
+            }
+            const autoMode = (allLandscape && AppState.printMode !== 'booklet') ? 'separate' : 'together';
+            if (fileEntry.landscapeMode !== autoMode) {
+                if (fileEntry.landscapeMode === 'together' && autoMode !== 'together') {
+                    _teardownTogether(fileEntry);
+                }
+                fileEntry.landscapeMode = autoMode;
+            }
+        }
+
+        // Update tab badge after intrinsic detection
+        if (fileEntry._originalOrientationMap != null && TabsModule._dragSourceIdx == null) {
+            TabsModule.render();
+        }
+
+        // ── TOGETHER MODE: inject CCW90 → invalidate cache ──────────────────────
+        if (fileEntry.landscapeMode === 'together') {
+            for (let p = 1; p <= fileEntry.totalPageCount; p++) {
+                if (fileEntry._originalOrientationMap.get(p) === true) {
+                    if (!fileEntry.pageRotations.has(p)) {
                         fileEntry.pageRotations.set(p, 'CCW90');
                         fileEntry._togetherRotations.add(p);
                     }
                 }
             }
 
-            // [5] INVALIDATE STALE CACHE — synchronous, result is deterministic
+            // Invalidate stale cache
             for (const p of fileEntry._togetherRotations) {
                 orientationMap.delete(p);
             }
             for (const p of fileEntry._togetherRotations) {
-                orientationMap.set(p, false);  // CCW90 makes landscape pages portrait-sized
-            }
-
-            // [7] Update tab badge immediately if snapshot was just taken (drag guard: never
-            // rebuild tabs mid-drag — it would destroy the dragged element).
-            if (fileEntry._originalOrientationMap != null && TabsModule._dragSourceIdx == null) {
-                TabsModule.render();
+                orientationMap.set(p, false);
             }
         }
         // ── END TOGETHER MODE ────────────────────────────────────────────────────
+
 
         // Shared commit guard: abort before ANY state or DOM commit if either
         // (1) a newer rebuild has taken over, OR
@@ -5457,21 +5461,8 @@ const ViewModeModule = {
     _syncModeBar() {
         const modeBar = document.getElementById('sheet-view-modebar');
         if (!modeBar) return;
-        modeBar.style.display = AppState.viewMode === 'sheet' ? '' : 'none';
-
-        // Hide "separate" option in booklet mode — only "together" is supported
-        const separateBtn = modeBar.querySelector('[data-lsmode="separate"]');
-        if (separateBtn) {
-            const isBooklet = AppState.printMode === 'booklet';
-            separateBtn.style.display = isBooklet ? 'none' : '';
-            // If currently on "separate" and switching to booklet, force back to "together"
-            if (isBooklet && AppState.landscapeMode === 'separate') {
-                AppState.landscapeMode = 'together';
-                modeBar.querySelectorAll('.sheet-modebar-btn').forEach(b => {
-                    b.classList.toggle('active', b.dataset.lsmode === 'together');
-                });
-            }
-        }
+        // Landscape mode is now auto-detected; always hide the manual toggle bar
+        modeBar.style.display = 'none';
     },
 
     // Call this when printMode changes while in sheet view
