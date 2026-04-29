@@ -240,6 +240,9 @@ public static class BackendStartup
                 else
                     return Results.BadRequest(new PrintResponse { Success = false, Message = $"Unknown print mode: {(int)request.Mode}" });
 
+                // Propagate printer PPM so ExecutePrintJob can compute the eject delay dynamically.
+                jobState.PpmEstimate = printer.PpmEstimate;
+
                 // BUG-8-3 fix: clamp copies to [1, 100] — no upper bound check existed,
                 // allowing accidental or malicious requests to loop thousands of times.
                 int copies = Math.Clamp(request.Copies, 1, 100);

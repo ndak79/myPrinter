@@ -764,6 +764,17 @@ public class PrintAlgorithmService
                     jobState.PrinterName,
                     pageRange: oddPagesStr
                 );
+
+                // Wait for Phase-1 sheets to physically eject before showing the flip modal.
+                // Delay = ceil(sheets / ppm) * 60_000ms, clamped to [4s, 120s].
+                // PpmEstimate comes from WMI / name lookup / port heuristic (see EstimatePpm).
+                int phase1Sheets = (jobState.OddPages.Length + 1) / 2;
+                int ppm = Math.Max(1, jobState.PpmEstimate);  // guard against 0
+                int estimatedPrintMs = (int)Math.Ceiling(phase1Sheets / (double)ppm * 60_000);
+                int delayMs = Math.Clamp(estimatedPrintMs, 4_000, 120_000);
+                Console.WriteLine($"[ExecutePrintJob] Phase 1 done: {phase1Sheets} sheet(s), {ppm} ppm -> delay {delayMs}ms");
+                System.Threading.Thread.Sleep(delayMs);
+                Console.WriteLine("[ExecutePrintJob] Eject delay done. Showing flip modal.");
             }
             else
             {

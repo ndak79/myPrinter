@@ -3188,29 +3188,7 @@ const PrintModule = {
         `;
         document.getElementById('instruction-text').textContent =
             (typeof instruction === 'object' ? instruction?.text || instruction?.Text : instruction) || I18nModule.t('flip.defaultInstruction');
-        // Reset checklist
-        ['flip-check-1', 'flip-check-2', 'flip-check-3'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.checked = false;
-        });
         const continueBtn = document.getElementById('continue-btn');
-        if (continueBtn) continueBtn.classList.remove('all-checked');
-
-        // Checklist → enable button when all checked.
-        // B33-FE-5 fix: updateContinueBtn was defined as a local function inside _showFlipModal,
-        // creating a new reference on every call. removeEventListener with a new reference cannot
-        // remove listeners from prior calls, so listeners accumulated across multiple flip-modal
-        // openings (e.g., multi-file manual duplex or multiple print sessions in one page lifetime).
-        // Fix: store the handler on `this` so the same stable reference is always removed/added.
-        const checkboxes = document.querySelectorAll('.flip-checkbox');
-        if (this._updateContinueBtn) {
-            checkboxes.forEach(cb => cb.removeEventListener('change', this._updateContinueBtn));
-        }
-        this._updateContinueBtn = () => {
-            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            continueBtn?.classList.toggle('all-checked', allChecked);
-        };
-        checkboxes.forEach(cb => cb.addEventListener('change', this._updateContinueBtn));
 
         // Optional timer
         let _timerInterval = null;

@@ -12,6 +12,12 @@ namespace PrinterApp.Models
         public PrinterStatus Status { get; set; }
         public bool SupportsColor { get; set; }   // NEW: color printing capability
         public string PortName { get; set; } = ""; // NEW: physical port name (for debugging)
+        /// <summary>
+        /// Estimated pages-per-minute. Sourced from WMI AveragePagesPerMinute,
+        /// falling back to a name-based lookup, then port-type heuristic.
+        /// Used to calculate Phase-1 eject delay in manual duplex.
+        /// </summary>
+        public int PpmEstimate { get; set; } = 10;
     }
 
     public enum PrinterStatus
@@ -75,6 +81,9 @@ namespace PrinterApp.Models
     public class PrintJobState
     {
         public string JobId { get; set; } = Guid.NewGuid().ToString();
+
+        /// <summary>Printer PPM used to compute Phase-1 eject delay.</summary>
+        public int PpmEstimate { get; set; } = 10;
 
         /// <summary>
         /// UTC timestamp when this job was created. Used by FileSessionService to

@@ -27,7 +27,7 @@ public class PrinterManagementService
         try
         {
             var searcher = new ManagementObjectSearcher(
-                "SELECT Name, Default, WorkOffline, PrinterStatus, Capabilities, PortName FROM Win32_Printer");
+                "SELECT Name, Default, WorkOffline, PrinterStatus, Capabilities, PortName, AveragePagesPerMinute FROM Win32_Printer");
 
             foreach (ManagementObject printer in searcher.Get())
             {
@@ -59,6 +59,8 @@ public class PrinterManagementService
                                      name.ToLowerInvariant().Contains("colour") ||
                                      System.Text.RegularExpressions.Regex.IsMatch(name, @"[Cc]\d{3,4}");
 
+                var ppmEstimate = EstimatePpm(printer, name, portName);
+
                 printers.Add(new PrinterInfo
                 {
                     Name = name,
@@ -67,6 +69,7 @@ public class PrinterManagementService
                     IsDuplex = isDuplex,
                     SupportsColor = supportsColor,
                     PortName = portName ?? "",
+                    PpmEstimate = ppmEstimate,
                 });
             }
 
@@ -164,4 +167,79 @@ public class PrinterManagementService
 
         return printer != null && printer.Status != PrinterStatus.Offline;
     }
+
+    /// <summary>
+    /// Estimates PPM for a printer using (in priority order):
+    /// 1. WMI AveragePagesPerMinute (if > 0)
+    /// 2. Name-based lookup table of common printers
+    /// 3. Port-type heuristic: USB = 12, Network = 20, LPT = 8
+    /// 4. Default fallback: 10 ppm
+    /// </summary>
+    private static int EstimatePpm(System.Management.ManagementObject printer, string name, string portName)
+    {
+        // 1. WMI AveragePagesPerMinute
+        try
+        {
+            var wmiPpm = printer["AveragePagesPerMinute"];
+            if (wmiPpm != null)
+            {
+                int ppm = Convert.ToInt32(wmiPpm);
+                if (ppm > 0)
+                {
+                    Console.WriteLine($"[EstimatePpm] {name}: WMI AveragePagesPerMinute = {ppm}");
+                    return ppm;
+                }
+            }
+        }
+        catch { /* WMI field unavailable */ }
+
+        // 2. Name-based lookup (common models)
+        var lowerName = name.ToLowerInvariant();
+        var nameLookup = new[]
+        {
+            (new[] { "lbp2900", "lbp 2900" },          8),
+            (new[] { "lbp6000", "lbp6020", "lbp6030" }, 18),
+            (new[] { "lbp6230", "lbp6240" },            22),
+            (new[] { "lbp621", "lbp623", "lbp663" },   33),
+            (new[] { "laserjet p1", "laserjet p10", "laserjet p11", "laserjet p12", "laserjet p13", "laserjet p14", "laserjet p15", "laserjet p16", "laserjet p17", "laserjet p18", "laserjet p19" }, 19),
+            (new[] { "laserjet p2", "laserjet p3", "laserjet p4" }, 25),
+            (new[] { "laserjet m1", "laserjet m2", "laserjet m3", "laserjet m4" }, 22),
+            (new[] { "dcp-", "hl-l23", "hl-l24", "hl-l25" },    24),
+            (new[] { "hl-l53", "hl-l54", "hl-l63", "hl-l64" },  40),
+            (new[] { "deskjet", "officejet" },          10),
+            (new[] { "epson l", "epson m" },             9),
+            (new[] { "phaser 3", "workcentre 3" },      25),
+        };
+        foreach (var (keywords, ppm) in nameLookup)
+        {
+            foreach (var kw in keywords)
+                if (lowerName.Contains(kw))
+                {
+                    Console.WriteLine($"[EstimatePpm] {name}: matched keyword '{kw}' -> {ppm} ppm");
+                    return ppm;
+                }
+        }
+
+        // 3. Port-type heuristic
+        var lowerPort = portName?.ToLowerInvariant() ?? "";
+        if (lowerPort.StartsWith("ip_") || lowerPort.StartsWith("tcp") || lowerPort.StartsWith("wsd"))
+        {
+            Console.WriteLine($"[EstimatePpm] {name}: network port -> 20 ppm");
+            return 20;
+        }
+        if (lowerPort.StartsWith("lpt"))
+        {
+            Console.WriteLine($"[EstimatePpm] {name}: LPT port -> 8 ppm");
+            return 8;
+        }
+        if (lowerPort.StartsWith("usb"))
+        {
+            Console.WriteLine($"[EstimatePpm] {name}: USB port -> 12 ppm");
+            return 12;
+        }
+
+        Console.WriteLine($"[EstimatePpm] {name}: fallback -> 10 ppm");
+        return 10;
+    }
+
 }

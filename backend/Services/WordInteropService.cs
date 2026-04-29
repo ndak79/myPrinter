@@ -1,3 +1,4 @@
+using System.Management;
 using Word = Microsoft.Office.Interop.Word;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -1398,6 +1399,54 @@ public class WordInteropService : IWordInteropService
             Console.WriteLine($"[ApplyPageRotations ERROR] {ex.GetType().Name}: {ex.Message}");
             throw;
         }
+    }
+
+
+    /// <summary>
+    /// Polls WMI Spooler until all jobs on <paramref name="printerName"/> clear the queue.
+    /// Ensures Phase-1 paper is physically ejected before the flip-modal is shown.
+    /// Timeout: 5 minutes. On WMI error returns immediately without blocking.
+    /// </summary>
+    private static void WaitForSpoolerJobComplete(string printerName, int timeoutMs = 300_000)
+    {
+        Console.WriteLine($"[WaitForSpoolerJobComplete] Polling spooler for: {printerName}");
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        const int pollMs = 1_500;
+        try
+        {
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                int active = CountActiveSpoolerJobs(printerName);
+                Console.WriteLine($"[WaitForSpoolerJobComplete] Active jobs: {active} ({sw.ElapsedMilliseconds}ms)");
+                if (active == 0) { Console.WriteLine("[WaitForSpoolerJobComplete] Queue cleared."); return; }
+                System.Threading.Thread.Sleep(pollMs);
+            }
+            Console.WriteLine($"[WaitForSpoolerJobComplete] Timeout {timeoutMs}ms - proceeding anyway.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[WaitForSpoolerJobComplete] WMI error: {ex.Message} - proceeding anyway.");
+        }
+    }
+
+    private static int CountActiveSpoolerJobs(string printerName)
+    {
+        try
+        {
+            var escaped = printerName.Replace("'", "''").Replace("\\", "\\\\");
+            using var searcher = new ManagementObjectSearcher(
+                $"SELECT StatusMask FROM Win32_PrintJob WHERE Name LIKE '%{escaped}%'");
+            int count = 0;
+            foreach (ManagementObject job in searcher.Get())
+            {
+                var mask = job["StatusMask"] != null ? Convert.ToUInt32(job["StatusMask"]) : 0u;
+                bool paused  = (mask & 0x01u) != 0;
+                bool deleted = (mask & 0x10u) != 0;
+                if (!paused && !deleted) count++;
+            }
+            return count;
+        }
+        catch { return 0; }  // WMI unavailable - do not block
     }
 
 }
