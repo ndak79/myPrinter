@@ -32,8 +32,24 @@
       <ExcludeAssets>none</ExcludeAssets>
     </PackageReference>
 
+    <!-- Ed25519 signature verification for license tokens -->
+    <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
+
     <!-- Backend API (same solution) -->
     <ProjectReference Include="..\backend\PrinterApp.csproj" />
+  </ItemGroup>
+
+  <!-- Embed Ed25519 public key in assembly — not secret, safe to commit -->
+  <ItemGroup>
+    <EmbeddedResource Include="Activation\license_public.pem" />
+  </ItemGroup>
+
+  <!-- Copy appsettings.json to output dir — Use Update (not Include); SDK auto-includes as None -->
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Bundle frontend files into output directory -->

@@ -1,0 +1,378 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "MyPrinter/1.0.0": {
+        "dependencies": {
+          "Microsoft.Web.WebView2": "1.0.3065.39",
+          "NSec.Cryptography": "24.4.0",
+          "PrinterApp": "1.0.0",
+          "Microsoft.Web.WebView2.Core": "1.0.3065.39",
+          "Microsoft.Web.WebView2.WinForms": "1.0.3065.39",
+          "Microsoft.Web.WebView2.Wpf": "1.0.3065.39"
+        },
+        "runtime": {
+          "MyPrinter.dll": {}
+        }
+      },
+      "libsodium/1.0.19": {
+        "runtimeTargets": {
+          "runtimes/linux-arm/native/libsodium.so": {
+            "rid": "linux-arm",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-arm64/native/libsodium.so": {
+            "rid": "linux-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-musl-arm/native/libsodium.so": {
+            "rid": "linux-musl-arm",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-musl-arm64/native/libsodium.so": {
+            "rid": "linux-musl-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-musl-x64/native/libsodium.so": {
+            "rid": "linux-musl-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/linux-x64/native/libsodium.so": {
+            "rid": "linux-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-arm64/native/libsodium.dylib": {
+            "rid": "osx-arm64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/osx-x64/native/libsodium.dylib": {
+            "rid": "osx-x64",
+            "assetType": "native",
+            "fileVersion": "0.0.0.0"
+          },
+          "runtimes/win-x64/native/libsodium.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "1.0.19.0"
+          },
+          "runtimes/win-x86/native/libsodium.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "1.0.19.0"
+          }
+        }
+      },
+      "Microsoft.AspNetCore.OpenApi/10.0.0": {
+        "dependencies": {
+          "Microsoft.OpenApi": "2.0.0"
+        },
+        "runtime": {
+          "lib/net10.0/Microsoft.AspNetCore.OpenApi.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.25.52411"
+          }
+        }
+      },
+      "Microsoft.Office.Interop.Word/15.0.4797.1004": {
+        "runtime": {
+          "lib/netstandard2.0/Microsoft.Office.Interop.Word.dll": {
+            "assemblyVersion": "15.0.0.0",
+            "fileVersion": "15.0.4797.1003"
+          }
+        }
+      },
+      "Microsoft.OpenApi/2.0.0": {
+        "runtime": {
+          "lib/net8.0/Microsoft.OpenApi.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.0.0"
+          }
+        }
+      },
+      "Microsoft.Web.WebView2/1.0.3065.39": {
+        "runtimeTargets": {
+          "runtimes/win-arm64/native/WebView2Loader.dll": {
+            "rid": "win-arm64",
+            "assetType": "native",
+            "fileVersion": "1.0.3065.39"
+          },
+          "runtimes/win-x64/native/WebView2Loader.dll": {
+            "rid": "win-x64",
+            "assetType": "native",
+            "fileVersion": "1.0.3065.39"
+          },
+          "runtimes/win-x86/native/WebView2Loader.dll": {
+            "rid": "win-x86",
+            "assetType": "native",
+            "fileVersion": "1.0.3065.39"
+          }
+        }
+      },
+      "NSec.Cryptography/24.4.0": {
+        "dependencies": {
+          "libsodium": "1.0.19"
+        },
+        "runtime": {
+          "lib/net6.0/NSec.Cryptography.dll": {
+            "assemblyVersion": "24.4.0.0",
+            "fileVersion": "24.4.0.0"
+          }
+        }
+      },
+      "PDFsharp/6.2.3": {
+        "runtime": {
+          "lib/net10.0/PdfSharp.BarCodes.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.Charting.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.Cryptography.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.Quality.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.Shared.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.Snippets.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.System.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.WPFonts.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          },
+          "lib/net10.0/PdfSharp.dll": {
+            "assemblyVersion": "6.2.3.0",
+            "fileVersion": "6.2.3.7625"
+          }
+        }
+      },
+      "Swashbuckle.AspNetCore/6.6.2": {
+        "dependencies": {
+          "Swashbuckle.AspNetCore.Swagger": "6.6.2",
+          "Swashbuckle.AspNetCore.SwaggerGen": "6.6.2",
+          "Swashbuckle.AspNetCore.SwaggerUI": "6.6.2"
+        }
+      },
+      "Swashbuckle.AspNetCore.Swagger/6.6.2": {
+        "dependencies": {
+          "Microsoft.OpenApi": "2.0.0"
+        },
+        "runtime": {
+          "lib/net8.0/Swashbuckle.AspNetCore.Swagger.dll": {
+            "assemblyVersion": "6.6.2.0",
+            "fileVersion": "6.6.2.401"
+          }
+        }
+      },
+      "Swashbuckle.AspNetCore.SwaggerGen/6.6.2": {
+        "dependencies": {
+          "Swashbuckle.AspNetCore.Swagger": "6.6.2"
+        },
+        "runtime": {
+          "lib/net8.0/Swashbuckle.AspNetCore.SwaggerGen.dll": {
+            "assemblyVersion": "6.6.2.0",
+            "fileVersion": "6.6.2.401"
+          }
+        }
+      },
+      "Swashbuckle.AspNetCore.SwaggerUI/6.6.2": {
+        "runtime": {
+          "lib/net8.0/Swashbuckle.AspNetCore.SwaggerUI.dll": {
+            "assemblyVersion": "6.6.2.0",
+            "fileVersion": "6.6.2.401"
+          }
+        }
+      },
+      "System.Management/10.0.0": {
+        "runtime": {
+          "lib/net10.0/System.Management.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.25.52411"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net10.0/System.Management.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.25.52411"
+          }
+        }
+      },
+      "PrinterApp/1.0.0": {
+        "dependencies": {
+          "Microsoft.AspNetCore.OpenApi": "10.0.0",
+          "Microsoft.Office.Interop.Word": "15.0.4797.1004",
+          "PDFsharp": "6.2.3",
+          "Swashbuckle.AspNetCore": "6.6.2",
+          "System.Management": "10.0.0"
+        },
+        "runtime": {
+          "PrinterApp.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "Microsoft.Web.WebView2.Core/1.0.3065.39": {
+        "runtime": {
+          "Microsoft.Web.WebView2.Core.dll": {
+            "assemblyVersion": "1.0.3065.39",
+            "fileVersion": "1.0.3065.39"
+          }
+        }
+      },
+      "Microsoft.Web.WebView2.WinForms/1.0.3065.39": {
+        "runtime": {
+          "Microsoft.Web.WebView2.WinForms.dll": {
+            "assemblyVersion": "1.0.3065.39",
+            "fileVersion": "1.0.3065.39"
+          }
+        }
+      },
+      "Microsoft.Web.WebView2.Wpf/1.0.3065.39": {
+        "runtime": {
+          "Microsoft.Web.WebView2.Wpf.dll": {
+            "assemblyVersion": "1.0.3065.39",
+            "fileVersion": "1.0.3065.39"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "MyPrinter/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "libsodium/1.0.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-tupm/HViwBN6Knd/gckR+cLaJGR39GLmiU4iDMM5hp/1BoczMr8fwJhSU+3/C2V4hi9nBK/4FICRKtTLU30TCA==",
+      "path": "libsodium/1.0.19",
+      "hashPath": "libsodium.1.0.19.nupkg.sha512"
+    },
+    "Microsoft.AspNetCore.OpenApi/10.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-0aqIF1t+sA2T62LIeMtXGSiaV7keGQaJnvwwmu+htQdjCaKYARfXAeqp4nHH9y2etpilyZ/tnQzZg4Ilmo/c4Q==",
+      "path": "microsoft.aspnetcore.openapi/10.0.0",
+      "hashPath": "microsoft.aspnetcore.openapi.10.0.0.nupkg.sha512"
+    },
+    "Microsoft.Office.Interop.Word/15.0.4797.1004": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-lavTOrMGK/o/t3+gGr7JuVrL8XDdnS0DwPLcYv/StOiysXO4L0C36IXTVtEJo1Mh9Aoxo9a8dgGcPi+faTlv0g==",
+      "path": "microsoft.office.interop.word/15.0.4797.1004",
+      "hashPath": "microsoft.office.interop.word.15.0.4797.1004.nupkg.sha512"
+    },
+    "Microsoft.OpenApi/2.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-GGYLfzV/G/ct80OZ45JxnWP7NvMX1BCugn/lX7TH5o0lcVaviavsLMTxmFV2AybXWjbi3h6FF1vgZiTK6PXndw==",
+      "path": "microsoft.openapi/2.0.0",
+      "hashPath": "microsoft.openapi.2.0.0.nupkg.sha512"
+    },
+    "Microsoft.Web.WebView2/1.0.3065.39": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ww6ToZ2jpHyP4k3DCQJETjKcdVS1cha9pS8dV2NetyfafItxz08wcAyQV0Yl86W7euhI02UJWEaC5sM8WLr0tQ==",
+      "path": "microsoft.web.webview2/1.0.3065.39",
+      "hashPath": "microsoft.web.webview2.1.0.3065.39.nupkg.sha512"
+    },
+    "NSec.Cryptography/24.4.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-R89OF0T5OY9QnPRoTsMCaPKMqtXcWKZSWAO4zyUaFHI+ZRMgXU7WaIwg/rPP3vOfdaLl8HdUHWkDB+2B9FOO7g==",
+      "path": "nsec.cryptography/24.4.0",
+      "hashPath": "nsec.cryptography.24.4.0.nupkg.sha512"
+    },
+    "PDFsharp/6.2.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ksDMxCoiEMuQLOCVI1tJwMl0xfx51NOhftxfmAuyH7ugHf4GbsrWYD/9LCfO3ofptsewjyUFIJcs4+1eB7BzJg==",
+      "path": "pdfsharp/6.2.3",
+      "hashPath": "pdfsharp.6.2.3.nupkg.sha512"
+    },
+    "Swashbuckle.AspNetCore/6.6.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+NB4UYVYN6AhDSjW0IJAd1AGD8V33gemFNLPaxKTtPkHB+HaKAKf9MGAEUPivEWvqeQfcKIw8lJaHq6LHljRuw==",
+      "path": "swashbuckle.aspnetcore/6.6.2",
+      "hashPath": "swashbuckle.aspnetcore.6.6.2.nupkg.sha512"
+    },
+    "Swashbuckle.AspNetCore.Swagger/6.6.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ovgPTSYX83UrQUWiS5vzDcJ8TEX1MAxBgDFMK45rC24MorHEPQlZAHlaXj/yth4Zf6xcktpUgTEBvffRQVwDKA==",
+      "path": "swashbuckle.aspnetcore.swagger/6.6.2",
+      "hashPath": "swashbuckle.aspnetcore.swagger.6.6.2.nupkg.sha512"
+    },
+    "Swashbuckle.AspNetCore.SwaggerGen/6.6.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-zv4ikn4AT1VYuOsDCpktLq4QDq08e7Utzbir86M5/ZkRaLXbCPF11E1/vTmOiDzRTl0zTZINQU2qLKwTcHgfrA==",
+      "path": "swashbuckle.aspnetcore.swaggergen/6.6.2",
+      "hashPath": "swashbuckle.aspnetcore.swaggergen.6.6.2.nupkg.sha512"
+    },
+    "Swashbuckle.AspNetCore.SwaggerUI/6.6.2": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-mBBb+/8Hm2Q3Wygag+hu2jj69tZW5psuv0vMRXY07Wy+Rrj40vRP8ZTbKBhs91r45/HXT4aY4z0iSBYx1h6JvA==",
+      "path": "swashbuckle.aspnetcore.swaggerui/6.6.2",
+      "hashPath": "swashbuckle.aspnetcore.swaggerui.6.6.2.nupkg.sha512"
+    },
+    "System.Management/10.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-LE3rDZoPzulou78Tsq+3ALhUs4vatQ03v2QWbYVIenVPneUH/+LTUmHyyl098OxIFLQI6sNkZs8YHbUnT/sm3A==",
+      "path": "system.management/10.0.0",
+      "hashPath": "system.management.10.0.0.nupkg.sha512"
+    },
+    "PrinterApp/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Microsoft.Web.WebView2.Core/1.0.3065.39": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Microsoft.Web.WebView2.WinForms/1.0.3065.39": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Microsoft.Web.WebView2.Wpf/1.0.3065.39": {
+      "type": "reference",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

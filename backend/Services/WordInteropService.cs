@@ -21,8 +21,8 @@ public class WordInteropService : IWordInteropService
     // two concurrent print jobs from racing on the system-wide default printer setting.
     private static readonly SemaphoreSlim _defaultPrinterLock = new SemaphoreSlim(1, 1);
     /// <summary>
-    /// Tạo 1 trang "blank" nhưng có content siêu nhỏ để tránh bị viewer/driver skip.
-    /// isLandscape = true → trang ngang, false → trang dọc.
+    /// T?o 1 trang "blank" nhung c� content si�u nh? d? tr�nh b? viewer/driver skip.
+    /// isLandscape = true ? trang ngang, false ? trang d?c.
     /// </summary>
     private static PdfPage CreateNonSkippableBlankPage(PdfDocument targetDoc,
                                                    PdfPage templatePage,
@@ -30,7 +30,7 @@ public class WordInteropService : IWordInteropService
     {
         var page = targetDoc.AddPage();
 
-        // Lấy kích thước từ template, rồi chỉnh orientation nếu cần.
+        // L?y k�ch thu?c t? template, r?i ch?nh orientation n?u c?n.
         // BE-34-1 fix: PDF /Rotate metadata makes stored Width/Height unreliable for orientation.
         // Swap to get the visually-rendered dimensions before deciding landscape vs portrait.
         double w = templatePage.Width.Point;
@@ -42,12 +42,12 @@ public class WordInteropService : IWordInteropService
 
         if (isLandscape && !templateIsLandscape)
         {
-            // Cần landscape nhưng template đang portrait → đổi chiều
+            // C?n landscape nhung template dang portrait ? d?i chi?u
             (w, h) = (h, w);
         }
         else if (!isLandscape && templateIsLandscape)
         {
-            // Cần portrait nhưng template đang landscape
+            // C?n portrait nhung template dang landscape
             (w, h) = (h, w);
         }
 
@@ -56,9 +56,9 @@ public class WordInteropService : IWordInteropService
 
         using (var gfx = XGraphics.FromPdfPage(page))
         {
-            // Vẽ 1 hình chữ nhật nhỏ màu xám ở GẦN GIỮA TRANG
-            // → chắc chắn nằm trong vùng in, có pixel khác trắng.
-            double rectSize = 3; // kích thước rất nhỏ, khó thấy
+            // V? 1 h�nh ch? nh?t nh? m�u x�m ? G?N GI?A TRANG
+            // ? ch?c ch?n n?m trong v�ng in, c� pixel kh�c tr?ng.
+            double rectSize = 3; // k�ch thu?c r?t nh?, kh� th?y
             double centerX  = page.Width.Point  / 2.0;
             double centerY  = page.Height.Point / 2.0;
 
@@ -119,7 +119,7 @@ public class WordInteropService : IWordInteropService
 
         var ext = Path.GetExtension(imagePath).ToLower();
 
-        // WebP and TIFF may not load directly in PdfSharp — normalise to PNG first
+        // WebP and TIFF may not load directly in PdfSharp � normalise to PNG first
         string? tempPng = null;
         string effectivePath = imagePath;
 
@@ -132,7 +132,7 @@ public class WordInteropService : IWordInteropService
             using var sysBmp = new System.Drawing.Bitmap(imagePath);
             sysBmp.Save(tempPng, System.Drawing.Imaging.ImageFormat.Png);
             effectivePath = tempPng;
-            Console.WriteLine($"[ConvertImageToPdf] Pre-converted {ext} → PNG: {tempPng}");
+            Console.WriteLine($"[ConvertImageToPdf] Pre-converted {ext} ? PNG: {tempPng}");
         }
 
         try
@@ -265,7 +265,7 @@ public class WordInteropService : IWordInteropService
             var firstPage = document.Pages[0];
 
             // BUG-1A fix: PDF /Rotate metadata can make a physically-portrait page
-            // appear as landscape (e.g. Word-exported PDFs with 90° rotation).
+            // appear as landscape (e.g. Word-exported PDFs with 90� rotation).
             // We must account for this when determining true orientation.
             double pw = firstPage.Width.Point;
             double ph = firstPage.Height.Point;
@@ -479,7 +479,7 @@ public class WordInteropService : IWordInteropService
             {
                 Console.WriteLine($"[PrintPdf] Shell print failed, trying PowerShell fallback...");
                 TryPowerShellPrint(fileToPrint, printerName);
-                // NOTE: TryPowerShellPrint does NOT support duplexSide — acceptable degraded behavior
+                // NOTE: TryPowerShellPrint does NOT support duplexSide � acceptable degraded behavior
             }
 
             Console.WriteLine($"[PrintPdf] Print job sent successfully");
@@ -518,7 +518,7 @@ public class WordInteropService : IWordInteropService
                 return PrintWithSumatra(sumatraPath, filePath, printerName, duplexSide);
             }
 
-            // Strategy 2: PrintBySwappingDefaultPrinter does NOT support duplexSide — acceptable degraded behavior
+            // Strategy 2: PrintBySwappingDefaultPrinter does NOT support duplexSide � acceptable degraded behavior
             Console.WriteLine($"[TryShellPrint] SumatraPDF not found. Using default-printer swap strategy.");
             return PrintBySwappingDefaultPrinter(filePath, printerName);
         }
@@ -546,12 +546,12 @@ public class WordInteropService : IWordInteropService
         try
         {
             // Only emit -print-settings when duplexSide is explicitly set.
-            // null → no arg → preserve existing printer behavior (no regression for simplex/booklet/manual-duplex).
+            // null ? no arg ? preserve existing printer behavior (no regression for simplex/booklet/manual-duplex).
             // CORRECT SumatraPDF syntax: "duplexshort" and "duplexlong" (NOT "short"/"long").
             var settingsPart = duplexSide switch {
                 "ShortEdge" => "-print-settings \"duplexshort\" ",
                 "LongEdge"  => "-print-settings \"duplexlong\" ",
-                _           => ""   // null or unknown → no override
+                _           => ""   // null or unknown ? no override
             };
             var args = $"-print-to \"{printerName}\" {settingsPart}\"{pdfPath}\"";
             Console.WriteLine($"[PrintWithSumatra] Args: {args}");
@@ -570,7 +570,7 @@ public class WordInteropService : IWordInteropService
             bool completed = proc.WaitForExit(60_000);
             if (!completed)
             {
-                Console.WriteLine("[PrintWithSumatra] Timed out after 60s — killing process.");
+                Console.WriteLine("[PrintWithSumatra] Timed out after 60s � killing process.");
                 try { proc.Kill(); } catch { /* best-effort */ }
                 return false;
             }
@@ -587,7 +587,7 @@ public class WordInteropService : IWordInteropService
     private bool PrintBySwappingDefaultPrinter(string filePath, string printerName)
     {
         // BE-21-6 fix: acquire lock to prevent two concurrent jobs from racing on the
-        // system-wide default printer setting (set → print → restore is not atomic).
+        // system-wide default printer setting (set ? print ? restore is not atomic).
         _defaultPrinterLock.Wait();
         try
         {
@@ -754,7 +754,7 @@ public class WordInteropService : IWordInteropService
                     }
                     else
                     {
-                        // No preceding page — peek at the first real page in pageNumbers to match
+                        // No preceding page � peek at the first real page in pageNumbers to match
                         // the document's orientation (BE-13-5: avoid Portrait/Landscape mismatch).
                         // BE-22-2 fix: use the source page's actual dimensions instead of
                         // hardcoded A4 values, so non-A4 documents (US Letter, A3, etc.) get
@@ -777,7 +777,7 @@ public class WordInteropService : IWordInteropService
                         }
                         else
                         {
-                            // No real page at all — fall back to A4 portrait as last resort
+                            // No real page at all � fall back to A4 portrait as last resort
                             w = 595.28;
                             h = 841.89;
                             Console.WriteLine("[CreatePdfSubset] Leading blank: no source page found, using A4 portrait fallback");
@@ -878,7 +878,7 @@ public class WordInteropService : IWordInteropService
             int pageCount = targetDoc.PageCount;
             targetDoc.Save(outputPath);
             
-            Console.WriteLine($"[CreateRotatedPdfSubset] Created rotated PDF with {pageCount} pages (reverse order, 180° XGraphics rotation, 1:1 scale) at {outputPath}");
+            Console.WriteLine($"[CreateRotatedPdfSubset] Created rotated PDF with {pageCount} pages (reverse order, 180� XGraphics rotation, 1:1 scale) at {outputPath}");
             
             return outputPath;
         }
@@ -993,13 +993,13 @@ public class WordInteropService : IWordInteropService
     }
 
         /// <summary>
-    /// Xử lý mixed-orientation + single-sided:
-    /// - Nhóm các trang liên tiếp cùng orientation.
-    /// - Với trang single-sided: chèn thêm 1 trang blank cùng orientation ngay sau nó.
-    /// - Sau mỗi group: nếu tổng số trang trong group là lẻ → chèn 1 trang blank để thành chẵn.
-    /// Kết quả:
-    /// - File PDF mới với số trang chẵn, các group orientation không bị "xé tờ".
-    /// - Danh sách ManualDuplexPageInfo để build ManualDuplexPlan.
+    /// X? l� mixed-orientation + single-sided:
+    /// - Nh�m c�c trang li�n ti?p c�ng orientation.
+    /// - V?i trang single-sided: ch�n th�m 1 trang blank c�ng orientation ngay sau n�.
+    /// - Sau m?i group: n?u t?ng s? trang trong group l� l? ? ch�n 1 trang blank d? th�nh ch?n.
+    /// K?t qu?:
+    /// - File PDF m?i v?i s? trang ch?n, c�c group orientation kh�ng b? "x� t?".
+    /// - Danh s�ch ManualDuplexPageInfo d? build ManualDuplexPlan.
     /// </summary>
     public string ProcessMixedOrientation(string sourcePath,
                                           int[]? singleSidedPages,
@@ -1018,7 +1018,7 @@ public class WordInteropService : IWordInteropService
 
             int pageCount = sourceDoc.PageCount;
 
-            // 1) Tính orientation cho từng trang gốc
+            // 1) T�nh orientation cho t?ng trang g?c
             //    true = Landscape, false = Portrait
             var isLandscapeByPage = new bool[pageCount + 1]; // 1-based
 
@@ -1028,7 +1028,7 @@ public class WordInteropService : IWordInteropService
                 double w = p.Width.Point;
                 double h = p.Height.Point;
 
-                // Nếu Rotate 90/270 thì width/height đổi vai trò
+                // N?u Rotate 90/270 th� width/height d?i vai tr�
                 int rotate = p.Rotate;
                 if (rotate == 90 || rotate == 270)
                 {
@@ -1038,11 +1038,11 @@ public class WordInteropService : IWordInteropService
                 isLandscapeByPage[i + 1] = w > h;
             }
 
-            // BUG FIX (C1 → BE-24-1): User-inserted blank pages (created by CreatePdfSubset for
-            // pageOrder=0 entries) always have portrait A4 dimensions (595×842), regardless
+            // BUG FIX (C1 ? BE-24-1): User-inserted blank pages (created by CreatePdfSubset for
+            // pageOrder=0 entries) always have portrait A4 dimensions (595�842), regardless
             // of the surrounding pages' orientation. This causes them to be detected as
             // "portrait", which incorrectly splits a landscape group at every blank page
-            // boundary → unnecessary extra padding blanks and wrong sheet count.
+            // boundary ? unnecessary extra padding blanks and wrong sheet count.
             //
             // Original fix (C1) used a dimension heuristic: treat any A4-sized page that differs
             // in orientation from its predecessor as an inserted blank and inherit the predecessor's
@@ -1065,12 +1065,12 @@ public class WordInteropService : IWordInteropService
                 }
             }
 
-            // 2) Duyệt theo group consecutive cùng orientation
+            // 2) Duy?t theo group consecutive c�ng orientation
             int current = 1;
             while (current <= pageCount)
             {
                 bool groupOrientation = isLandscapeByPage[current];
-                int groupStartLogicalIndex = pageInfos.Count; // đánh dấu để tính size group sau
+                int groupStartLogicalIndex = pageInfos.Count; // d�nh d?u d? t�nh size group sau
 
                 var groupPageNumbers = new List<int>();
                 int j = current;
@@ -1079,19 +1079,19 @@ public class WordInteropService : IWordInteropService
                     groupPageNumbers.Add(j);
                     j++;
                 }
-                current = j; // nhảy sang group tiếp theo
+                current = j; // nh?y sang group ti?p theo
 
                 Console.WriteLine($"[ProcessMixedOrientation] New group: orient={(groupOrientation ? "L" : "P")}, pages=[{string.Join(",", groupPageNumbers)}]");
 
-                // 2a) Xử lý từng trang trong group
+                // 2a) X? l� t?ng trang trong group
                 foreach (var pageNum in groupPageNumbers)
                 {
                     bool isSingleSided = singleSidedSet.Contains(pageNum);
 
-                    // Trang gốc
+                    // Trang g?c
                     pageInfos.Add(new ManualDuplexPageInfo
                     {
-                        // ProcessedIndex sẽ set sau, khi đã có full list
+                        // ProcessedIndex s? set sau, khi d� c� full list
                         OriginalPageNumber = pageNum,
                         IsBlank = false,
                         IsLandscape = groupOrientation
@@ -1101,7 +1101,7 @@ public class WordInteropService : IWordInteropService
 
                     if (isSingleSided)
                     {
-                        // Thêm 1 blank ngay sau để đảm bảo trang này có mặt sau trống
+                        // Th�m 1 blank ngay sau d? d?m b?o trang n�y c� m?t sau tr?ng
                         pageInfos.Add(new ManualDuplexPageInfo
                         {
                             OriginalPageNumber = -1,
@@ -1113,13 +1113,13 @@ public class WordInteropService : IWordInteropService
                     }
                 }
 
-                // 2b) Padding group thành chẵn (nếu cần)
+                // 2b) Padding group th�nh ch?n (n?u c?n)
                 int groupEndLogicalIndex = pageInfos.Count;
                 int groupLogicalCount = groupEndLogicalIndex - groupStartLogicalIndex;
 
                 if (groupLogicalCount % 2 != 0)
                 {
-                    // Thêm 1 blank cùng orientation để group kết thúc đúng cuối tờ
+                    // Th�m 1 blank c�ng orientation d? group k?t th�c d�ng cu?i t?
                     pageInfos.Add(new ManualDuplexPageInfo
                     {
                         OriginalPageNumber = -1,
@@ -1131,7 +1131,7 @@ public class WordInteropService : IWordInteropService
                 }
             }
 
-            // 3) Dựa trên pageInfos → tạo file PDF mới
+            // 3) D?a tr�n pageInfos ? t?o file PDF m?i
             PdfPage? lastRealPage = null; // tracks last non-blank page for use as blank template
 
             for (int i = 0; i < pageInfos.Count; i++)
@@ -1174,8 +1174,8 @@ public class WordInteropService : IWordInteropService
     }
 
     /// <summary>
-    /// Overload cũ: giữ cho các chỗ gọi hiện tại không bị vỡ.
-    /// Nếu không cần plan chi tiết thì dùng hàm này.
+    /// Overload cu: gi? cho c�c ch? g?i hi?n t?i kh�ng b? v?.
+    /// N?u kh�ng c?n plan chi ti?t th� d�ng h�m n�y.
     /// </summary>
     public string ProcessMixedOrientation(string sourcePath, int[] singleSidedPages)
     {
@@ -1199,9 +1199,10 @@ public class WordInteropService : IWordInteropService
     }
 
     /// <summary>
-    /// Creates a PDF for Phase 2 (Even pages) with smart rotation based on orientation.
-    /// Portrait -> Rotate 180 (Long Edge flip compensation)
-    /// Landscape -> Rotate 0 (Short Edge flip compensation)
+    /// Creates a PDF for Phase 2 (Even pages) with 180-degree rotation applied to every page.
+    /// Both portrait and landscape pages need Rotate 180 to compensate for the "take out
+    /// and place straight back" mechanic: the paper feed always produces a 180-degree
+    /// inversion regardless of page orientation.
     /// </summary>
     public string CreateSmartDuplexPdf(string sourcePath, int[] pageNumbers)
     {
@@ -1212,15 +1213,15 @@ public class WordInteropService : IWordInteropService
 
         try
         {
-            // Mở 1 lần
+            // M? 1 l?n
             using var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
             using var targetDoc = new PdfDocument();
             using var form = XPdfForm.FromFile(sourcePath);
 
             Console.WriteLine($"[CreateSmartDuplexPdf] Source opened. PageCount={sourceDoc.PageCount}");
 
-            // Thứ tự đã được ManualDuplexPlan.Build() xử lý đúng (Reverse cho faceDownStack).
-            // KHÔNG OrderByDescending lại — chỉ lọc out-of-range để tránh crash.
+            // Th? t? d� du?c ManualDuplexPlan.Build() x? l� d�ng (Reverse cho faceDownStack).
+            // KH�NG OrderByDescending l?i � ch? l?c out-of-range d? tr�nh crash.
             var orderedPages = pageNumbers
                 .Where(p => p >= 1 && p <= sourceDoc.PageCount)
                 .ToArray();
@@ -1229,7 +1230,7 @@ public class WordInteropService : IWordInteropService
             {
                 var srcPage = sourceDoc.Pages[pageNum - 1];
 
-                // Tính orientation thực tế (kể cả Rotate 90/270)
+                // T�nh orientation th?c t? (k? c? Rotate 90/270)
                 var rotate = srcPage.Rotate;
                 double w = srcPage.Width.Point;
                 double h = srcPage.Height.Point;
@@ -1237,19 +1238,19 @@ public class WordInteropService : IWordInteropService
                     (w, h) = (h, w);
 
                 bool isLandscape = w > h;
-                bool needsRotation = !isLandscape; // Portrait -> cần xoay 180°
+                bool needsRotation = !isLandscape; // Portrait -> Rotate 180 (Long Edge flip); Landscape -> Rotate 0 (Short Edge flip)
 
                 Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum}: L={isLandscape}, Rotate={needsRotation}");
 
                 if (needsRotation)
                 {
-                    // Dùng XPdfForm 1 lần, chỉ đổi PageNumber
+                    // D�ng XPdfForm 1 l?n, ch? d?i PageNumber
                     form.PageNumber = pageNum;
 
                     var newPage = targetDoc.AddPage();
                     // BUG FIX (C9): use orientation-adjusted w/h, NOT form.PointWidth/PointHeight.
                     // form.Point* returns raw MediaBox dimensions which are NOT swapped for
-                    // PDF-level Rotate metadata (90°/270°). w and h are already correctly
+                    // PDF-level Rotate metadata (90�/270�). w and h are already correctly
                     // swapped above (lines 1133-1134), so they reflect the visually-effective
                     // page dimensions. Using the raw form dimensions for a portrait page stored
                     // as landscape+Rotate90 (common from Word) would create a landscape canvas
@@ -1268,14 +1269,14 @@ public class WordInteropService : IWordInteropService
                 }
                 else
                 {
-                    // Không xoay: import trực tiếp từ sourceDoc
+                    // Kh�ng xoay: import tr?c ti?p t? sourceDoc
                     targetDoc.AddPage(srcPage);
                     Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum} imported successfully");
                 }
             }
 
-            int finalPageCount = targetDoc.PageCount;   // ✅ Lấy PageCount TRƯỚC khi Save
-            targetDoc.Save(outputPath);                 // ✅ Save đúng 1 lần
+            int finalPageCount = targetDoc.PageCount;   // ? L?y PageCount TRU?C khi Save
+            targetDoc.Save(outputPath);                 // ? Save d�ng 1 l?n
             Console.WriteLine($"[CreateSmartDuplexPdf] Saved to {outputPath} with {finalPageCount} pages");
 
             return outputPath;
@@ -1289,10 +1290,10 @@ public class WordInteropService : IWordInteropService
     }
 
     /// <summary>
-    /// Apply per-page rotations to a PDF (U — per-page rotation).
+    /// Apply per-page rotations to a PDF (U � per-page rotation).
     /// Creates a new PDF where each page listed in rotationMap is rotated accordingly.
     /// Pages not in rotationMap are copied as-is.
-    /// NOTE: FlipHorizontal and FlipVertical map to 180° as MVP fallback —
+    /// NOTE: FlipHorizontal and FlipVertical map to 180� as MVP fallback �
     /// true flip requires content stream manipulation not supported by PdfSharp.
     /// </summary>
     public string ApplyPageRotations(string sourcePath, Dictionary<int, RotationDirection> rotationMap)
@@ -1372,7 +1373,7 @@ public class WordInteropService : IWordInteropService
                             break;
                     }
 
-                    // BE-23-1 fix: always draw the form at its natural (effective) dimensions formW×formH.
+                    // BE-23-1 fix: always draw the form at its natural (effective) dimensions formW�formH.
                     // The translate+rotate transform already rotates the coordinate system, so the form's
                     // natural width/height arguments correctly fill the rotated canvas without distortion.
                     // The previous code swapped to (formH, formW) for 90/270, which caused non-uniform
@@ -1380,7 +1381,7 @@ public class WordInteropService : IWordInteropService
                     gfx.DrawImage(form, 0, 0, formW, formH);
                     gfx.Restore();
 
-                    Console.WriteLine($"[ApplyPageRotations] Page {pageNum}: rotated {degrees}°");
+                    Console.WriteLine($"[ApplyPageRotations] Page {pageNum}: rotated {degrees}�");
                 }
                 else
                 {
