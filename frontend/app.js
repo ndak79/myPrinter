@@ -2413,9 +2413,9 @@ const CopiesModule = {
     _update() {
         const el = document.getElementById('copies-display');
         if (el) el.textContent = this.copies;
-        // Show collate option only when copies > 1
+        // TEMPORARY: Always hide collate option
         const collateLabel = document.getElementById('collate-label');
-        if (collateLabel) collateLabel.style.display = this.copies > 1 ? 'flex' : 'none';
+        if (collateLabel) collateLabel.style.display = 'none';
     },
 
     setCopies(n) {

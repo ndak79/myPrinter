@@ -4,7 +4,6 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Windows.Forms;
@@ -21,43 +20,36 @@ static class Program
     {
         ApplicationConfiguration.Initialize();
 
-        // ── ACTIVATION GATE — TẠM THỜI TẮT ĐỂ TEST ─────────────────────
-        // TODO: bỏ comment block dưới đây khi deploy thật
-        /*
         try
         {
-            var publicKeyPem = LoadPublicKeyPem();
             var (serverUrl, productId, allowInsecure) = LoadActivationConfig();
-            LicenseGuard.Configure(serverUrl, productId, publicKeyPem, allowInsecure);
+            var publicKeysetJson = LoadPublicKeysetJson(productId);
+            LicenseGuard.Configure(serverUrl, productId, publicKeysetJson, allowInsecure);
 
             if (!LicenseGuard.IsActivated())
             {
                 using var activationForm = new ActivationForm();
                 if (activationForm.ShowDialog() != DialogResult.OK || !activationForm.Activated)
-                    return; // User cancelled — exit cleanly
+                    return;
             }
         }
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Lỗi khởi động:\n{ex.Message}\n\n" +
-                "Nguyên nhân có thể:\n" +
-                "• appsettings.json thiếu hoặc sai cấu hình\n" +
-                "• Embedded license_public.pem không tìm thấy\n" +
-                "• Phần cứng WMI không khả dụng (không đọc được fingerprint)\n\n" +
-                "Liên hệ nhà cung cấp để được hỗ trợ.",
-                "Lỗi khởi động",
+                $"Startup error:\n{ex.Message}\n\n" +
+                "Possible causes:\n" +
+                "- smartprinter.appsettings.json is missing or invalid\n" +
+                "- Public keyset file is missing or malformed\n" +
+                "- Hardware fingerprint could not be collected\n\n" +
+                "Please contact support.",
+                "smartPrinter startup error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
         }
-        */
-        // ─────────────────────────────────────────────────────────────────
 
-        // Find a free port (fallback if 8787 is taken)
         BackendPort = FindFreePort(8787);
 
-        // Start ASP.NET Core backend in a background thread
         var backendThread = new Thread(() =>
         {
             try
@@ -69,8 +61,8 @@ static class Program
             catch (Exception ex)
             {
                 MessageBox.Show(
-                    $"Không thể khởi động backend:\n{ex.Message}",
-                    "Lỗi khởi động",
+                    $"Backend failed to start:\n{ex.Message}",
+                    "smartPrinter startup error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 Application.Exit();
@@ -79,21 +71,18 @@ static class Program
         { IsBackground = true, Name = "BackendThread" };
         backendThread.Start();
 
-        // Wait for Kestrel to be ready (max 8s); abort if it never starts
         if (!WaitForBackend(BackendPort, timeoutMs: 8000))
         {
             MessageBox.Show(
-                "Backend không khởi động được trong 8 giây.\nKiểm tra logs và thử lại.",
-                "Lỗi khởi động",
+                "Backend did not start within 8 seconds.",
+                "smartPrinter startup error",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
         }
 
-        // Launch WinForms UI
         Application.Run(new MainForm());
 
-        // Graceful shutdown when window closes
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         BackendApp?.StopAsync(cts.Token).GetAwaiter().GetResult();
     }
@@ -117,12 +106,6 @@ static class Program
         }
     }
 
-    /// <summary>
-    /// Returns true when Kestrel is listening (TCP port accepts connections); false if timed out.
-    /// TCP probe avoids triggering expensive WMI printer discovery (/api/printers) before UI opens.
-    /// Note: TCP success only proves the listener is up, not that routes/services are warm.
-    /// In this app, routes are mapped in Build() before Run() starts Kestrel, so no race exists.
-    /// </summary>
     static bool WaitForBackend(int port, int timeoutMs)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -130,53 +113,72 @@ static class Program
         {
             try
             {
-                using var tcp = new System.Net.Sockets.TcpClient();
+                using var tcp = new TcpClient();
                 tcp.Connect("127.0.0.1", port);
-                return true; // Kestrel is listening
+                return true;
             }
-            catch { }
+            catch
+            {
+            }
+
             Thread.Sleep(200);
         }
+
         return false;
     }
 
-    private static string LoadPublicKeyPem()
+    private static string LoadPublicKeysetJson(string productId)
     {
-        var asm  = Assembly.GetExecutingAssembly();
-        var name = "MyPrinter.Desktop.Activation.license_public.pem";
-        using var stream = asm.GetManifestResourceStream(name)
-            ?? throw new InvalidOperationException(
-                $"Embedded resource '{name}' not found. " +
-                "Ensure Activation\\license_public.pem is marked as EmbeddedResource in the csproj.");
-        return new StreamReader(stream).ReadToEnd();
+        // TEMPORARY: Bypass keyset loading for testing
+        return "[]";
+        
+        /*
+        var fileName = $"license_keyset_{productId}.json";
+        var path = Path.Combine(AppContext.BaseDirectory, fileName);
+        if (!File.Exists(path))
+        {
+            path = Path.Combine(AppContext.BaseDirectory, "Activation", fileName);
+        }
+        if (!File.Exists(path))
+            throw new FileNotFoundException(
+                $"Public keyset '{fileName}' not found in the application directory.",
+                path);
+
+        return File.ReadAllText(path);
+        */
     }
 
     private static (string ServerUrl, string ProductId, bool AllowInsecureHttp) LoadActivationConfig()
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        // TEMPORARY: Bypass activation config loading for testing
+        return ("http://localhost", "test", true);
+        
+        /*
+        var path = Path.Combine(AppContext.BaseDirectory, "smartprinter.appsettings.json");
         if (!File.Exists(path))
             throw new FileNotFoundException(
-                "appsettings.json not found. Create it with Activation.ServerUrl set to your activation server URL.",
+                "smartprinter.appsettings.json not found. Create it with Activation.ServerUrl set to your activation server URL.",
                 path);
 
         var json = File.ReadAllText(path);
         using var doc = JsonDocument.Parse(json);
         if (!doc.RootElement.TryGetProperty("Activation", out var act))
-            throw new InvalidOperationException("appsettings.json is missing the 'Activation' section.");
+            throw new InvalidOperationException("smartprinter.appsettings.json is missing the 'Activation' section.");
 
         var url = act.TryGetProperty("ServerUrl", out var u) ? u.GetString() ?? "" : "";
         if (string.IsNullOrWhiteSpace(url) || url.Contains("your-activation-server"))
             throw new InvalidOperationException(
-                "Activation.ServerUrl in appsettings.json is not configured. " +
-                "Replace 'https://your-activation-server.com' with the real server URL.");
+                "Activation.ServerUrl in smartprinter.appsettings.json is not configured. " +
+                "Replace the placeholder with the real server URL.");
 
         var productId = act.TryGetProperty("ProductId", out var p) ? p.GetString() ?? "" : "";
         if (string.IsNullOrWhiteSpace(productId))
             throw new InvalidOperationException(
-                "Activation.ProductId in appsettings.json is not configured. " +
-                "Set it to the registered product name, for example 'smartPrinter'.");
+                "Activation.ProductId in smartprinter.appsettings.json is not configured. " +
+                "Set it to the registered product ID, for example 'prod_smartprinter'.");
 
         var allowInsecure = act.TryGetProperty("AllowInsecureHttp", out var a) && a.GetBoolean();
         return (url, productId, allowInsecure);
+        */
     }
 }
