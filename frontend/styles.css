@@ -2478,33 +2478,119 @@ kbd {
 .file-tab-label { overflow: hidden; text-overflow: ellipsis; }
 
 .file-tab-add {
-  height:           24px;
-  padding:          0 10px;
-  border:           1px dashed var(--color-border);
-  border-radius:    var(--radius-sm);
-  background:       transparent;
-  color:            var(--color-text-secondary);
-  font-size:        12px;
+  height:           34px;
+  padding:          0 14px;
+  border:           1px solid rgba(37, 99, 235, 0.18);
+  border-radius:    999px;
+  background:       linear-gradient(180deg, #ffffff 0%, #f3f8ff 100%);
+  color:            #1746a2;
+  font-size:        13px;
+  font-weight:      700;
+  letter-spacing:   0.01em;
   font-family:      var(--font-system);
   cursor:           pointer;
   white-space:      nowrap;
-  margin-left:      4px;
-  transition:       background-color 0.15s, border-color 0.15s, color 0.15s;
+  margin-left:      8px;
+  box-shadow:       0 6px 18px rgba(37, 99, 235, 0.10);
+  transition:       background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s;
 }
 .file-tab-add:hover {
-  background:       var(--color-surface);
-  border-color:     var(--color-accent);
-  color:            var(--color-accent);
+  background:       linear-gradient(180deg, #ffffff 0%, #e9f2ff 100%);
+  border-color:     rgba(37, 99, 235, 0.34);
+  color:            #123c8d;
+  box-shadow:       0 10px 24px rgba(37, 99, 235, 0.16);
+  transform:        translateY(-1px);
+}
+.file-tab-add:focus-visible {
+  outline:          none;
+  border-color:     rgba(37, 99, 235, 0.48);
+  box-shadow:       0 0 0 4px rgba(37, 99, 235, 0.16), 0 10px 24px rgba(37, 99, 235, 0.14);
 }
 
 /* ── Copies widget (inside tab bar) ────────────────────────── */
 .copies-widget {
   display:     flex;
   align-items: center;
-  gap:         6px;
+  gap:         10px;
   margin-left: auto;   /* push to right side of tab bar */
-  padding:     0 8px;
+  padding:     6px 10px;
   flex-shrink: 0;
+  border:      1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  background:  linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
+  box-shadow:  0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.copies-label {
+  color:       #475569;
+  font-size:   12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.copies-control {
+  display:     flex;
+  align-items: center;
+  gap:         8px;
+  padding:     3px;
+  border-radius: 999px;
+  background:  rgba(226, 232, 240, 0.78);
+  border:      1px solid rgba(148, 163, 184, 0.18);
+}
+
+.copies-btn {
+  width:       30px;
+  height:      30px;
+  border-radius: 999px;
+  border:      1px solid rgba(148, 163, 184, 0.28);
+  background:  linear-gradient(180deg, #ffffff 0%, #eef4ff 100%);
+  color:       #0f172a;
+  font-size:   18px;
+  font-weight: 700;
+  cursor:      pointer;
+  display:     flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:  0 2px 6px rgba(15, 23, 42, 0.08);
+  transition:  transform 0.15s, box-shadow 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.copies-btn:hover {
+  border-color: rgba(37, 99, 235, 0.34);
+  background:   linear-gradient(180deg, #ffffff 0%, #e7f0ff 100%);
+  box-shadow:   0 6px 14px rgba(37, 99, 235, 0.14);
+  transform:    translateY(-1px);
+}
+
+.copies-btn:focus-visible {
+  outline:      none;
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow:   0 0 0 4px rgba(37, 99, 235, 0.14);
+}
+
+.copies-val {
+  min-width:    34px;
+  padding:      0 4px;
+  text-align:   center;
+  color:        #0f172a;
+  font-size:    16px;
+  font-weight:  800;
+  font-variant-numeric: tabular-nums;
+}
+
+.collate-label {
+  display:      flex;
+  align-items:  center;
+  gap:          6px;
+  padding-left: 2px;
+  font-size:    13px;
+  color:        #475569;
+  cursor:       pointer;
+}
+
+.collate-label input[type="checkbox"] {
+  accent-color: var(--color-accent);
 }
 
 /* ── Landscape tab badge ───────────────────────────────────── */

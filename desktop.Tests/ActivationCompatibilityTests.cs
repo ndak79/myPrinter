@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using MyPrinter.Desktop;
+using MyPrinter.Desktop.Activation;
 using NSec.Cryptography;
 
 namespace desktop.Tests;
@@ -20,7 +21,7 @@ public class ActivationCompatibilityTests
             var body = await reader.ReadToEndAsync();
             using var json = JsonDocument.Parse(body);
 
-            json.RootElement.GetProperty("product_id").GetString().Should().Be("smartPrinter");
+            json.RootElement.GetProperty("product_id").GetString().Should().Be("prod_smartprinter");
             json.RootElement.GetProperty("fingerprint").GetString().Should().Be(new string('a', 64));
             json.RootElement.GetProperty("license_token").GetString().Should().Be("header.payload.signature");
 
@@ -39,7 +40,7 @@ public class ActivationCompatibilityTests
 
         method.Should().NotBeNull("HeartbeatAsync must accept serverUrl, fingerprint, productId, and licenseToken for v7 proof-of-possession");
 
-        var task = (Task)method!.Invoke(null, [server.BaseUrl, new string('a', 64), "smartPrinter", "header.payload.signature"])!;
+        var task = (Task)method!.Invoke(null, [server.BaseUrl, new string('a', 64), "prod_smartprinter", "header.payload.signature"])!;
         await task;
 
         var result = task.GetType().GetProperty("Result")!.GetValue(task);
@@ -58,7 +59,7 @@ public class ActivationCompatibilityTests
             var body = await reader.ReadToEndAsync();
             using var json = JsonDocument.Parse(body);
 
-            json.RootElement.GetProperty("product_id").GetString().Should().Be("smartPrinter");
+            json.RootElement.GetProperty("product_id").GetString().Should().Be("prod_smartprinter");
             json.RootElement.GetProperty("activation_key").GetString().Should().Be("ABCD-EFGH-IJKL-MNOP");
             json.RootElement.GetProperty("fingerprint").GetString().Should().Be(new string('b', 64));
 
@@ -80,7 +81,7 @@ public class ActivationCompatibilityTests
 
         method.Should().NotBeNull("ActivateAsync must accept productId so desktop clients can target smartPrinter explicitly");
 
-        var task = (Task)method!.Invoke(null, [server.BaseUrl, "ABCD-EFGH-IJKL-MNOP", new string('b', 64), "smartPrinter"])!;
+        var task = (Task)method!.Invoke(null, [server.BaseUrl, "ABCD-EFGH-IJKL-MNOP", new string('b', 64), "prod_smartprinter"])!;
         await task;
 
         var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
@@ -93,8 +94,8 @@ public class ActivationCompatibilityTests
     public void LicenseToken_can_be_built_from_v7_jws_and_verify_signature_against_product_claims()
     {
         const string fingerprint = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        const string productId = "smartPrinter";
-        const string issuer = "https://license.smartprinter.test";
+        const string productId = "prod_smartprinter";
+        const string issuer = "http://103.82.24.37";
 
         var key = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
         {
@@ -104,7 +105,7 @@ public class ActivationCompatibilityTests
         var rawPublicKey = key.PublicKey.Export(KeyBlobFormat.RawPublicKey);
         var publicKeyPem = ToPem(rawPublicKey);
         var fpClaim = Sha256Hex($"{productId}:{fingerprint}");
-        var token = CreateJws(key, issuer, productId, "dev_123", fpClaim, 1893456000, "prod_default_v1");
+        var token = CreateJws(key, issuer, productId, "dev_123", fpClaim, 1893456000, "prod_smartprinter_v2");
 
         var licenseTokenType = GetActivationType("MyPrinter.Desktop.Activation.LicenseToken");
         var fromSignedToken = licenseTokenType.GetMethod(
@@ -128,6 +129,187 @@ public class ActivationCompatibilityTests
         GetString(instance!, "Token").Should().Be(token);
         GetString(instance!, "ProductId").Should().Be(productId);
         GetLong(instance!, "Expiry").Should().Be(1893456000);
+    }
+
+    [Fact]
+    public void LicenseToken_can_verify_v7_jws_against_matching_keyset_entry()
+    {
+        const string fingerprint = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        const string productId = "prod_smartprinter";
+        const string issuer = "http://103.82.24.37";
+        const string kid = "prod_smartprinter_v2";
+
+        var key = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
+        {
+            ExportPolicy = KeyExportPolicies.AllowPlaintextArchiving,
+        });
+
+        var rawPublicKey = key.PublicKey.Export(KeyBlobFormat.RawPublicKey);
+        var keysetJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                kid,
+                key = Base64UrlEncode(rawPublicKey),
+            },
+        });
+
+        var fpClaim = Sha256Hex($"{productId}:{fingerprint}");
+        var token = CreateJws(key, issuer, productId, "dev_456", fpClaim, 1893456000, kid);
+
+        var licenseTokenType = GetActivationType("MyPrinter.Desktop.Activation.LicenseToken");
+        var fromSignedToken = licenseTokenType.GetMethod(
+            "FromSignedToken",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)])!;
+
+        var instance = fromSignedToken.Invoke(null, [token, fingerprint, productId]);
+        instance.Should().NotBeNull();
+
+        var verifyWithKeyset = licenseTokenType.GetMethod(
+            "VerifySignatureWithKeyset",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)]);
+
+        verifyWithKeyset.Should().NotBeNull("desktop client should verify JWS signatures against the shipped production keyset");
+        ((bool)verifyWithKeyset!.Invoke(instance, [keysetJson, productId, issuer])!).Should().BeTrue();
+    }
+
+    [Fact]
+    public void VerifySignatureWithKeyset_accepts_legacy_v2_signature_when_matching_key_is_not_first()
+    {
+        const string fingerprint = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+
+        var firstKey = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
+        {
+            ExportPolicy = KeyExportPolicies.AllowPlaintextArchiving,
+        });
+        var secondKey = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
+        {
+            ExportPolicy = KeyExportPolicies.AllowPlaintextArchiving,
+        });
+
+        var token = CreateLegacyToken(
+            secondKey,
+            fingerprint,
+            expiry: 1893456000);
+
+        var keysetJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                kid = "prod_smartprinter_v1",
+                key = Base64UrlEncode(firstKey.PublicKey.Export(KeyBlobFormat.RawPublicKey)),
+            },
+            new
+            {
+                kid = "prod_smartprinter_v2",
+                key = Base64UrlEncode(secondKey.PublicKey.Export(KeyBlobFormat.RawPublicKey)),
+            },
+        });
+
+        var verifyWithKeyset = token.GetType().GetMethod(
+            "VerifySignatureWithKeyset",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)]);
+
+        verifyWithKeyset.Should().NotBeNull();
+        ((bool)verifyWithKeyset!.Invoke(token, [keysetJson, "prod_smartprinter", "http://103.82.24.37"])!)
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public void LoadActivationConfig_reads_server_and_product_id_from_runtime_config()
+    {
+        var outputConfigPath = Path.Combine(AppContext.BaseDirectory, "smartprinter.appsettings.json");
+        var original = File.Exists(outputConfigPath) ? File.ReadAllText(outputConfigPath) : null;
+        File.WriteAllText(outputConfigPath, """
+        {
+          "Activation": {
+            "ServerUrl": "http://103.82.24.37",
+            "ProductId": "prod_smartprinter",
+            "AllowInsecureHttp": true
+          }
+        }
+        """);
+
+        var method = typeof(ActivationForm).Assembly.GetType("MyPrinter.Desktop.Program", throwOnError: true)!
+            .GetMethod("LoadActivationConfig", BindingFlags.Static | BindingFlags.NonPublic);
+
+        method.Should().NotBeNull();
+
+        try
+        {
+            var result = method!.Invoke(null, []);
+            result.Should().NotBeNull();
+
+            var serverUrl = (string?)result!.GetType().GetField("Item1", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
+            var productId = (string?)result.GetType().GetField("Item2", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
+            var allowInsecureHttp = (bool?)result.GetType().GetField("Item3", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
+
+            serverUrl.Should().Be("http://103.82.24.37");
+            productId.Should().Be("prod_smartprinter");
+            allowInsecureHttp.Should().BeTrue();
+        }
+        finally
+        {
+            if (original is null)
+                File.Delete(outputConfigPath);
+            else
+                File.WriteAllText(outputConfigPath, original);
+        }
+    }
+
+    [Fact]
+    public void Committed_activation_config_template_does_not_ship_plaintext_http()
+    {
+        var repoRoot = GetRepoRoot();
+        var configPath = Path.Combine(repoRoot, "desktop", "smartprinter.appsettings.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
+        var activation = doc.RootElement.GetProperty("Activation");
+
+        activation.GetProperty("ServerUrl").GetString().Should().StartWith("https://");
+        activation.GetProperty("AllowInsecureHttp").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Installer_definition_whitelists_runtime_files()
+    {
+        var repoRoot = GetRepoRoot();
+        var issPath = Path.Combine(repoRoot, "installer", "myPrinter.iss");
+        var script = File.ReadAllText(issPath);
+
+        script.Should().NotContain("Source: \"{#PublishDir}\\*\"");
+        script.Should().Contain("Source: \"{#PublishDir}\\MyPrinter.exe\"");
+        script.Should().Contain("Source: \"{#PublishDir}\\smartprinter.appsettings.json\"");
+        script.Should().Contain("Source: \"{#PublishDir}\\Activation\\license_keyset_prod_smartprinter.json\"");
+        script.Should().Contain("Source: \"{#PublishDir}\\frontend\\*\"");
+        script.Should().Contain("Excludes: \"*.backup,_fix_guide.js\"");
+    }
+
+    [Fact]
+    public void Build_installer_script_requires_a_real_activation_server_url()
+    {
+        var repoRoot = GetRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "build-installer.ps1");
+        var script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("Installer config still contains placeholder Activation.ServerUrl");
+        script.Should().Contain("Pass -ServerUrl with the real activation base URL.");
+        script.Should().Contain("Non-HTTPS Activation.ServerUrl requires AllowInsecureHttp=true.");
+    }
+
+    [Fact]
+    public void LicenseGuard_keeps_legacy_tokens_on_the_offline_path()
+    {
+        var repoRoot = GetRepoRoot();
+        var sourcePath = Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs");
+        var source = File.ReadAllText(sourcePath);
+
+        source.Should().NotContain("if (string.IsNullOrWhiteSpace(token.Token)) return false;");
+        source.Should().Contain("var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);");
+        source.Should().Contain("token.LastOnlineCheck = hasCompactToken ? effectiveTime : 0;");
+        source.Should().Contain("if (hasCompactToken)");
     }
 
     private static Type GetActivationType(string fullName)
@@ -168,6 +350,20 @@ public class ActivationCompatibilityTests
         return $"{headerB64}.{payloadB64}.{Base64UrlEncode(signature)}";
     }
 
+    private static object CreateLegacyToken(Key key, string fingerprint, long expiry)
+    {
+        var canonical = $"{{\"expiry\":{expiry},\"fingerprint\":\"{fingerprint}\",\"version\":2}}";
+        var signature = SignatureAlgorithm.Ed25519.Sign(key, Encoding.UTF8.GetBytes(canonical));
+
+        var licenseTokenType = GetActivationType("MyPrinter.Desktop.Activation.LicenseToken");
+        var instance = Activator.CreateInstance(licenseTokenType)!;
+        licenseTokenType.GetProperty("Fingerprint")!.SetValue(instance, fingerprint);
+        licenseTokenType.GetProperty("Expiry")!.SetValue(instance, expiry);
+        licenseTokenType.GetProperty("Version")!.SetValue(instance, 2);
+        licenseTokenType.GetProperty("Signature")!.SetValue(instance, Base64UrlEncode(signature));
+        return instance;
+    }
+
     private static string ToPem(byte[] rawPublicKey)
     {
         var spkiPrefix = new byte[]
@@ -184,6 +380,9 @@ public class ActivationCompatibilityTests
 
     private static string Base64UrlEncode(byte[] bytes)
         => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static string GetRepoRoot()
+        => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 
     private sealed class TestJsonServer : IDisposable
     {

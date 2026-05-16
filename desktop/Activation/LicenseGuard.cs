@@ -18,39 +18,33 @@ public static class LicenseGuard
 
     public static void Configure(string serverUrl, string productId, string publicKeysetJson, bool allowInsecureHttp = false)
     {
-        // TEMPORARY: Bypass all validation for testing
-        _serverUrl = "http://localhost";
-        _productId = "test";
-        _publicKeysetJson = "[]";
-        _allowInsecureHttp = true;
-        
-        // if (string.IsNullOrWhiteSpace(serverUrl))
-        //     throw new ArgumentException("ServerUrl must not be empty.", nameof(serverUrl));
-        // if (string.IsNullOrWhiteSpace(productId))
-        //     throw new ArgumentException("ProductId must not be empty.", nameof(productId));
-        // if (string.IsNullOrWhiteSpace(publicKeysetJson))
-        //     throw new ArgumentException("PublicKeysetJson must not be empty.", nameof(publicKeysetJson));
-        //
-        // if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri))
-        //     throw new ArgumentException("ServerUrl must be an absolute URL.", nameof(serverUrl));
-        // if (uri.Scheme is not ("http" or "https"))
-        //     throw new ArgumentException("ServerUrl must use http or https scheme.", nameof(serverUrl));
-        //
-        // var host = uri.Host.ToLowerInvariant();
-        // var isLocal = host is "localhost" or "127.0.0.1" or "::1";
-        // var isHttps = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
-        // if (!isLocal && !isHttps && !allowInsecureHttp)
-        //     throw new ArgumentException(
-        //         "ServerUrl must use HTTPS for non-local endpoints. " +
-        //         "Set AllowInsecureHttp=true in smartprinter.appsettings.json to override.",
-        //         nameof(serverUrl));
-        //
-        // ValidatePublicKeysetOrThrow(publicKeysetJson);
-        //
-        // _serverUrl = serverUrl.TrimEnd('/');
-        // _productId = productId.Trim();
-        // _publicKeysetJson = publicKeysetJson;
-        // _allowInsecureHttp = allowInsecureHttp;
+        if (string.IsNullOrWhiteSpace(serverUrl))
+            throw new ArgumentException("ServerUrl must not be empty.", nameof(serverUrl));
+        if (string.IsNullOrWhiteSpace(productId))
+            throw new ArgumentException("ProductId must not be empty.", nameof(productId));
+        if (string.IsNullOrWhiteSpace(publicKeysetJson))
+            throw new ArgumentException("PublicKeysetJson must not be empty.", nameof(publicKeysetJson));
+
+        if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var uri))
+            throw new ArgumentException("ServerUrl must be an absolute URL.", nameof(serverUrl));
+        if (uri.Scheme is not ("http" or "https"))
+            throw new ArgumentException("ServerUrl must use http or https scheme.", nameof(serverUrl));
+
+        var host = uri.Host.ToLowerInvariant();
+        var isLocal = host is "localhost" or "127.0.0.1" or "::1";
+        var isHttps = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+        if (!isLocal && !isHttps && !allowInsecureHttp)
+            throw new ArgumentException(
+                "ServerUrl must use HTTPS for non-local endpoints. " +
+                "Set AllowInsecureHttp=true in smartprinter.appsettings.json to override.",
+                nameof(serverUrl));
+
+        ValidatePublicKeysetOrThrow(publicKeysetJson);
+
+        _serverUrl = serverUrl.TrimEnd('/');
+        _productId = productId.Trim();
+        _publicKeysetJson = publicKeysetJson;
+        _allowInsecureHttp = allowInsecureHttp;
     }
 
     public static string GetFingerprint()
@@ -58,16 +52,13 @@ public static class LicenseGuard
 
     public static bool IsActivated()
     {
-        // TEMPORARY: Bypass activation check for testing
-        return true;
-        
-        // EnsureConfigured();
-        // var fp = GetFingerprint();
-        // var token = LicenseStorage.Load(fp);
-        // if (token == null)
-        //     return false;
-        //
-        // return VerifyToken(token, fp);
+        EnsureConfigured();
+        var fp = GetFingerprint();
+        var token = LicenseStorage.Load(fp);
+        if (token == null)
+            return false;
+
+        return VerifyToken(token, fp);
     }
 
     public static async Task<(bool Ok, string? Error)> ActivateOnlineAsync(string activationKey)

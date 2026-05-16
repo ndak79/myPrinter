@@ -129,10 +129,6 @@ static class Program
 
     private static string LoadPublicKeysetJson(string productId)
     {
-        // TEMPORARY: Bypass keyset loading for testing
-        return "[]";
-        
-        /*
         var fileName = $"license_keyset_{productId}.json";
         var path = Path.Combine(AppContext.BaseDirectory, fileName);
         if (!File.Exists(path))
@@ -145,15 +141,10 @@ static class Program
                 path);
 
         return File.ReadAllText(path);
-        */
     }
 
     private static (string ServerUrl, string ProductId, bool AllowInsecureHttp) LoadActivationConfig()
     {
-        // TEMPORARY: Bypass activation config loading for testing
-        return ("http://localhost", "test", true);
-        
-        /*
         var path = Path.Combine(AppContext.BaseDirectory, "smartprinter.appsettings.json");
         if (!File.Exists(path))
             throw new FileNotFoundException(
@@ -179,6 +170,5 @@ static class Program
 
         var allowInsecure = act.TryGetProperty("AllowInsecureHttp", out var a) && a.GetBoolean();
         return (url, productId, allowInsecure);
-        */
     }
 }

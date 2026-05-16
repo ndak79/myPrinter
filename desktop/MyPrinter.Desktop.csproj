@@ -39,14 +39,17 @@
     <ProjectReference Include="..\backend\PrinterApp.csproj" />
   </ItemGroup>
 
-  <!-- Embed Ed25519 public key in assembly — not secret, safe to commit -->
+  <!-- Ship activation keyset alongside the desktop app -->
   <ItemGroup>
-    <EmbeddedResource Include="Activation\license_public.pem" />
+    <None Update="Activation\license_keyset_prod_smartprinter.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Copy appsettings.json to output dir — Use Update (not Include); SDK auto-includes as None -->
   <ItemGroup>
-    <None Update="appsettings.json">
+    <None Update="smartprinter.appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
