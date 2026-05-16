@@ -1932,9 +1932,22 @@ kbd {
     font-size: 0.9rem;
 }
 
+.recovery-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
 @media (max-width: 640px) {
     .recovery-range-row {
         grid-template-columns: 1fr;
+    }
+
+    .recovery-action-row {
+        flex-direction: column;
+        align-items: stretch;
     }
 }
 

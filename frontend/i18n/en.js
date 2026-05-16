@@ -121,6 +121,23 @@ window.EN_STRINGS = {
     selected: (n) => `${n} failed sheet(s) selected`,
   },
 
+  phase2Recovery: {
+    title: 'Check back-side print',
+    reviewButton: 'Check / finish print',
+    backSent: 'Back side sent. Check the stack before finishing.',
+    checkIntro: 'Printers resume after jams differently. Check the stack before marking this job complete.',
+    goodStack: 'Stack is good',
+    needRecovery: 'Need recovery',
+    selectIntro: 'Select damaged or uncertain sheets. The app will reprint both sides onto replacement sheets.',
+    passSheet: (pass, sheet) => `Pass ${pass}: Sheet ${sheet}`,
+    printReplacementFronts: 'Print replacement fronts',
+    frontPrinted: (n) => `Printed front side for ${n} replacement sheet(s). Flip only those replacement sheets next.`,
+    flipIntro: 'Take the replacement sheets just printed on the front side, place them back in the tray using the same flip direction, then print the back side for this mini stack.',
+    printReplacementBacks: 'Paper placed - print backs',
+    backPrinted: (n) => `Printed back side for ${n} replacement sheet(s). Replace the damaged sheets, then finish the job.`,
+    complete: 'Finish print job',
+  },
+
   confirm: {
     title: '🖨️ Confirm Print Job',
     cancel: 'Cancel',

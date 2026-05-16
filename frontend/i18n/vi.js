@@ -134,6 +134,23 @@ window.VI_STRINGS = {
     selected: (n) => `Đã chọn ${n} tờ lỗi`,
   },
 
+  phase2Recovery: {
+    title: 'Kiểm tra sau khi in mặt sau',
+    reviewButton: 'Kiểm tra / hoàn tất',
+    backSent: 'Đã gửi lượt in mặt sau. Kiểm tra xấp giấy trước khi hoàn tất.',
+    checkIntro: 'Mỗi máy in tự xử lý kẹt giấy khác nhau. Hãy kiểm tra xấp giấy trước khi đánh dấu lệnh in hoàn tất.',
+    goodStack: 'Xấp giấy ổn',
+    needRecovery: 'Cần khôi phục',
+    selectIntro: 'Chọn các tờ bị hỏng hoặc chưa chắc đã in xong. Ứng dụng sẽ in lại cả hai mặt trên tờ thay thế.',
+    passSheet: (pass, sheet) => `Lượt ${pass}: Tờ ${sheet}`,
+    printReplacementFronts: 'In mặt trước tờ thay thế',
+    frontPrinted: (n) => `Đã in mặt trước cho ${n} tờ thay thế. Tiếp theo chỉ lật các tờ thay thế này.`,
+    flipIntro: 'Lấy các tờ thay thế vừa in mặt trước, đặt lại vào khay theo cùng hướng dẫn lật giấy, rồi in mặt sau cho mini stack này.',
+    printReplacementBacks: 'Đã đặt giấy - in mặt sau',
+    backPrinted: (n) => `Đã in mặt sau cho ${n} tờ thay thế. Thay các tờ hỏng trong xấp giấy rồi hoàn tất lệnh in.`,
+    complete: 'Hoàn tất lệnh in',
+  },
+
   // Confirm print modal
   confirm: {
     title: '🖨️ Xác Nhận Lệnh In',

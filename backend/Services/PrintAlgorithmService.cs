@@ -881,4 +881,98 @@ public class PrintAlgorithmService
 
         return frontPages.Length;
     }
+
+    public int StartManualDuplexBackSheetRecovery(PrintJobState jobState, int[] sheetIndices)
+    {
+        if (jobState == null) throw new ArgumentNullException(nameof(jobState));
+        if (!jobState.IsManualDuplex || jobState.WaitingForFlip || !jobState.BackPassSent)
+            throw new InvalidOperationException("Manual duplex job must have sent the back pass before phase-2 recovery.");
+        if (jobState.WaitingForRecoveryFlip)
+            throw new InvalidOperationException("A phase-2 recovery job is already waiting for flip.");
+        if (jobState.ManualPlan == null)
+            throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed back-pass sheets.");
+        if (sheetIndices == null || sheetIndices.Length == 0)
+            throw new InvalidOperationException("At least one failed sheet must be selected.");
+
+        var wantedSheets = sheetIndices
+            .Where(i => i > 0)
+            .Distinct()
+            .ToHashSet();
+
+        var selectedSheets = jobState.ManualPlan.Sheets
+            .Where(s => wantedSheets.Contains(s.SheetIndex))
+            .OrderBy(s => s.SheetIndex)
+            .ToArray();
+
+        var frontPages = selectedSheets
+            .Select(s => s.Front)
+            .Where(p => p != null && !p.IsBlank && p.ProcessedIndex > 0)
+            .Select(p => p.ProcessedIndex)
+            .ToArray();
+
+        if (frontPages.Length == 0)
+            throw new InvalidOperationException("No matching front pages were found for the selected failed sheets.");
+
+        var wantedBackPages = selectedSheets
+            .Select(s => s.Back)
+            .Where(p => p != null && !p.IsBlank && p.ProcessedIndex > 0)
+            .Select(p => p.ProcessedIndex)
+            .ToHashSet();
+
+        var backPagesInPrintOrder = jobState.ManualPlan.Phase2Pages
+            .Where(wantedBackPages.Contains)
+            .ToArray();
+
+        jobState.RecoverySheetIndices = selectedSheets.Select(s => s.SheetIndex).ToArray();
+        jobState.RecoveryBackPages = backPagesInPrintOrder;
+        jobState.WaitingForRecoveryFlip = backPagesInPrintOrder.Length > 0;
+
+        var pageRange = string.Join(",", frontPages);
+        Console.WriteLine($"[Phase2Recovery] Printing replacement front sheet(s) {string.Join(",", jobState.RecoverySheetIndices)}: processed pages {pageRange}");
+
+        _wordService.PrintPdf(
+            jobState.TempPdfPath,
+            jobState.PrinterName,
+            pageRange: pageRange
+        );
+
+        return frontPages.Length;
+    }
+
+    public int ContinueManualDuplexBackSheetRecovery(PrintJobState jobState)
+    {
+        if (jobState == null) throw new ArgumentNullException(nameof(jobState));
+        if (!jobState.IsManualDuplex || !jobState.BackPassSent || !jobState.WaitingForRecoveryFlip)
+            throw new InvalidOperationException("No phase-2 recovery job is waiting for flip.");
+        if (jobState.RecoveryBackPages == null || jobState.RecoveryBackPages.Length == 0)
+            throw new InvalidOperationException("Phase-2 recovery has no back pages to print.");
+
+        var backPages = jobState.RecoveryBackPages.ToArray();
+        Console.WriteLine($"[Phase2Recovery] Printing replacement back pages: {string.Join(",", backPages)}");
+
+        var rotatedPdfPath = _wordService.CreateSmartDuplexPdf(
+            jobState.TempPdfPath,
+            backPages
+        );
+        jobState.IntermediateFiles.Add(rotatedPdfPath);
+
+        try
+        {
+            _wordService.PrintPdf(
+                rotatedPdfPath,
+                jobState.PrinterName,
+                pageRange: null
+            );
+        }
+        finally
+        {
+            FileSessionService.DeleteFileSafe(rotatedPdfPath);
+            jobState.IntermediateFiles.Remove(rotatedPdfPath);
+            jobState.WaitingForRecoveryFlip = false;
+            jobState.RecoverySheetIndices = Array.Empty<int>();
+            jobState.RecoveryBackPages = Array.Empty<int>();
+        }
+
+        return backPages.Length;
+    }
 }

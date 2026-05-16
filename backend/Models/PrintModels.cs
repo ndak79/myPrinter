@@ -102,6 +102,21 @@ namespace PrinterApp.Models
         /// </summary>
         public bool WaitingForFlip { get; set; }
 
+        /// <summary>
+        /// True after the normal back pass has been sent. The job can still remain in
+        /// session until the user confirms the printed stack is good or runs recovery.
+        /// </summary>
+        public bool BackPassSent { get; set; }
+
+        /// <summary>
+        /// True while a phase-2 sheet-replacement mini job has printed replacement
+        /// fronts and is waiting for the user to flip that mini stack.
+        /// </summary>
+        public bool WaitingForRecoveryFlip { get; set; }
+
+        public int[] RecoverySheetIndices { get; set; } = Array.Empty<int>();
+        public int[] RecoveryBackPages { get; set; } = Array.Empty<int>();
+
         public FlipInstruction? Instruction { get; set; }
 
         /// <summary>
@@ -175,6 +190,21 @@ namespace PrinterApp.Models
         public bool Success { get; set; }
         public string? Message { get; set; }
         public int PrintedSheets { get; set; }
+    }
+
+    public class Phase2RecoveryRequest
+    {
+        public string JobId { get; set; } = "";
+        public int[] SheetIndices { get; set; } = Array.Empty<int>();
+    }
+
+    public class Phase2RecoveryResponse
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public int PrintedSheets { get; set; }
+        public bool WaitingForRecoveryFlip { get; set; }
+        public PrintJobState? JobState { get; set; }
     }
 
     public class UploadResponse

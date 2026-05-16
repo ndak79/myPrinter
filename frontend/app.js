@@ -2591,6 +2591,11 @@ const PrintModule = {
     init() {
         const btn = document.getElementById('print-btn');
         btn.addEventListener('click', (e) => {
+            if (btn.dataset.mode === 'phase2-review' && AppState.currentJob?.jobId) {
+                Phase2RecoveryModule.openCheck();
+                return;
+            }
+
             // Cancel mode (A): if job is waiting for flip, cancel it
             if (btn.dataset.mode === 'cancellable' && AppState.currentJob?.jobId) {
                 (async () => {
@@ -2875,25 +2880,23 @@ const PrintModule = {
                 }
             };
             if (result.success) {
-                showToast(I18nModule.t('toast.printComplete'), 'success');
-                // B28-FE-2 fix: capture history entry BEFORE resetBtn() nulls currentJob.
-                const histEntry = AppState.currentJob?._historyEntry;
-                resetBtn();
-                // B28-FE-2 fix: record the manual duplex job in history now that Phase 2
-                // completed successfully (Phase 1 returned early without calling HistoryModule.add).
-                if (histEntry) HistoryModule.add(histEntry);
-                // B17-FE-2 fix: resume remaining files in the multi-file queue (if any).
-                // When _startPrint paused for manual flip, it saved remaining files into
-                // AppState.pendingPrintQueue. Resume them now that phase 2 is complete.
-                // B21-FE-7 fix: null the queue AFTER _resumePrintQueue, not before.
-                // If we null it first and _resumePrintQueue throws, the queue is permanently
-                // lost. Keep it alive until resume succeeds; the catch block below will clear
-                // it on error (which is correct — user gets an error toast and must retry).
-                const queue = AppState.pendingPrintQueue;
-                if (queue && queue.nextIndex < queue.files.length) {
-                    await this._resumePrintQueue(queue);
+                if (result.jobState?.backPassSent || result.jobState?.BackPassSent) {
+                    const histEntry = AppState.currentJob?._historyEntry;
+                    AppState.currentJob = result.jobState;
+                    AppState.currentJob._historyEntry = histEntry;
+                    if (btn) {
+                        btn.dataset.mode = 'phase2-review';
+                        btn.classList.remove('cancellable');
+                        btn.textContent = I18nModule.t('phase2Recovery.reviewButton');
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                    }
+                    showToast(I18nModule.t('phase2Recovery.backSent'), 'info');
+                    Phase2RecoveryModule.openCheck();
+                    return;
                 }
-                AppState.pendingPrintQueue = null;
+
+                await this._completeCurrentManualJob({ skipServerComplete: true, resetBtn });
             } else {
                 // BUG-2 fix: reset button even on failure so UI doesn't get stuck
                 showToast(I18nModule.t('toast.uploadError')(result.message), 'error');
@@ -2913,6 +2916,39 @@ const PrintModule = {
                 PrintModule.updateButton();
             }
         }
+    },
+
+    async _completeCurrentManualJob(options = {}) {
+        const btn = document.getElementById('print-btn');
+        const resetBtn = options.resetBtn || (() => {
+            AppState.currentJob = null;
+            if (btn) {
+                btn.dataset.mode = '';
+                btn.classList.remove('cancellable');
+                btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
+                PrintModule.updateButton();
+            }
+        });
+
+        const jobId = AppState.currentJob?.jobId || AppState.currentJob?.JobId;
+        if (!jobId) return;
+
+        if (!options.skipServerComplete) {
+            const res = await fetch(`${API_BASE}/print/complete?jobId=${jobId}`, { method: 'POST' });
+            const result = await res.json();
+            if (!res.ok || !result.success) throw new Error(result.message || res.statusText);
+        }
+
+        showToast(I18nModule.t('toast.printComplete'), 'success');
+        const histEntry = AppState.currentJob?._historyEntry;
+        resetBtn();
+        if (histEntry) HistoryModule.add(histEntry);
+
+        const queue = AppState.pendingPrintQueue;
+        if (queue && queue.nextIndex < queue.files.length) {
+            await this._resumePrintQueue(queue);
+        }
+        AppState.pendingPrintQueue = null;
     },
 
     // B17-FE-2 fix: print remaining files in the queue after a manual-flip pause.
@@ -3402,6 +3438,248 @@ const Phase1RecoveryModule = {
             showToast(message, 'error');
         } finally {
             if (submit) submit.disabled = false;
+        }
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase2RecoveryModule — Replace damaged sheets after the back pass
+// ═══════════════════════════════════════════════════════════════════
+const Phase2RecoveryModule = {
+    _rows: [],
+
+    init() {
+        document.getElementById('phase2-recovery-close')?.addEventListener('click', () => this.close());
+        document.getElementById('phase2-recovery-overlay')?.addEventListener('click', () => this.close());
+        document.getElementById('phase2-recovery-good')?.addEventListener('click', () => this._complete());
+        document.getElementById('phase2-recovery-needed')?.addEventListener('click', () => this._showSelect());
+        document.getElementById('phase2-recovery-apply-range')?.addEventListener('click', () => this._applyRange());
+        document.getElementById('phase2-recovery-clear')?.addEventListener('click', () => this._clearSelection());
+        document.getElementById('phase2-recovery-submit')?.addEventListener('click', () => this._startRecovery());
+        document.getElementById('phase2-recovery-continue')?.addEventListener('click', () => this._continueRecovery());
+        document.getElementById('phase2-recovery-complete')?.addEventListener('click', () => this._complete());
+    },
+
+    openCheck() {
+        this._rows = this._getPhase2Rows();
+        this._renderList();
+        this._setStatus('');
+        this._showPanel('check');
+        document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
+    },
+
+    close() {
+        document.getElementById('phase2-recovery-modal')?.classList.add('hidden');
+    },
+
+    _showSelect() {
+        this._rows = this._getPhase2Rows();
+        this._renderList();
+        this._showPanel('select');
+        document.getElementById('phase2-recovery-range')?.focus();
+    },
+
+    _showPanel(name) {
+        document.getElementById('phase2-check-panel')?.classList.toggle('hidden', name !== 'check');
+        document.getElementById('phase2-select-panel')?.classList.toggle('hidden', name !== 'select');
+        document.getElementById('phase2-flip-panel')?.classList.toggle('hidden', name !== 'flip');
+        const complete = document.getElementById('phase2-recovery-complete');
+        if (complete) complete.disabled = name === 'flip';
+    },
+
+    _getPhase2Rows() {
+        const job = AppState.currentJob;
+        const plan = job?.manualPlan || job?.ManualPlan;
+        const sheets = plan?.sheets || plan?.Sheets || [];
+        const phase2Pages = plan?.phase2Pages || plan?.Phase2Pages || [];
+        const byBackPage = new Map();
+
+        for (const sheet of sheets) {
+            const back = sheet.back || sheet.Back;
+            const idx = back?.processedIndex ?? back?.ProcessedIndex;
+            if (Number.isFinite(idx)) byBackPage.set(idx, sheet);
+        }
+
+        return phase2Pages
+            .map((processedPage, i) => {
+                const sheet = byBackPage.get(processedPage);
+                if (!sheet) return null;
+                return { passIndex: i + 1, processedPage, sheet };
+            })
+            .filter(Boolean);
+    },
+
+    _sheetIndex(sheet) {
+        return sheet.sheetIndex ?? sheet.SheetIndex;
+    },
+
+    _pageLabel(page, side) {
+        if (!page || page.isBlank || page.IsBlank) return I18nModule.t(`recovery.${side}`)(null);
+        return I18nModule.t(`recovery.${side}`)(page.originalPageNumber ?? page.OriginalPageNumber);
+    },
+
+    _renderList() {
+        const list = document.getElementById('phase2-recovery-list');
+        if (!list) return;
+        list.textContent = '';
+
+        for (const row of this._rows) {
+            const sheet = row.sheet;
+            const idx = this._sheetIndex(sheet);
+            const front = sheet.front || sheet.Front;
+            const back = sheet.back || sheet.Back;
+
+            const label = document.createElement('label');
+            label.className = 'recovery-sheet-item';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.dataset.sheetIndex = String(idx);
+            checkbox.addEventListener('change', () => this._updateSelectedStatus());
+
+            const body = document.createElement('div');
+            const title = document.createElement('div');
+            title.className = 'recovery-sheet-title';
+            title.textContent = I18nModule.t('phase2Recovery.passSheet')(row.passIndex, idx);
+
+            const meta = document.createElement('div');
+            meta.className = 'recovery-sheet-meta';
+
+            const frontSpan = document.createElement('span');
+            frontSpan.textContent = this._pageLabel(front, 'front');
+
+            const backSpan = document.createElement('span');
+            backSpan.textContent = this._pageLabel(back, 'back');
+
+            meta.append(frontSpan, backSpan);
+            body.append(title, meta);
+            label.append(checkbox, body);
+            list.appendChild(label);
+        }
+    },
+
+    _parseRange(text) {
+        const selected = new Set();
+        for (const raw of String(text || '').split(',')) {
+            const part = raw.trim();
+            if (!part) continue;
+            const match = part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+            if (!match) continue;
+            const start = parseInt(match[1], 10);
+            const end = parseInt(match[2] || match[1], 10);
+            const lo = Math.min(start, end);
+            const hi = Math.max(start, end);
+            for (let i = lo; i <= hi; i++) selected.add(i);
+        }
+        return selected;
+    },
+
+    _applyRange() {
+        const selected = this._parseRange(document.getElementById('phase2-recovery-range')?.value);
+        document.querySelectorAll('#phase2-recovery-list input[type="checkbox"]').forEach(cb => {
+            cb.checked = selected.has(parseInt(cb.dataset.sheetIndex, 10));
+        });
+        this._updateSelectedStatus();
+    },
+
+    _clearSelection() {
+        document.querySelectorAll('#phase2-recovery-list input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+        this._updateSelectedStatus();
+    },
+
+    _selectedSheetIndices() {
+        return Array.from(document.querySelectorAll('#phase2-recovery-list input[type="checkbox"]:checked'))
+            .map(cb => parseInt(cb.dataset.sheetIndex, 10))
+            .filter(Number.isFinite);
+    },
+
+    _updateSelectedStatus() {
+        const count = this._selectedSheetIndices().length;
+        this._setStatus(count > 0 ? I18nModule.t('recovery.selected')(count) : '');
+    },
+
+    _setStatus(text) {
+        const el = document.getElementById('phase2-recovery-status');
+        if (el) el.textContent = text || '';
+    },
+
+    async _startRecovery() {
+        const sheetIndices = this._selectedSheetIndices();
+        if (sheetIndices.length === 0) {
+            this._setStatus(I18nModule.t('recovery.noSelection'));
+            return;
+        }
+
+        const jobId = AppState.currentJob?.jobId || AppState.currentJob?.JobId;
+        if (!jobId) {
+            showToast(I18nModule.t('recovery.noPlan'), 'error');
+            return;
+        }
+
+        const submit = document.getElementById('phase2-recovery-submit');
+        if (submit) submit.disabled = true;
+        try {
+            const res = await fetch(`${API_BASE}/print/recover/back/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId, sheetIndices })
+            });
+            const result = await res.json();
+            if (!res.ok || !result.success) throw new Error(result.message || res.statusText);
+            if (result.jobState) {
+                const histEntry = AppState.currentJob?._historyEntry;
+                AppState.currentJob = result.jobState;
+                AppState.currentJob._historyEntry = histEntry;
+            }
+
+            const message = I18nModule.t('phase2Recovery.frontPrinted')(result.printedSheets || sheetIndices.length);
+            this._setStatus(message);
+            showToast(message, 'success');
+            if (result.waitingForRecoveryFlip) this._showPanel('flip');
+        } catch (err) {
+            const message = I18nModule.t('recovery.failed')(err.message);
+            this._setStatus(message);
+            showToast(message, 'error');
+        } finally {
+            if (submit) submit.disabled = false;
+        }
+    },
+
+    async _continueRecovery() {
+        const jobId = AppState.currentJob?.jobId || AppState.currentJob?.JobId;
+        if (!jobId) return;
+
+        const btn = document.getElementById('phase2-recovery-continue');
+        if (btn) btn.disabled = true;
+        try {
+            const res = await fetch(`${API_BASE}/print/recover/back/continue?jobId=${jobId}`, { method: 'POST' });
+            const result = await res.json();
+            if (!res.ok || !result.success) throw new Error(result.message || res.statusText);
+            if (result.jobState) {
+                const histEntry = AppState.currentJob?._historyEntry;
+                AppState.currentJob = result.jobState;
+                AppState.currentJob._historyEntry = histEntry;
+            }
+
+            const message = I18nModule.t('phase2Recovery.backPrinted')(result.printedSheets || 0);
+            this._setStatus(message);
+            showToast(message, 'success');
+            this._showPanel('check');
+        } catch (err) {
+            const message = I18nModule.t('recovery.failed')(err.message);
+            this._setStatus(message);
+            showToast(message, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    },
+
+    async _complete() {
+        try {
+            await PrintModule._completeCurrentManualJob();
+            this.close();
+        } catch (err) {
+            showToast(I18nModule.t('toast.continueError')(err.message), 'error');
         }
     },
 };
@@ -5751,6 +6029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ContextMenu.init();
     PrintModule.init();
     Phase1RecoveryModule.init();
+    Phase2RecoveryModule.init();
     CopiesModule.init();
     HistoryModule.init();
     KeyboardModule.init();

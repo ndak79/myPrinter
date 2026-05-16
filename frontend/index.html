@@ -213,6 +213,51 @@
     </div>
 </div>
 
+<!-- ── Phase 2 Recovery Modal ─────────────────────────────── -->
+<div id="phase2-recovery-modal" class="modal hidden" style="z-index:10001">
+    <div class="modal-overlay" id="phase2-recovery-overlay"></div>
+    <div class="modal-content modal-recovery">
+        <div class="modal-header">
+            <h2 data-i18n="phase2Recovery.title">Kiểm tra sau khi in mặt sau</h2>
+            <button class="modal-close" id="phase2-recovery-close">&#10005;</button>
+        </div>
+        <div class="modal-body">
+            <div id="phase2-check-panel">
+                <p class="recovery-intro" data-i18n="phase2Recovery.checkIntro">Máy in có thể tự in tiếp sau kẹt giấy theo nhiều cách khác nhau. Hãy kiểm tra xấp giấy trước khi hoàn tất.</p>
+                <div class="recovery-action-row">
+                    <button id="phase2-recovery-good" class="btn-primary" type="button" data-i18n="phase2Recovery.goodStack">Xấp giấy ổn</button>
+                    <button id="phase2-recovery-needed" class="btn-outline" type="button" data-i18n="phase2Recovery.needRecovery">Cần khôi phục</button>
+                </div>
+            </div>
+
+            <div id="phase2-select-panel" class="hidden">
+                <p class="recovery-intro" data-i18n="phase2Recovery.selectIntro">Chọn các tờ bị hỏng hoặc chưa chắc đã in xong. Ứng dụng sẽ in lại cả mặt trước và mặt sau cho các tờ thay thế.</p>
+                <div class="recovery-range-row">
+                    <input id="phase2-recovery-range" class="recovery-range-input" type="text" placeholder="Ví dụ: 5-7, 10" data-i18n-placeholder="recovery.rangePlaceholder">
+                    <button id="phase2-recovery-apply-range" class="btn-outline" type="button" data-i18n="recovery.applyRange">Chọn dải</button>
+                    <button id="phase2-recovery-clear" class="btn-outline" type="button" data-i18n="recovery.clear">Bỏ chọn</button>
+                </div>
+                <div id="phase2-recovery-list" class="recovery-sheet-list"></div>
+                <div class="recovery-action-row">
+                    <button id="phase2-recovery-submit" class="btn-primary" type="button" data-i18n="phase2Recovery.printReplacementFronts">In mặt trước tờ thay thế</button>
+                </div>
+            </div>
+
+            <div id="phase2-flip-panel" class="hidden">
+                <p class="recovery-intro" data-i18n="phase2Recovery.flipIntro">Lấy các tờ thay thế vừa in mặt trước, đặt lại vào khay theo cùng hướng dẫn lật giấy, rồi in mặt sau cho mini stack này.</p>
+                <div class="recovery-action-row">
+                    <button id="phase2-recovery-continue" class="btn-primary" type="button" data-i18n="phase2Recovery.printReplacementBacks">Đã đặt giấy - in mặt sau</button>
+                </div>
+            </div>
+
+            <div id="phase2-recovery-status" class="recovery-status"></div>
+        </div>
+        <div class="modal-footer">
+            <button id="phase2-recovery-complete" class="btn-primary" type="button" data-i18n="phase2Recovery.complete">Hoàn tất lệnh in</button>
+        </div>
+    </div>
+</div>
+
 <!-- ── Page Context Menu ──────────────────────────────── -->
 <div id="page-context-menu" class="context-menu hidden">
     <div class="context-menu-header" id="context-menu-header">Trang 1</div>

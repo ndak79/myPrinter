@@ -333,9 +333,15 @@ public static class BackendStartup
                         await Task.Delay(2000); // BE-29-4 fix: async-friendly delay; Thread.Sleep blocked thread pool
                 }
                 jobState.WaitingForFlip = false;
-                FileSessionService.DeleteIntermediateFiles(jobState);
+                jobState.BackPassSent = true;
+                sessions.AddJob(jobState.JobId, jobState);
 
-                return Results.Ok(new PrintResponse { Success = true, Message = "Print job completed successfully" });
+                return Results.Ok(new PrintResponse
+                {
+                    Success = true,
+                    Message = "Back pass sent. Confirm the printed stack or recover damaged sheets.",
+                    JobState = jobState
+                });
             }
             catch (InvalidOperationException ex)
             {
@@ -347,6 +353,78 @@ public static class BackendStartup
             {
                 if (jobState != null) FileSessionService.DeleteIntermediateFiles(jobState);
                 return Results.Problem($"Error continuing print job: {ex.Message}");
+            }
+        });
+
+        app.MapPost("/api/print/recover/back/start", (
+            Phase2RecoveryRequest request,
+            PrintAlgorithmService printAlgorithm,
+            FileSessionService sessions) =>
+        {
+            try
+            {
+                if (request == null)
+                    return Results.BadRequest(new Phase2RecoveryResponse { Success = false, Message = "Request body is required." });
+                if (string.IsNullOrWhiteSpace(request.JobId))
+                    return Results.BadRequest(new Phase2RecoveryResponse { Success = false, Message = "jobId is required." });
+                if (request.SheetIndices == null || request.SheetIndices.Length == 0)
+                    return Results.BadRequest(new Phase2RecoveryResponse { Success = false, Message = "Select at least one failed sheet." });
+
+                var job = sessions.GetJob(request.JobId);
+                if (job == null)
+                    return Results.NotFound(new Phase2RecoveryResponse { Success = false, Message = "Job not found or already completed." });
+
+                var printed = printAlgorithm.StartManualDuplexBackSheetRecovery(job, request.SheetIndices);
+                return Results.Ok(new Phase2RecoveryResponse
+                {
+                    Success = true,
+                    Message = $"Printed {printed} replacement front sheet(s).",
+                    PrintedSheets = printed,
+                    WaitingForRecoveryFlip = job.WaitingForRecoveryFlip,
+                    JobState = job
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new Phase2RecoveryResponse { Success = false, Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem($"Error starting back-pass recovery: {ex.Message}");
+            }
+        });
+
+        app.MapPost("/api/print/recover/back/continue", (
+            string jobId,
+            PrintAlgorithmService printAlgorithm,
+            FileSessionService sessions) =>
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(jobId))
+                    return Results.BadRequest(new Phase2RecoveryResponse { Success = false, Message = "jobId is required." });
+
+                var job = sessions.GetJob(jobId);
+                if (job == null)
+                    return Results.NotFound(new Phase2RecoveryResponse { Success = false, Message = "Job not found or already completed." });
+
+                var printed = printAlgorithm.ContinueManualDuplexBackSheetRecovery(job);
+                return Results.Ok(new Phase2RecoveryResponse
+                {
+                    Success = true,
+                    Message = $"Printed {printed} replacement back sheet(s).",
+                    PrintedSheets = printed,
+                    WaitingForRecoveryFlip = job.WaitingForRecoveryFlip,
+                    JobState = job
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new Phase2RecoveryResponse { Success = false, Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem($"Error continuing back-pass recovery: {ex.Message}");
             }
         });
 
@@ -384,6 +462,24 @@ public static class BackendStartup
             {
                 return Results.Problem($"Error recovering front sheets: {ex.Message}");
             }
+        });
+
+        app.MapPost("/api/print/complete", (string jobId, FileSessionService sessions) =>
+        {
+            if (string.IsNullOrWhiteSpace(jobId))
+                return Results.BadRequest(new PrintResponse { Success = false, Message = "jobId is required." });
+
+            var job = sessions.GetJob(jobId);
+            if (job == null)
+                return Results.NotFound(new PrintResponse { Success = false, Message = "Job not found or already completed." });
+
+            if (job.IsManualDuplex && job.WaitingForFlip)
+                return Results.BadRequest(new PrintResponse { Success = false, Message = "Job is still waiting for flip." });
+            if (job.WaitingForRecoveryFlip)
+                return Results.BadRequest(new PrintResponse { Success = false, Message = "Recovery job is still waiting for flip." });
+
+            sessions.RemoveJob(jobId);
+            return Results.Ok(new PrintResponse { Success = true, Message = "Print job completed successfully" });
         });
 
         app.MapDelete("/api/print/cancel", (string jobId, FileSessionService sessions) =>
