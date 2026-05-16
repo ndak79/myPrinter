@@ -3296,6 +3296,10 @@ const Phase1RecoveryModule = {
             showToast(I18nModule.t('recovery.noPlan'), 'error');
             return;
         }
+        if (this._jobCopies() > 1) {
+            showToast(I18nModule.t('recovery.multiCopyUnsupported'), 'error');
+            return;
+        }
         this._renderList();
         this._setStatus('');
         document.getElementById('phase1-recovery-modal')?.classList.remove('hidden');
@@ -3310,6 +3314,10 @@ const Phase1RecoveryModule = {
         const job = AppState.currentJob;
         const plan = job?.manualPlan || job?.ManualPlan;
         return plan?.sheets || plan?.Sheets || [];
+    },
+
+    _jobCopies() {
+        return AppState.currentJob?.copies ?? AppState.currentJob?.Copies ?? 1;
     },
 
     _pageLabel(page, side) {
@@ -3406,6 +3414,11 @@ const Phase1RecoveryModule = {
     },
 
     async _submit() {
+        if (this._jobCopies() > 1) {
+            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
+            return;
+        }
+
         const sheetIndices = this._selectedSheetIndices();
         if (sheetIndices.length === 0) {
             this._setStatus(I18nModule.t('recovery.noSelection'));
@@ -3463,7 +3476,7 @@ const Phase2RecoveryModule = {
     openCheck() {
         this._rows = this._getPhase2Rows();
         this._renderList();
-        this._setStatus('');
+        this._setStatus(this._jobCopies() > 1 ? I18nModule.t('recovery.multiCopyUnsupported') : '');
         this._showPanel('check');
         document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
     },
@@ -3475,6 +3488,10 @@ const Phase2RecoveryModule = {
     _showSelect() {
         this._rows = this._getPhase2Rows();
         this._renderList();
+        if (this._jobCopies() > 1) {
+            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
+            return;
+        }
         this._showPanel('select');
         document.getElementById('phase2-recovery-range')?.focus();
     },
@@ -3483,8 +3500,14 @@ const Phase2RecoveryModule = {
         document.getElementById('phase2-check-panel')?.classList.toggle('hidden', name !== 'check');
         document.getElementById('phase2-select-panel')?.classList.toggle('hidden', name !== 'select');
         document.getElementById('phase2-flip-panel')?.classList.toggle('hidden', name !== 'flip');
+        const needsRecovery = document.getElementById('phase2-recovery-needed');
+        if (needsRecovery) needsRecovery.disabled = this._jobCopies() > 1;
         const complete = document.getElementById('phase2-recovery-complete');
         if (complete) complete.disabled = name === 'flip';
+    },
+
+    _jobCopies() {
+        return AppState.currentJob?.copies ?? AppState.currentJob?.Copies ?? 1;
     },
 
     _getPhase2Rows() {
@@ -3535,6 +3558,7 @@ const Phase2RecoveryModule = {
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.dataset.sheetIndex = String(idx);
+            checkbox.dataset.passIndex = String(row.passIndex);
             checkbox.addEventListener('change', () => this._updateSelectedStatus());
 
             const body = document.createElement('div');
@@ -3577,7 +3601,7 @@ const Phase2RecoveryModule = {
     _applyRange() {
         const selected = this._parseRange(document.getElementById('phase2-recovery-range')?.value);
         document.querySelectorAll('#phase2-recovery-list input[type="checkbox"]').forEach(cb => {
-            cb.checked = selected.has(parseInt(cb.dataset.sheetIndex, 10));
+            cb.checked = selected.has(parseInt(cb.dataset.passIndex, 10));
         });
         this._updateSelectedStatus();
     },
@@ -3604,6 +3628,11 @@ const Phase2RecoveryModule = {
     },
 
     async _startRecovery() {
+        if (this._jobCopies() > 1) {
+            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
+            return;
+        }
+
         const sheetIndices = this._selectedSheetIndices();
         if (sheetIndices.length === 0) {
             this._setStatus(I18nModule.t('recovery.noSelection'));

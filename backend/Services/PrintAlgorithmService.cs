@@ -854,6 +854,8 @@ public class PrintAlgorithmService
             throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed front-pass sheets.");
         if (sheetIndices == null || sheetIndices.Length == 0)
             throw new InvalidOperationException("At least one failed sheet must be selected.");
+        if (jobState.Copies > 1)
+            throw new InvalidOperationException("Sheet recovery is not supported for manual duplex jobs with multiple copies.");
 
         var wanted = sheetIndices
             .Where(i => i > 0)
@@ -893,6 +895,8 @@ public class PrintAlgorithmService
             throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed back-pass sheets.");
         if (sheetIndices == null || sheetIndices.Length == 0)
             throw new InvalidOperationException("At least one failed sheet must be selected.");
+        if (jobState.Copies > 1)
+            throw new InvalidOperationException("Sheet recovery is not supported for manual duplex jobs with multiple copies.");
 
         var wantedSheets = sheetIndices
             .Where(i => i > 0)
@@ -963,14 +967,15 @@ public class PrintAlgorithmService
                 jobState.PrinterName,
                 pageRange: null
             );
+
+            jobState.WaitingForRecoveryFlip = false;
+            jobState.RecoverySheetIndices = Array.Empty<int>();
+            jobState.RecoveryBackPages = Array.Empty<int>();
         }
         finally
         {
             FileSessionService.DeleteFileSafe(rotatedPdfPath);
             jobState.IntermediateFiles.Remove(rotatedPdfPath);
-            jobState.WaitingForRecoveryFlip = false;
-            jobState.RecoverySheetIndices = Array.Empty<int>();
-            jobState.RecoveryBackPages = Array.Empty<int>();
         }
 
         return backPages.Length;

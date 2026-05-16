@@ -241,6 +241,30 @@ public class ExecutePrintJobTests
     }
 
     [Fact]
+    public void ReprintManualDuplexFrontSheets_RejectsMultiCopyJobs()
+    {
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            Copies = 2,
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", new List<ManualDuplexPageInfo>
+            {
+                new() { ProcessedIndex = 1, OriginalPageNumber = 1 },
+                new() { ProcessedIndex = 2, OriginalPageNumber = 2 }
+            })
+        };
+
+        var act = () => _sut.ReprintManualDuplexFrontSheets(job, new[] { 1 });
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*multiple copies*");
+        _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
     public void StartManualDuplexBackSheetRecovery_PrintsFrontPagesAndStoresBackPagesInPhase2Order()
     {
         var pages = Enumerable.Range(1, 6)
@@ -301,6 +325,35 @@ public class ExecutePrintJobTests
     }
 
     [Fact]
+    public void ContinueManualDuplexBackSheetRecovery_WhenBackPrintFails_KeepsRecoveryStateForRetry()
+    {
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+                 .Returns(@"C:\fake\back-recovery.pdf");
+        _mockWord.Setup(w => w.PrintPdf(@"C:\fake\back-recovery.pdf", "TestPrinter", null, null))
+                 .Throws(new InvalidOperationException("printer failed"));
+
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = false,
+            BackPassSent = true,
+            WaitingForRecoveryFlip = true,
+            RecoverySheetIndices = new[] { 1, 3 },
+            RecoveryBackPages = new[] { 6, 2 },
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter"
+        };
+
+        var act = () => _sut.ContinueManualDuplexBackSheetRecovery(job);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("printer failed");
+        job.WaitingForRecoveryFlip.Should().BeTrue();
+        job.RecoverySheetIndices.Should().BeEquivalentTo(new[] { 1, 3 }, opts => opts.WithStrictOrdering());
+        job.RecoveryBackPages.Should().BeEquivalentTo(new[] { 6, 2 }, opts => opts.WithStrictOrdering());
+    }
+
+    [Fact]
     public void StartManualDuplexBackSheetRecovery_RequiresBackPassSent()
     {
         var job = new PrintJobState
@@ -321,6 +374,31 @@ public class ExecutePrintJobTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*back pass*");
+        _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public void StartManualDuplexBackSheetRecovery_RejectsMultiCopyJobs()
+    {
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = false,
+            BackPassSent = true,
+            Copies = 2,
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", new List<ManualDuplexPageInfo>
+            {
+                new() { ProcessedIndex = 1, OriginalPageNumber = 1 },
+                new() { ProcessedIndex = 2, OriginalPageNumber = 2 }
+            })
+        };
+
+        var act = () => _sut.StartManualDuplexBackSheetRecovery(job, new[] { 1 });
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*multiple copies*");
         _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
     }
 }
