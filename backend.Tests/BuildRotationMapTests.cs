@@ -71,11 +71,11 @@ public class BuildRotationMapTests
             new PageRotation { PageNumber = 1, Rotation = RotationDirection.CW90 },
             new PageRotation { PageNumber = 1, Rotation = RotationDirection.Rotate180 }
         };
-        
-        // ToDictionary throws ArgumentException on duplicate keys.
-        // Let's verify the actual behavior.
-        Action act = () => PrintAlgorithmService.BuildRotationMap(rotations);
-        act.Should().Throw<ArgumentException>();
+
+        var result = PrintAlgorithmService.BuildRotationMap(rotations);
+
+        result.Should().ContainSingle();
+        result[1].Should().Be(RotationDirection.Rotate180);
     }
 
     [Fact]

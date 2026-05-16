@@ -143,7 +143,10 @@ public class PrintAlgorithmService
             {
                 Console.WriteLine($"[CreateNormalDuplexJob] Auto duplex creating subset for pages: {string.Join(",", selectedPages)}");
                 var subsetPath = Path.Combine(Path.GetTempPath(), $"auto_duplex_subset_{Guid.NewGuid()}.pdf");
-                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages, out _);
+                if (selectedPages.Contains(0))
+                    _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages, out _);
+                else
+                    _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
                 jobState.TempPdfPath = subsetPath;
                 jobState.IntermediateFiles.Add(subsetPath); // BUG-8-2: track for cleanup
 
@@ -204,7 +207,10 @@ public class PrintAlgorithmService
             Console.WriteLine($"[CreateNormalDuplexJob] Creating subset PDF for pages: {string.Join(",", pagesToPrint)}");
             var subsetPath = Path.Combine(Path.GetTempPath(), $"subset_{Guid.NewGuid()}.pdf");
 
-            _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint, out subsetBlankIndices); // BE-24-1: capture inserted blank indices
+            if (pagesToPrint.Contains(0))
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint, out subsetBlankIndices); // BE-24-1: capture inserted blank indices
+            else
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, pagesToPrint);
             workingPdfPath = subsetPath;
             jobState.IntermediateFiles.Add(subsetPath); // BUG-8-2: track for cleanup
 
@@ -270,12 +276,19 @@ public class PrintAlgorithmService
             $"[CreateNormalDuplexJob] Processing special requirements: SingleSided=[{string.Join(",", effectiveSingleSidedPages)}] " +
             $"on working PDF: {workingPdfPath}");
 
-        var processedPath = _wordService.ProcessMixedOrientation(
-            workingPdfPath,
-            effectiveSingleSidedPages,
-            out var pageInfos,
-            subsetBlankIndices  // BE-24-1: pass authoritative blank indices so heuristic doesn't misclassify real A4 portrait pages
-        );
+        List<ManualDuplexPageInfo> pageInfos;
+        var processedPath = subsetBlankIndices.Count > 0
+            ? _wordService.ProcessMixedOrientation(
+                workingPdfPath,
+                effectiveSingleSidedPages,
+                out pageInfos,
+                subsetBlankIndices  // BE-24-1: pass authoritative blank indices so heuristic doesn't misclassify real A4 portrait pages
+            )
+            : _wordService.ProcessMixedOrientation(
+                workingPdfPath,
+                effectiveSingleSidedPages,
+                out pageInfos
+            );
         jobState.IntermediateFiles.Add(processedPath); // BE-24-2: track so catch block cleans it up if ManualDuplexPlan.Build throws
 
         // 3) BUILD ManualDuplexPlan TỪ pageInfos
@@ -440,7 +453,10 @@ public class PrintAlgorithmService
         if (!selectedPages.SequenceEqual(Enumerable.Range(1, pdfInfo.PageCount)))
         {
             var subsetPath = Path.Combine(Path.GetTempPath(), $"simplex_subset_{Guid.NewGuid()}.pdf");
-            _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages, out _);
+            if (selectedPages.Contains(0))
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages, out _);
+            else
+                _wordService.CreatePdfSubset(pdfPath, subsetPath, selectedPages);
             workingPdfPath = subsetPath;
             simplexJobState.IntermediateFiles.Add(subsetPath); // track immediately
             Console.WriteLine($"[CreateSimplexJob] Subset created: {subsetPath}");
@@ -829,4 +845,40 @@ public class PrintAlgorithmService
         }
     }
 
+    public int ReprintManualDuplexFrontSheets(PrintJobState jobState, int[] sheetIndices)
+    {
+        if (jobState == null) throw new ArgumentNullException(nameof(jobState));
+        if (!jobState.IsManualDuplex || !jobState.WaitingForFlip)
+            throw new InvalidOperationException("Manual duplex job must be waiting for flip before phase-1 recovery.");
+        if (jobState.ManualPlan == null)
+            throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed front-pass sheets.");
+        if (sheetIndices == null || sheetIndices.Length == 0)
+            throw new InvalidOperationException("At least one failed sheet must be selected.");
+
+        var wanted = sheetIndices
+            .Where(i => i > 0)
+            .Distinct()
+            .ToHashSet();
+
+        var frontPages = jobState.ManualPlan.Sheets
+            .Where(s => wanted.Contains(s.SheetIndex))
+            .Select(s => s.Front)
+            .Where(p => p != null && !p.IsBlank && p.ProcessedIndex > 0)
+            .Select(p => p.ProcessedIndex)
+            .ToArray();
+
+        if (frontPages.Length == 0)
+            throw new InvalidOperationException("No matching front pages were found for the selected failed sheets.");
+
+        var pageRange = string.Join(",", frontPages);
+        Console.WriteLine($"[Phase1Recovery] Reprinting front sheet(s) {string.Join(",", wanted.OrderBy(i => i))}: processed pages {pageRange}");
+
+        _wordService.PrintPdf(
+            jobState.TempPdfPath,
+            jobState.PrinterName,
+            pageRange: pageRange
+        );
+
+        return frontPages.Length;
+    }
 }

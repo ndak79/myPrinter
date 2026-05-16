@@ -350,6 +350,42 @@ public static class BackendStartup
             }
         });
 
+        app.MapPost("/api/print/recover/front", (
+            Phase1RecoveryRequest request,
+            PrintAlgorithmService printAlgorithm,
+            FileSessionService sessions) =>
+        {
+            try
+            {
+                if (request == null)
+                    return Results.BadRequest(new Phase1RecoveryResponse { Success = false, Message = "Request body is required." });
+                if (string.IsNullOrWhiteSpace(request.JobId))
+                    return Results.BadRequest(new Phase1RecoveryResponse { Success = false, Message = "jobId is required." });
+                if (request.SheetIndices == null || request.SheetIndices.Length == 0)
+                    return Results.BadRequest(new Phase1RecoveryResponse { Success = false, Message = "Select at least one failed sheet." });
+
+                var job = sessions.GetJob(request.JobId);
+                if (job == null)
+                    return Results.NotFound(new Phase1RecoveryResponse { Success = false, Message = "Job not found or already completed." });
+
+                var printed = printAlgorithm.ReprintManualDuplexFrontSheets(job, request.SheetIndices);
+                return Results.Ok(new Phase1RecoveryResponse
+                {
+                    Success = true,
+                    Message = $"Reprinted {printed} front sheet(s).",
+                    PrintedSheets = printed
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new Phase1RecoveryResponse { Success = false, Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem($"Error recovering front sheets: {ex.Message}");
+            }
+        });
+
         app.MapDelete("/api/print/cancel", (string jobId, FileSessionService sessions) =>
         {
             if (string.IsNullOrWhiteSpace(jobId))

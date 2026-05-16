@@ -182,7 +182,33 @@
             </div>
         </div>
         <div class="modal-footer">
+            <button id="phase1-recovery-open-btn" class="btn-outline recovery-open-btn" data-i18n="recovery.open">Giấy bị kẹt / hỏng</button>
             <button id="continue-btn" class="btn-primary flip-continue-btn" data-i18n="flip.continue">✓ Đã Đặt Giấy - Tiếp Tục In</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Phase 1 Recovery Modal ─────────────────────────────── -->
+<div id="phase1-recovery-modal" class="modal hidden" style="z-index:10001">
+    <div class="modal-overlay" id="phase1-recovery-overlay"></div>
+    <div class="modal-content modal-recovery">
+        <div class="modal-header">
+            <h2 data-i18n="recovery.title">Khôi phục sau kẹt giấy</h2>
+            <button class="modal-close" id="phase1-recovery-close">&#10005;</button>
+        </div>
+        <div class="modal-body">
+            <p class="recovery-intro" data-i18n="recovery.intro">Chọn các tờ bị kẹt, bị rách hoặc chưa ra khỏi máy. Ứng dụng sẽ in lại mặt trước của các tờ đó để bạn thay vào xấp giấy trước khi lật.</p>
+            <div class="recovery-range-row">
+                <input id="phase1-recovery-range" class="recovery-range-input" type="text" placeholder="Ví dụ: 5-7, 10" data-i18n-placeholder="recovery.rangePlaceholder">
+                <button id="phase1-recovery-apply-range" class="btn-outline" type="button" data-i18n="recovery.applyRange">Chọn dải</button>
+                <button id="phase1-recovery-clear" class="btn-outline" type="button" data-i18n="recovery.clear">Bỏ chọn</button>
+            </div>
+            <div id="phase1-recovery-list" class="recovery-sheet-list"></div>
+            <div id="phase1-recovery-status" class="recovery-status"></div>
+        </div>
+        <div class="modal-footer">
+            <button id="phase1-recovery-cancel" class="btn-cancel" type="button" data-i18n="confirm.cancel">Huỷ</button>
+            <button id="phase1-recovery-submit" class="btn-primary" type="button" data-i18n="recovery.submit">In lại tờ đã chọn</button>
         </div>
     </div>
 </div>

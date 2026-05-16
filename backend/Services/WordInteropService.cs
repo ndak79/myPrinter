@@ -726,6 +726,11 @@ public class WordInteropService : IWordInteropService
     /// <summary>
     /// Creates a new PDF containing only the specified pages from the source PDF.
     /// </summary>
+    public void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers)
+    {
+        CreatePdfSubset(sourcePath, targetPath, pageNumbers, out _);
+    }
+
     public void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers, out HashSet<int> insertedBlankIndices)
     {
         insertedBlankIndices = new HashSet<int>();

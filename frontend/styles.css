@@ -1859,6 +1859,85 @@ kbd {
     width: 90vw;
 }
 
+.recovery-open-btn {
+    margin-right: auto;
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #f59e0b;
+}
+
+.modal-recovery {
+    max-width: 720px;
+    width: min(92vw, 720px);
+}
+
+.recovery-intro {
+    margin: 0 0 1rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.recovery-range-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.recovery-range-input {
+    min-width: 0;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.recovery-sheet-list {
+    display: grid;
+    gap: 0.5rem;
+    max-height: 45vh;
+    overflow: auto;
+    padding-right: 0.25rem;
+}
+
+.recovery-sheet-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(100, 116, 139, 0.06);
+}
+
+.recovery-sheet-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.recovery-sheet-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.recovery-status {
+    min-height: 1.25rem;
+    margin-top: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+    .recovery-range-row {
+        grid-template-columns: 1fr;
+    }
+}
+
 .flip-diagram {
     display: flex;
     justify-content: center;

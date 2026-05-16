@@ -2630,6 +2630,9 @@ const PrintModule = {
         document.getElementById('flip-modal-close')?.addEventListener('click', () => {
             document.getElementById('flip-modal').classList.add('hidden');
         });
+        document.getElementById('phase1-recovery-open-btn')?.addEventListener('click', () => {
+            Phase1RecoveryModule.open();
+        });
     },
 
     updateButton() {
@@ -3225,6 +3228,181 @@ const PrintModule = {
         }
 
         document.getElementById('flip-modal').classList.remove('hidden');
+        Phase1RecoveryModule.syncFromJob();
+    },
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase1RecoveryModule — Reprint damaged front-pass sheets before flip
+// ═══════════════════════════════════════════════════════════════════
+const Phase1RecoveryModule = {
+    _sheets: [],
+
+    init() {
+        document.getElementById('phase1-recovery-close')?.addEventListener('click', () => this.close());
+        document.getElementById('phase1-recovery-overlay')?.addEventListener('click', () => this.close());
+        document.getElementById('phase1-recovery-cancel')?.addEventListener('click', () => this.close());
+        document.getElementById('phase1-recovery-apply-range')?.addEventListener('click', () => this._applyRange());
+        document.getElementById('phase1-recovery-clear')?.addEventListener('click', () => this._clearSelection());
+        document.getElementById('phase1-recovery-submit')?.addEventListener('click', () => this._submit());
+    },
+
+    syncFromJob() {
+        const btn = document.getElementById('phase1-recovery-open-btn');
+        const sheets = this._getSheets();
+        this._sheets = sheets;
+        if (btn) btn.disabled = sheets.length === 0;
+    },
+
+    open() {
+        this.syncFromJob();
+        if (this._sheets.length === 0) {
+            showToast(I18nModule.t('recovery.noPlan'), 'error');
+            return;
+        }
+        this._renderList();
+        this._setStatus('');
+        document.getElementById('phase1-recovery-modal')?.classList.remove('hidden');
+        document.getElementById('phase1-recovery-range')?.focus();
+    },
+
+    close() {
+        document.getElementById('phase1-recovery-modal')?.classList.add('hidden');
+    },
+
+    _getSheets() {
+        const job = AppState.currentJob;
+        const plan = job?.manualPlan || job?.ManualPlan;
+        return plan?.sheets || plan?.Sheets || [];
+    },
+
+    _pageLabel(page, side) {
+        if (!page || page.isBlank || page.IsBlank) return I18nModule.t(`recovery.${side}`)(null);
+        return I18nModule.t(`recovery.${side}`)(page.originalPageNumber ?? page.OriginalPageNumber);
+    },
+
+    _sheetIndex(sheet) {
+        return sheet.sheetIndex ?? sheet.SheetIndex;
+    },
+
+    _renderList() {
+        const list = document.getElementById('phase1-recovery-list');
+        if (!list) return;
+        list.textContent = '';
+
+        for (const sheet of this._sheets) {
+            const idx = this._sheetIndex(sheet);
+            const front = sheet.front || sheet.Front;
+            const back = sheet.back || sheet.Back;
+
+            const label = document.createElement('label');
+            label.className = 'recovery-sheet-item';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.dataset.sheetIndex = String(idx);
+            checkbox.addEventListener('change', () => this._updateSelectedStatus());
+
+            const body = document.createElement('div');
+            const title = document.createElement('div');
+            title.className = 'recovery-sheet-title';
+            title.textContent = I18nModule.t('recovery.sheet')(idx);
+
+            const meta = document.createElement('div');
+            meta.className = 'recovery-sheet-meta';
+
+            const frontSpan = document.createElement('span');
+            frontSpan.textContent = this._pageLabel(front, 'front');
+
+            const backSpan = document.createElement('span');
+            backSpan.textContent = this._pageLabel(back, 'back');
+
+            meta.append(frontSpan, backSpan);
+            body.append(title, meta);
+            label.append(checkbox, body);
+            list.appendChild(label);
+        }
+    },
+
+    _parseRange(text) {
+        const selected = new Set();
+        for (const raw of String(text || '').split(',')) {
+            const part = raw.trim();
+            if (!part) continue;
+            const match = part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+            if (!match) continue;
+            const start = parseInt(match[1], 10);
+            const end = parseInt(match[2] || match[1], 10);
+            const lo = Math.min(start, end);
+            const hi = Math.max(start, end);
+            for (let i = lo; i <= hi; i++) selected.add(i);
+        }
+        return selected;
+    },
+
+    _applyRange() {
+        const selected = this._parseRange(document.getElementById('phase1-recovery-range')?.value);
+        document.querySelectorAll('#phase1-recovery-list input[type="checkbox"]').forEach(cb => {
+            cb.checked = selected.has(parseInt(cb.dataset.sheetIndex, 10));
+        });
+        this._updateSelectedStatus();
+    },
+
+    _clearSelection() {
+        document.querySelectorAll('#phase1-recovery-list input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+        this._updateSelectedStatus();
+    },
+
+    _selectedSheetIndices() {
+        return Array.from(document.querySelectorAll('#phase1-recovery-list input[type="checkbox"]:checked'))
+            .map(cb => parseInt(cb.dataset.sheetIndex, 10))
+            .filter(Number.isFinite);
+    },
+
+    _updateSelectedStatus() {
+        const count = this._selectedSheetIndices().length;
+        this._setStatus(count > 0 ? I18nModule.t('recovery.selected')(count) : '');
+    },
+
+    _setStatus(text) {
+        const el = document.getElementById('phase1-recovery-status');
+        if (el) el.textContent = text || '';
+    },
+
+    async _submit() {
+        const sheetIndices = this._selectedSheetIndices();
+        if (sheetIndices.length === 0) {
+            this._setStatus(I18nModule.t('recovery.noSelection'));
+            return;
+        }
+
+        const jobId = AppState.currentJob?.jobId || AppState.currentJob?.JobId;
+        if (!jobId) {
+            showToast(I18nModule.t('recovery.noPlan'), 'error');
+            return;
+        }
+
+        const submit = document.getElementById('phase1-recovery-submit');
+        if (submit) submit.disabled = true;
+        try {
+            const res = await fetch(`${API_BASE}/print/recover/front`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId, sheetIndices })
+            });
+            const result = await res.json();
+            if (!res.ok || !result.success) throw new Error(result.message || res.statusText);
+
+            const message = I18nModule.t('recovery.printed')(result.printedSheets || sheetIndices.length);
+            this._setStatus(message);
+            showToast(message, 'success');
+        } catch (err) {
+            const message = I18nModule.t('recovery.failed')(err.message);
+            this._setStatus(message);
+            showToast(message, 'error');
+        } finally {
+            if (submit) submit.disabled = false;
+        }
     },
 };
 
@@ -5572,6 +5750,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ZoomModal.init();
     ContextMenu.init();
     PrintModule.init();
+    Phase1RecoveryModule.init();
     CopiesModule.init();
     HistoryModule.init();
     KeyboardModule.init();

@@ -155,8 +155,10 @@ public class ExecutePrintJobTests
             PrinterName = "TestPrinter"
         };
 
-        _sut.ExecutePrintJob(job, firstPhase: true);
+        var act = () => _sut.ExecutePrintJob(job, firstPhase: true);
 
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*No odd pages*");
         _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
     }
 
@@ -173,8 +175,10 @@ public class ExecutePrintJobTests
             PrinterName = "TestPrinter"
         };
 
-        _sut.ExecutePrintJob(job, firstPhase: false);
+        var act = () => _sut.ExecutePrintJob(job, firstPhase: false);
 
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Phase 2 has no pages*");
         _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
     }
 
@@ -184,5 +188,55 @@ public class ExecutePrintJobTests
         var act = () => _sut.ExecutePrintJob(null!);
 
         act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void ReprintManualDuplexFrontSheets_PrintsFrontPagesForSelectedSheets()
+    {
+        var pages = Enumerable.Range(1, 6)
+            .Select(i => new ManualDuplexPageInfo
+            {
+                ProcessedIndex = i,
+                OriginalPageNumber = i,
+                IsLandscape = false
+            })
+            .ToList();
+
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", pages)
+        };
+
+        var printedCount = _sut.ReprintManualDuplexFrontSheets(job, new[] { 2, 3 });
+
+        printedCount.Should().Be(2);
+        _mockWord.Verify(w => w.PrintPdf(@"C:\fake\processed.pdf", "TestPrinter", "3,5"), Times.Once);
+    }
+
+    [Fact]
+    public void ReprintManualDuplexFrontSheets_RequiresJobWaitingForFlip()
+    {
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = false,
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", new List<ManualDuplexPageInfo>
+            {
+                new() { ProcessedIndex = 1, OriginalPageNumber = 1 },
+                new() { ProcessedIndex = 2, OriginalPageNumber = 2 }
+            })
+        };
+
+        var act = () => _sut.ReprintManualDuplexFrontSheets(job, new[] { 1 });
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*waiting for flip*");
+        _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
     }
 }

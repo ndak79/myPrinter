@@ -6,6 +6,7 @@ public interface IWordInteropService
 {
     PdfInfo GetPdfInfo(string path);
     int GetPageCount(string path);
+    void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers);
     void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers, out HashSet<int> insertedBlankIndices);
     string ProcessMixedOrientation(string sourcePath, int[]? singleSidedPages, out List<ManualDuplexPageInfo> pageInfos, HashSet<int>? insertedBlankIndices = null);
     string ProcessMixedOrientation(string sourcePath, int[] singleSidedPages);

@@ -164,6 +164,19 @@ namespace PrinterApp.Models
         public PrintJobState? JobState { get; set; }
     }
 
+    public class Phase1RecoveryRequest
+    {
+        public string JobId { get; set; } = "";
+        public int[] SheetIndices { get; set; } = Array.Empty<int>();
+    }
+
+    public class Phase1RecoveryResponse
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+        public int PrintedSheets { get; set; }
+    }
+
     public class UploadResponse
     {
         public bool Success { get; set; }

@@ -116,6 +116,24 @@ window.VI_STRINGS = {
     defaultInstruction: 'Lấy giấy ra và đặt thẳng lại vào khay (mặt đã in hướng xuống). KHÔNG cần xoay giấy.',
   },
 
+  recovery: {
+    open: 'Giấy bị kẹt / hỏng',
+    title: 'Khôi phục sau kẹt giấy',
+    intro: 'Chọn các tờ bị kẹt, bị rách hoặc chưa ra khỏi máy. Ứng dụng sẽ in lại mặt trước của các tờ đó để bạn thay vào xấp giấy trước khi lật.',
+    rangePlaceholder: 'Ví dụ: 5-7, 10',
+    applyRange: 'Chọn dải',
+    clear: 'Bỏ chọn',
+    submit: 'In lại tờ đã chọn',
+    noPlan: 'Không có kế hoạch in để khôi phục.',
+    noSelection: 'Chọn ít nhất một tờ bị lỗi.',
+    sheet: (n) => `Tờ ${n}`,
+    front: (n) => n ? `Mặt trước: Trang ${n}` : 'Mặt trước: Trắng',
+    back: (n) => n ? `Mặt sau: Trang ${n}` : 'Mặt sau: Trắng',
+    printed: (n) => `Đã in lại ${n} tờ. Thay các tờ hỏng vào đúng vị trí rồi mới bấm tiếp tục.`,
+    failed: (msg) => `Không thể in lại tờ lỗi: ${msg}`,
+    selected: (n) => `Đã chọn ${n} tờ lỗi`,
+  },
+
   // Confirm print modal
   confirm: {
     title: '🖨️ Xác Nhận Lệnh In',

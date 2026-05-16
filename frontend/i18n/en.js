@@ -103,6 +103,24 @@ window.EN_STRINGS = {
     defaultInstruction: 'Remove paper and place straight back in tray (printed side down). NO rotation needed.',
   },
 
+  recovery: {
+    open: 'Paper jam / damaged',
+    title: 'Recover after paper jam',
+    intro: 'Select sheets that jammed, tore, or did not leave the printer. The app will reprint the front side of those sheets so you can replace them before flipping the stack.',
+    rangePlaceholder: 'Example: 5-7, 10',
+    applyRange: 'Select range',
+    clear: 'Clear',
+    submit: 'Reprint selected sheets',
+    noPlan: 'No print plan is available for recovery.',
+    noSelection: 'Select at least one failed sheet.',
+    sheet: (n) => `Sheet ${n}`,
+    front: (n) => n ? `Front: Page ${n}` : 'Front: Blank',
+    back: (n) => n ? `Back: Page ${n}` : 'Back: Blank',
+    printed: (n) => `Reprinted ${n} sheet(s). Replace the damaged sheets in the stack before continuing.`,
+    failed: (msg) => `Could not reprint failed sheets: ${msg}`,
+    selected: (n) => `${n} failed sheet(s) selected`,
+  },
+
   confirm: {
     title: '🖨️ Confirm Print Job',
     cancel: 'Cancel',
