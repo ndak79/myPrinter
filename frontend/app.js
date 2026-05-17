@@ -2588,9 +2588,16 @@ const HistoryModule = {
 // PrintModule — Print command, flip instructions, continue print
 // ═══════════════════════════════════════════════════════════════════
 const PrintModule = {
+    _lastFlipInstruction: null,
+
     init() {
         const btn = document.getElementById('print-btn');
         btn.addEventListener('click', (e) => {
+            if (btn.dataset.mode === 'flip-paused' && AppState.currentJob?.jobId) {
+                this._showActiveFlipModal();
+                return;
+            }
+
             if (btn.dataset.mode === 'phase2-review' && AppState.currentJob?.jobId) {
                 Phase2RecoveryModule.openCheck();
                 return;
@@ -2633,11 +2640,70 @@ const PrintModule = {
         });
         // Close button on flip modal (user can dismiss and reopen via Cancel Print)
         document.getElementById('flip-modal-close')?.addEventListener('click', () => {
+            this._setPrintButtonForFlipPause();
             document.getElementById('flip-modal').classList.add('hidden');
         });
         document.getElementById('phase1-recovery-open-btn')?.addEventListener('click', () => {
             Phase1RecoveryModule.open();
         });
+        document.getElementById('recovery-btn')?.addEventListener('click', () => {
+            const phase = this._activeRecoveryPhase();
+            if (phase === 'phase1') Phase1RecoveryModule.open();
+            else if (phase === 'phase2') Phase2RecoveryModule.openRecovery();
+        });
+        this._updateRecoveryButton();
+    },
+
+    _activeRecoveryPhase() {
+        const job = AppState.currentJob;
+        const jobId = job?.jobId || job?.JobId;
+        if (!jobId) return null;
+
+        const waitingForFlip = job.waitingForFlip ?? job.WaitingForFlip;
+        const backPassSent = job.backPassSent ?? job.BackPassSent;
+        if (waitingForFlip) return 'phase1';
+        if (backPassSent) return 'phase2';
+
+        const mode = document.getElementById('print-btn')?.dataset.mode;
+        if (mode === 'cancellable' || mode === 'flip-paused') return 'phase1';
+        if (mode === 'phase2-review') return 'phase2';
+        return null;
+    },
+
+    _updateRecoveryButton() {
+        const recoveryBtn = document.getElementById('recovery-btn');
+        if (!recoveryBtn) return;
+
+        const phase = this._activeRecoveryPhase();
+        recoveryBtn.hidden = !phase;
+        recoveryBtn.classList.toggle('hidden', !phase);
+        recoveryBtn.disabled = !phase;
+        if (phase) recoveryBtn.dataset.phase = phase;
+        else delete recoveryBtn.dataset.phase;
+    },
+
+    _setPrintButtonForFlipPause() {
+        const btn = document.getElementById('print-btn');
+        if (!btn || !AppState.currentJob?.jobId) return;
+        btn.dataset.mode = 'flip-paused';
+        btn.classList.remove('cancellable');
+        btn.textContent = I18nModule.t('print.reopenFlip');
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        this._updateRecoveryButton();
+    },
+
+    _showActiveFlipModal() {
+        this._showFlipModal(this._lastFlipInstruction || AppState.currentJob?.instruction || AppState.currentJob?.Instruction);
+        const btn = document.getElementById('print-btn');
+        if (btn) {
+            btn.dataset.mode = 'cancellable';
+            btn.classList.add('cancellable');
+            btn.textContent = I18nModule.t('print.cancel');
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+        this._updateRecoveryButton();
     },
 
     updateButton() {
@@ -2649,6 +2715,7 @@ const PrintModule = {
         const anyFileReady = AppState.files.some(f => f.selectedPages.size > 0);
         const ready = !!(AppState.selectedPrinter && anyFileReady);
         if (printBtn)   printBtn.disabled   = !ready;
+        this._updateRecoveryButton();
         SummaryModule.update();
         if (PrintPreviewModule._isOpen) PrintPreviewModule._updateFooterSummary();
     },
@@ -2812,6 +2879,7 @@ const PrintModule = {
                     btn.textContent = I18nModule.t('print.cancel');
                     btn.disabled = false;
                     btn.style.opacity = '1';
+                    this._updateRecoveryButton();
                     showToast(I18nModule.t('toast.frontDone'), 'info');
                     // Stop multi-file loop — _continuePrint will resume the queue
                     return;
@@ -2891,6 +2959,7 @@ const PrintModule = {
                         btn.disabled = false;
                         btn.style.opacity = '1';
                     }
+                    this._updateRecoveryButton();
                     showToast(I18nModule.t('phase2Recovery.backSent'), 'info');
                     Phase2RecoveryModule.openCheck();
                     return;
@@ -3069,6 +3138,7 @@ const PrintModule = {
                         btn.disabled = false;
                         btn.style.opacity = '1';
                     }
+                    this._updateRecoveryButton();
                     showToast(I18nModule.t('toast.frontDone'), 'info');
                     return;
                 }
@@ -3113,6 +3183,7 @@ const PrintModule = {
     },
 
     _showFlipModal(instruction) {
+        this._lastFlipInstruction = instruction;
         document.getElementById('instruction-visual').innerHTML = `
         <div class="p3wrap">
          <svg viewBox="0 0 420 260" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:260px">
@@ -3265,6 +3336,7 @@ const PrintModule = {
 
         document.getElementById('flip-modal').classList.remove('hidden');
         Phase1RecoveryModule.syncFromJob();
+        this._updateRecoveryButton();
     },
 };
 
@@ -3481,19 +3553,28 @@ const Phase2RecoveryModule = {
         document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
     },
 
+    openRecovery() {
+        this._rows = this._getPhase2Rows();
+        this._renderList();
+        const range = document.getElementById('phase2-recovery-range');
+        if (range) range.value = '';
+        document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
+        if (this._jobCopies() > 1) {
+            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
+            this._showPanel('check');
+            return;
+        }
+        this._setStatus('');
+        this._showPanel('select');
+        range?.focus();
+    },
+
     close() {
         document.getElementById('phase2-recovery-modal')?.classList.add('hidden');
     },
 
     _showSelect() {
-        this._rows = this._getPhase2Rows();
-        this._renderList();
-        if (this._jobCopies() > 1) {
-            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
-            return;
-        }
-        this._showPanel('select');
-        document.getElementById('phase2-recovery-range')?.focus();
+        this.openRecovery();
     },
 
     _showPanel(name) {
@@ -3503,7 +3584,7 @@ const Phase2RecoveryModule = {
         const needsRecovery = document.getElementById('phase2-recovery-needed');
         if (needsRecovery) needsRecovery.disabled = this._jobCopies() > 1;
         const complete = document.getElementById('phase2-recovery-complete');
-        if (complete) complete.disabled = name === 'flip';
+        if (complete) complete.disabled = name === 'select' || name === 'flip';
     },
 
     _jobCopies() {
@@ -3529,7 +3610,8 @@ const Phase2RecoveryModule = {
                 if (!sheet) return null;
                 return { passIndex: i + 1, processedPage, sheet };
             })
-            .filter(Boolean);
+            .filter(Boolean)
+            .sort((a, b) => this._sheetIndex(a.sheet) - this._sheetIndex(b.sheet));
     },
 
     _sheetIndex(sheet) {
@@ -3585,7 +3667,7 @@ const Phase2RecoveryModule = {
     _parseRange(text) {
         const selected = new Set();
         for (const raw of String(text || '').split(',')) {
-            const part = raw.trim();
+            const part = raw.trim().replace(/^[^\d]+(?=\d)/u, '');
             if (!part) continue;
             const match = part.match(/^(\d+)(?:\s*-\s*(\d+))?$/);
             if (!match) continue;
@@ -3600,10 +3682,13 @@ const Phase2RecoveryModule = {
 
     _applyRange() {
         const selected = this._parseRange(document.getElementById('phase2-recovery-range')?.value);
+        let checkedCount = 0;
         document.querySelectorAll('#phase2-recovery-list input[type="checkbox"]').forEach(cb => {
-            cb.checked = selected.has(parseInt(cb.dataset.passIndex, 10));
+            cb.checked = selected.has(parseInt(cb.dataset.sheetIndex, 10));
+            if (cb.checked) checkedCount++;
         });
-        this._updateSelectedStatus();
+        if (selected.size > 0 && checkedCount === 0) this._setStatus(I18nModule.t('phase2Recovery.noMatchingSheets'));
+        else this._updateSelectedStatus();
     },
 
     _clearSelection() {

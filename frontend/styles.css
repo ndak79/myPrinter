@@ -2349,6 +2349,33 @@ kbd {
 .btn-print:active:not(:disabled) { transform: translateY(0); }
 .btn-print:disabled { opacity: 0.35; cursor: not-allowed; }
 
+.btn-recovery {
+  height:           34px;
+  padding:          0 14px;
+  border:           1.5px solid rgba(245, 158, 11, 0.75);
+  border-radius:    8px;
+  background:       #fffbeb;
+  color:            #92400e;
+  font-family:      var(--font-system);
+  font-size:        13px;
+  font-weight:      700;
+  cursor:           pointer;
+  white-space:      nowrap;
+  transition:       background 0.15s, border-color 0.15s, transform 0.12s;
+  flex-shrink:      0;
+}
+
+.btn-recovery:hover:not(:disabled) {
+  background:       #fef3c7;
+  border-color:     #f59e0b;
+  transform:        translateY(-1px);
+}
+
+.btn-recovery:disabled {
+  opacity:          0.45;
+  cursor:           not-allowed;
+}
+
 /* ── Icon-style small buttons (Settings, Guide, Language) ── */
 .btn-icon-sm {
   height:           34px;

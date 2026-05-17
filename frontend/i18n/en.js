@@ -10,6 +10,7 @@ window.EN_STRINGS = {
 
   btn: {
     print: '🖨 Print',
+    recovery: 'Print rescue',
     settings: '⚙️ Settings',
     guide: '❓ Help',
     addFile: '+ Add File',
@@ -130,8 +131,9 @@ window.EN_STRINGS = {
     goodStack: 'Stack is good',
     needRecovery: 'Need recovery',
     selectIntro: 'Select damaged or uncertain sheets. The app will reprint both sides onto replacement sheets.',
-    passRangePlaceholder: 'Example: pass 1-3, 5',
-    passSheet: (pass, sheet) => `Pass ${pass}: Sheet ${sheet}`,
+    passRangePlaceholder: 'Example: sheet 1-3, 5',
+    passSheet: (_pass, sheet) => `Sheet ${sheet}`,
+    noMatchingSheets: 'No sheets matched that range.',
     printReplacementFronts: 'Print replacement fronts',
     frontPrinted: (n) => `Printed front side for ${n} replacement sheet(s). Flip only those replacement sheets next.`,
     flipIntro: 'Take the replacement sheets just printed on the front side, place them back in the tray using the same flip direction, then print the back side for this mini stack.',
@@ -150,6 +152,7 @@ window.EN_STRINGS = {
   print: {
     start: '🖨 Start Printing',
     cancel: '✕ Cancel Print',
+    reopenFlip: '↩ Reopen flip guide',
     printing: (i, total) => `⏳ Printing file ${i}/${total}...`,
     sendingSingle: '⏳ Sending print job...',
     done: (n) => n > 1 ? `✓ Printed ${n} files!` : '✓ Print job sent!',

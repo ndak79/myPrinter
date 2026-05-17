@@ -13,6 +13,7 @@ window.VI_STRINGS = {
   // Buttons
   btn: {
     print: '🖨 In',
+    recovery: 'Cứu lỗi in',
     settings: '⚙️ Cài đặt',
     guide: '❓ Hướng dẫn',
     addFile: '+ Thêm file',
@@ -143,8 +144,9 @@ window.VI_STRINGS = {
     goodStack: 'Xấp giấy ổn',
     needRecovery: 'Cần khôi phục',
     selectIntro: 'Chọn các tờ bị hỏng hoặc chưa chắc đã in xong. Ứng dụng sẽ in lại cả hai mặt trên tờ thay thế.',
-    passRangePlaceholder: 'Ví dụ: lượt 1-3, 5',
-    passSheet: (pass, sheet) => `Lượt ${pass}: Tờ ${sheet}`,
+    passRangePlaceholder: 'Ví dụ: tờ 1-3, 5',
+    passSheet: (_pass, sheet) => `Tờ ${sheet}`,
+    noMatchingSheets: 'Không tìm thấy tờ nào trong dải đã nhập.',
     printReplacementFronts: 'In mặt trước tờ thay thế',
     frontPrinted: (n) => `Đã in mặt trước cho ${n} tờ thay thế. Tiếp theo chỉ lật các tờ thay thế này.`,
     flipIntro: 'Lấy các tờ thay thế vừa in mặt trước, đặt lại vào khay theo cùng hướng dẫn lật giấy, rồi in mặt sau cho mini stack này.',
@@ -165,6 +167,7 @@ window.VI_STRINGS = {
   print: {
     start: '🖨 Bắt Đầu In',
     cancel: '✕ Huỷ In',
+    reopenFlip: '↩ Mở hướng dẫn lật giấy',
     printing: (i, total) => `⏳ Đang in file ${i}/${total}...`,
     sendingSingle: '⏳ Đang gửi lệnh in...',
     done: (n) => n > 1 ? `✓ Đã in ${n} file!` : '✓ Đã gửi lệnh in!',
