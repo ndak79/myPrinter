@@ -22,6 +22,10 @@
   #define OutputDir "..\dist"
 #endif
 
+#ifndef KeysetFileName
+  #define KeysetFileName "license_keyset_prod_smartprinter.json"
+#endif
+
 [Setup]
 AppId={{D6C1F5D4-CB54-4C6E-A2A5-541E5C52B7B1}
 AppName={#MyAppName}
@@ -52,7 +56,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#PublishDir}\MyPrinter.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\appsettings.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PublishDir}\smartprinter.appsettings.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#PublishDir}\Activation\license_keyset_prod_smartprinter.json"; DestDir: "{app}\Activation"; Flags: ignoreversion
+Source: "{#PublishDir}\Activation\{#KeysetFileName}"; DestDir: "{app}\Activation"; Flags: ignoreversion
 Source: "{#PublishDir}\frontend\*"; DestDir: "{app}\frontend"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.backup,_fix_guide.js"
 
 [Icons]

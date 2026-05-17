@@ -455,7 +455,8 @@ public class ActivationCompatibilityTests
         script.Should().NotContain("Source: \"{#PublishDir}\\*\"");
         script.Should().Contain("Source: \"{#PublishDir}\\MyPrinter.exe\"");
         script.Should().Contain("Source: \"{#PublishDir}\\smartprinter.appsettings.json\"");
-        script.Should().Contain("Source: \"{#PublishDir}\\Activation\\license_keyset_prod_smartprinter.json\"");
+        script.Should().Contain("#define KeysetFileName \"license_keyset_prod_smartprinter.json\"");
+        script.Should().Contain("Source: \"{#PublishDir}\\Activation\\{#KeysetFileName}\"");
         script.Should().Contain("Source: \"{#PublishDir}\\frontend\\*\"");
         script.Should().Contain("Excludes: \"*.backup,_fix_guide.js\"");
     }
@@ -470,6 +471,35 @@ public class ActivationCompatibilityTests
         script.Should().Contain("Installer config still contains placeholder Activation.ServerUrl");
         script.Should().Contain("Pass -ServerUrl with the real activation base URL.");
         script.Should().Contain("Non-HTTPS Activation.ServerUrl requires AllowInsecureHttp=true.");
+        script.Should().Contain("Run-Tests");
+        script.Should().Contain("Get-DotnetCli");
+        script.Should().Contain("Validate-Keyset");
+        script.Should().Contain("prod_smartprinter_v2");
+        script.Should().Contain("Where-Object { $_.Name.EndsWith(\".backup\"");
+        script.Should().Contain("/DKeysetFileName=$keysetFileName");
+    }
+
+    [Fact]
+    public void Publish_bat_delegates_to_hardened_installer_build()
+    {
+        var repoRoot = GetRepoRoot();
+        var scriptPath = Path.Combine(repoRoot, "publish.bat");
+        var script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("build-installer.ps1");
+        script.Should().Contain("-ServerUrl \"http://103.82.24.37\"");
+        script.Should().Contain("-ProductId \"prod_smartprinter\"");
+        script.Should().Contain("-AllowInsecureHttp");
+    }
+
+    [Fact]
+    public void Desktop_project_excludes_frontend_backup_artifacts_from_publish()
+    {
+        var repoRoot = GetRepoRoot();
+        var csprojPath = Path.Combine(repoRoot, "desktop", "MyPrinter.Desktop.csproj");
+        var project = File.ReadAllText(csprojPath);
+
+        project.Should().Contain("Exclude=\"..\\frontend\\**\\*.backup;..\\frontend\\**\\_fix_guide.js\"");
     }
 
     [Fact]

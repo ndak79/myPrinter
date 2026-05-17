@@ -1,40 +1,29 @@
 @echo off
-title myPrinter - Publish Single EXE
+title myPrinter - Product Build
 color 0B
 
 echo ============================================
-echo   myPrinter - Build Single EXE
+echo   myPrinter - Product Build
 echo ============================================
 echo.
 
-REM --- Output directory ---
-set OUTPUT=%~dp0publish
-
-REM --- Clean previous output ---
-echo [*] Cleaning previous publish output...
-if exist "%OUTPUT%" rmdir /S /Q "%OUTPUT%"
-mkdir "%OUTPUT%"
-
-REM --- Publish desktop project (self-contained, single file) ---
-echo [*] Publishing desktop app (self-contained, win-x64)...
-dotnet publish "%~dp0desktop\MyPrinter.Desktop.csproj" ^
-    -c Release ^
-    /p:PublishSingleFile=true ^
-    -o "%OUTPUT%"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-installer.ps1" ^
+    -ServerUrl "http://103.82.24.37" ^
+    -ProductId "prod_smartprinter" ^
+    -AllowInsecureHttp
 
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo [!] Publish FAILED. See errors above.
+    echo [!] Product build FAILED. See errors above.
     pause
     exit /b 1
 )
 
 echo.
 echo ============================================
-echo   Published successfully!
-echo   Output : %OUTPUT%\MyPrinter.exe
-echo.
-echo   Run as Administrator to use printer features.
+echo   Product build completed.
+echo   Publish : %~dp0publish\MyPrinter.exe
+echo   Setup   : %~dp0dist\smartPrinter-setup-1.0.0.exe
 echo ============================================
 echo.
 pause

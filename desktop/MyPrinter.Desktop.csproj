@@ -57,7 +57,7 @@
 
   <!-- Bundle frontend files into output directory -->
   <ItemGroup>
-    <None Include="..\frontend\**\*">
+    <None Include="..\frontend\**\*" Exclude="..\frontend\**\*.backup;..\frontend\**\_fix_guide.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>frontend\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>
