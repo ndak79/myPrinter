@@ -13,7 +13,7 @@ window.VI_STRINGS = {
   // Buttons
   btn: {
     print: '🖨 In',
-    recovery: 'Cứu lỗi in',
+    recovery: 'Cứu lỗi In',
     settings: '⚙️ Cài đặt',
     guide: '❓ Hướng dẫn',
     addFile: '+ Thêm file',
@@ -485,4 +485,76 @@ window.VI_STRINGS = {
       <p>Nhấn nút <strong>🌐</strong> trên thanh tiêu đề để chuyển đổi giữa Tiếng Việt và Tiếng Anh.</p>
     ` },
   },
+};
+
+window.VI_STRINGS.guide = {
+  title: 'Hướng dẫn in và xử lý kẹt giấy',
+  tab: {
+    start: 'Bắt đầu',
+    modes: 'Kiểu in',
+    custom: 'Chọn trang',
+    flip: 'Lật giấy',
+    recovery: 'Cứu lỗi In',
+  },
+  start: { content: `
+    <h3>Bắt đầu in</h3>
+    <ol>
+      <li><strong>Chọn máy in</strong> ở thanh trên cùng. Nếu danh sách trống, kiểm tra máy in trong Windows rồi mở lại app.</li>
+      <li><strong>Thêm file</strong> bằng cách kéo thả hoặc bấm <strong>+ Thêm file</strong>. App hỗ trợ PDF, Word và ảnh; file Word/ảnh sẽ được chuyển sang PDF trước khi in.</li>
+      <li><strong>Kiểm tra trang cần in</strong>. Ô <strong>Trang</strong> để trống nghĩa là in tất cả.</li>
+      <li><strong>Bấm In</strong>. Nếu máy in chỉ in 1 mặt, app sẽ in mặt trước trước rồi hiện hướng dẫn lật giấy.</li>
+    </ol>
+    <p>Luôn giữ nguyên thứ tự xấp giấy khi lấy ra khỏi máy. Đây là điều quan trọng nhất để mặt sau khớp đúng trang.</p>
+  ` },
+  modes: { content: `
+    <h3>Chọn kiểu in</h3>
+    <h4>In thông minh</h4>
+    <p>Dùng cho tài liệu thông thường. App chia lệnh in thành hai lượt: mặt trước, sau đó mặt sau. Đây là lựa chọn mặc định cho máy in 1 mặt.</p>
+    <h4>In Sách</h4>
+    <p>Dùng khi muốn gấp giấy A4 thành sách A5. App tự sắp thứ tự trang để sau khi gấp, trang đọc theo đúng thứ tự.</p>
+    <h4>Xem trước khi in</h4>
+    <p>Bấm <strong>Xem trước khi in</strong> để kiểm tra từng tờ vật lý trước khi gửi lệnh. Nếu tài liệu có trang ngang, hãy xem trước để chắc bố cục đúng ý.</p>
+  ` },
+  custom: { content: `
+    <h3>Chọn trang và chỉnh từng file</h3>
+    <h4>Chọn nhanh bằng ô Trang</h4>
+    <ul>
+      <li><code>1-5</code>: in trang 1 đến 5</li>
+      <li><code>1,3,7</code>: chỉ in trang 1, 3 và 7</li>
+      <li><code>2-8,12</code>: in trang 2 đến 8 và trang 12</li>
+    </ul>
+    <h4>Chọn trực tiếp trên preview</h4>
+    <p>Click phải vào trang để bỏ in, chọn in 1 mặt, xoay trang, hoặc khôi phục về in 2 mặt.</p>
+    <h4>Nhiều file</h4>
+    <p>Mỗi file có tab riêng và giữ cài đặt riêng: trang được chọn, số bản, xoay trang và chế độ trang ngang.</p>
+  ` },
+  flip: { content: `
+    <h3>Lật giấy khi in 2 mặt thủ công</h3>
+    <ol>
+      <li>Chờ máy in xong hoàn toàn lượt mặt trước.</li>
+      <li>Lấy nguyên xấp giấy ra, không đảo thứ tự và không trộn thêm giấy mới.</li>
+      <li>Làm đúng theo hình hướng dẫn trên màn hình: lấy từ khay ra, lật đúng chiều, đặt lại vào khay nạp.</li>
+      <li>Bấm <strong>Đã đặt giấy - Tiếp tục in</strong> để in mặt sau.</li>
+    </ol>
+    <p>Nếu lỡ đóng hướng dẫn, bấm nút <strong>Mở hướng dẫn lật giấy</strong> để mở lại. Nếu muốn dừng lệnh, dùng <strong>Huỷ In</strong>.</p>
+  ` },
+  recovery: { content: `
+    <h3>Cứu lỗi in khi kẹt giấy hoặc hỏng tờ</h3>
+    <p>Nút <strong>Cứu lỗi In</strong> chỉ hiện khi app đang ở giữa một lệnh in thủ công. Hãy dùng nút này thay vì bấm hoàn tất khi còn nghi ngờ xấp giấy bị lỗi.</p>
+    <h4>Kẹt giấy trước khi lật giấy</h4>
+    <ol>
+      <li>Bấm <strong>Cứu lỗi In</strong> khi đang ở màn hướng dẫn lật giấy.</li>
+      <li>Chọn các <strong>tờ vật lý</strong> bị kẹt, rách hoặc chưa ra khỏi máy. Ví dụ: <code>tờ 1-2</code>.</li>
+      <li>App in lại mặt trước của các tờ đó.</li>
+      <li>Thay các tờ lỗi vào đúng vị trí trong xấp giấy, rồi mới tiếp tục in mặt sau.</li>
+    </ol>
+    <h4>Lỗi sau khi đã in mặt sau</h4>
+    <ol>
+      <li>Bấm <strong>Cứu lỗi In</strong> ở bước kiểm tra sau mặt sau.</li>
+      <li>Chọn các tờ bị hỏng theo số tờ đang hiển thị: <strong>Tờ 1</strong>, <strong>Tờ 2</strong>, ...</li>
+      <li>In mặt trước cho tờ thay thế, lật riêng các tờ thay thế đó, rồi in mặt sau.</li>
+      <li>Thay tờ hỏng trong xấp giấy bằng tờ thay thế, sau đó bấm <strong>Hoàn tất lệnh in</strong>.</li>
+    </ol>
+    <p>Nếu in nhiều bản copy, app không cứu lỗi theo từng tờ. Hãy kiểm tra xấp giấy và in lại riêng bản copy bị lỗi.</p>
+  ` },
 };

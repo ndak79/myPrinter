@@ -10,7 +10,7 @@ window.EN_STRINGS = {
 
   btn: {
     print: '🖨 Print',
-    recovery: 'Print rescue',
+    recovery: 'Fix print issue',
     settings: '⚙️ Settings',
     guide: '❓ Help',
     addFile: '+ Add File',
@@ -461,4 +461,76 @@ window.EN_STRINGS = {
     ` },
   },
 
+};
+
+window.EN_STRINGS.guide = {
+  title: 'Printing and Paper-Jam Guide',
+  tab: {
+    start: 'Start',
+    modes: 'Print Type',
+    custom: 'Pages',
+    flip: 'Flip Paper',
+    recovery: 'Fix Print',
+  },
+  start: { content: `
+    <h3>Start a print job</h3>
+    <ol>
+      <li><strong>Select a printer</strong> from the top bar. If the list is empty, check the printer in Windows and reopen the app.</li>
+      <li><strong>Add files</strong> by dragging them in or clicking <strong>+ Add File</strong>. The app supports PDF, Word, and image files; Word/image files are converted to PDF before printing.</li>
+      <li><strong>Check the pages</strong>. Leaving the <strong>Pages</strong> box empty prints everything.</li>
+      <li><strong>Click Print</strong>. For single-sided printers, the app prints the front sides first, then shows the paper-flip guide.</li>
+    </ol>
+    <p>Keep the paper stack in the same order when removing it from the printer. This is the most important rule for matching the back sides correctly.</p>
+  ` },
+  modes: { content: `
+    <h3>Choose a print type</h3>
+    <h4>Smart Print</h4>
+    <p>Use this for normal documents. The app splits printing into two passes: front sides first, then back sides. This is the default choice for single-sided printers.</p>
+    <h4>Booklet</h4>
+    <p>Use this when you want to fold A4 paper into an A5 booklet. The app arranges pages so the booklet reads in the correct order after folding.</p>
+    <h4>Print Preview</h4>
+    <p>Click <strong>Print Preview</strong> to inspect each physical sheet before sending the job. If the document has landscape pages, preview it first to confirm the layout.</p>
+  ` },
+  custom: { content: `
+    <h3>Select pages and adjust each file</h3>
+    <h4>Use the Pages box</h4>
+    <ul>
+      <li><code>1-5</code>: print pages 1 through 5</li>
+      <li><code>1,3,7</code>: print only pages 1, 3, and 7</li>
+      <li><code>2-8,12</code>: print pages 2 through 8 and page 12</li>
+    </ul>
+    <h4>Use the preview</h4>
+    <p>Right-click a page to exclude it, make it one-sided, rotate it, or restore normal two-sided printing.</p>
+    <h4>Multiple files</h4>
+    <p>Each file has its own tab and keeps its own settings: selected pages, copies, rotation, and landscape handling.</p>
+  ` },
+  flip: { content: `
+    <h3>Flip paper for manual two-sided printing</h3>
+    <ol>
+      <li>Wait until the printer completely finishes the front-side pass.</li>
+      <li>Remove the whole stack without changing order and without adding new paper.</li>
+      <li>Follow the on-screen guide exactly: take the stack from the output tray, flip it in the shown direction, and place it back into the input tray.</li>
+      <li>Click <strong>Paper placed - continue printing</strong> to print the back sides.</li>
+    </ol>
+    <p>If you close the guide by mistake, click <strong>Reopen flip guide</strong>. To stop the job, use <strong>Cancel Print</strong>.</p>
+  ` },
+  recovery: { content: `
+    <h3>Fix a paper jam or damaged sheet</h3>
+    <p>The <strong>Fix print issue</strong> button appears only while a manual print job is in progress. Use it instead of completing the job when you suspect a sheet is missing, jammed, or damaged.</p>
+    <h4>Jam before flipping the paper</h4>
+    <ol>
+      <li>Click <strong>Fix print issue</strong> while the flip guide is open.</li>
+      <li>Select the <strong>physical sheets</strong> that jammed, tore, or did not leave the printer. Example: <code>sheet 1-2</code>.</li>
+      <li>The app reprints the front side for those sheets.</li>
+      <li>Replace the bad sheets in the correct positions, then continue to the back-side pass.</li>
+    </ol>
+    <h4>Problem after the back-side pass</h4>
+    <ol>
+      <li>Click <strong>Fix print issue</strong> on the post-back-pass review step.</li>
+      <li>Select damaged sheets by the displayed sheet number: <strong>Sheet 1</strong>, <strong>Sheet 2</strong>, ...</li>
+      <li>Print replacement fronts, flip only those replacement sheets, then print their backs.</li>
+      <li>Replace the damaged sheets in the stack, then click <strong>Complete print job</strong>.</li>
+    </ol>
+    <p>For multi-copy jobs, per-sheet recovery is not available. Check the stack and reprint only the copy that failed.</p>
+  ` },
 };
