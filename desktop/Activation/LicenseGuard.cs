@@ -95,18 +95,16 @@ public static class LicenseGuard
         if (token.IsExpired(effectiveTime))
             return (false, "License is already expired.");
 
-        if (result.HeartbeatGraceDays.HasValue)
-            token.HeartbeatGraceDays = result.HeartbeatGraceDays.Value;
-
-        var hb = await ActivationClient.HeartbeatAsync(_serverUrl!, fp, _productId!, token.Token);
-        if (hb != null)
+        if (token.HeartbeatRequired.GetValueOrDefault(true))
         {
-            if (hb.PermanentlyInvalid || hb.Revoked)
-                return (false, hb.Error ?? "Key was revoked on the server.");
-            if (!hb.Valid)
-                return (false, hb.Error ?? "Activation rejected by server.");
-            if (hb.HeartbeatGraceDays.HasValue)
-                token.HeartbeatGraceDays = hb.HeartbeatGraceDays.Value;
+            var hb = await ActivationClient.HeartbeatAsync(_serverUrl!, fp, _productId!, token.Token);
+            if (hb != null)
+            {
+                if (hb.PermanentlyInvalid || hb.Revoked)
+                    return (false, hb.Error ?? "Key was revoked on the server.");
+                if (!hb.Valid)
+                    return (false, hb.Error ?? "Activation rejected by server.");
+            }
         }
 
         token.LastSeen = effectiveTime;
@@ -123,14 +121,14 @@ public static class LicenseGuard
         EnsureConfigured();
         try
         {
-            var json = File.ReadAllText(licFilePath);
-            var token = JsonSerializer.Deserialize<LicenseToken>(json);
+            var content = File.ReadAllText(licFilePath);
+            var fp = GetFingerprint();
+            var token = ParseOfflineLicenseContent(content, fp, _productId!);
             if (token == null)
                 return false;
             if (!token.IsSupportedFormat())
                 return false;
 
-            var fp = GetFingerprint();
             if (!token.FingerprintMatches(fp))
                 return false;
             if (!token.VerifySignatureWithKeyset(_publicKeysetJson!, _productId!, _serverUrl!))
@@ -149,17 +147,13 @@ public static class LicenseGuard
 
             // Legacy offline licenses do not include the compact server token needed by /heartbeat.
             // In that case we only persist the locally verified token.
-            if (hasCompactToken)
+            if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))
             {
                 var hb = await ActivationClient.HeartbeatAsync(_serverUrl!, fp, _productId!, token.Token);
                 if (hb != null && (hb.PermanentlyInvalid || hb.Revoked || !hb.Valid))
                     return false;
                 if (hb != null)
-                {
-                    if (hb.HeartbeatGraceDays.HasValue)
-                        token.HeartbeatGraceDays = hb.HeartbeatGraceDays.Value;
                     token.LastOnlineCheck = effectiveTime;
-                }
             }
 
             if (!LicenseStorage.TrySave(token))
@@ -215,7 +209,7 @@ public static class LicenseGuard
         token.LastSeen = Math.Max(effectiveTime, lastSeen);
 
         var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);
-        if (hasCompactToken)
+        if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))
         {
             var hb = HeartbeatSync(fp, token.Token);
             if (hb != null)
@@ -226,7 +220,6 @@ public static class LicenseGuard
                     return false;
                 }
 
-                token.HeartbeatGraceDays = hb.HeartbeatGraceDays ?? token.HeartbeatGraceDays;
                 token.LastOnlineCheck = effectiveTime;
                 token.LastTrustedTime = effectiveTime;
             }
@@ -244,8 +237,6 @@ public static class LicenseGuard
                     return false;
                 }
 
-                if (hb2.HeartbeatGraceDays.HasValue)
-                    token.HeartbeatGraceDays = hb2.HeartbeatGraceDays.Value;
                 token.LastOnlineCheck = effectiveTime;
                 token.LastTrustedTime = effectiveTime;
             }
@@ -258,6 +249,31 @@ public static class LicenseGuard
             return false;
 
         return true;
+    }
+
+    private static LicenseToken? ParseOfflineLicenseContent(string content, string fingerprint, string productId)
+    {
+        var trimmed = content.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return null;
+
+        if (LooksLikeCompactJws(trimmed))
+            return LicenseToken.FromSignedToken(trimmed, fingerprint, productId);
+
+        return JsonSerializer.Deserialize<LicenseToken>(trimmed);
+    }
+
+    private static bool LooksLikeCompactJws(string value)
+    {
+        var parts = value.Split('.');
+        if (parts.Length != 3)
+            return false;
+
+        return !string.IsNullOrWhiteSpace(parts[0])
+            && !string.IsNullOrWhiteSpace(parts[1])
+            && !string.IsNullOrWhiteSpace(parts[2])
+            && !value.Contains('\r')
+            && !value.Contains('\n');
     }
 
     private static void EnsureConfigured()

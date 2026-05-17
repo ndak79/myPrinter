@@ -33,6 +33,7 @@ Thumbs.db
 
 # Publish output
 publish/
+dist/
 
 # OpenCode / dev tooling
 fix-*.bat

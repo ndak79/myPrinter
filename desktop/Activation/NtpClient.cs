@@ -1,34 +1,53 @@
 using System;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
+using System.Text.Json;
 
 namespace MyPrinter.Desktop.Activation;
 
 /// <summary>
-/// Raw UDP NTP query.
-/// ⚠️ Intentional divergence from Python: Python's _get_ntp_time() cross-checks UDP NTP
-/// against HTTPS time (worldtimeapi.org) and only trusts HTTPS-confirmed time. This C#
-/// implementation uses raw UDP NTP only, which is weaker against time spoofing via
-/// network interception. A network attacker who can block HTTPS and forge UDP NTP can
-/// control effective_time. This is a known, accepted security tradeoff — document it here
-/// so future maintainers understand the gap.
-/// Returns Unix epoch as double, or 0 on failure (caller treats 0 as "NTP unavailable").
+/// Trusted time lookup.
+/// HTTPS time is canonical; UDP NTP is kept only as a consistency cross-check.
+/// Returns Unix epoch as double, or 0 on failure/disagreement (caller treats 0 as "NTP unavailable").
 /// </summary>
 internal static class NtpClient
 {
-    private const string NtpServer      = "pool.ntp.org";
-    private const int    NtpPort        = 123;
-    private const long   NtpEpochOffset = 2208988800L; // seconds between 1900 and 1970
+    private const string NtpServer           = "pool.ntp.org";
+    private const int    NtpPort             = 123;
+    private const long   NtpEpochOffset      = 2208988800L; // seconds between 1900 and 1970
+    private const string HttpsTimeUrl        = "https://worldtimeapi.org/api/timezone/Etc/UTC";
+    private const int    MaxClockSkewSeconds = 60;
+
+    private static readonly HttpClient HttpsClient = new(
+        new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+    {
+        Timeout = TimeSpan.FromSeconds(5),
+    };
 
     public static double GetNtpTime()
+        => SelectTrustedTime(GetNtpUdpTime(), GetHttpsTime());
+
+    private static double SelectTrustedTime(double ntpTime, double httpsTime)
+    {
+        if (ntpTime > 0 && httpsTime > 0)
+            return Math.Abs(ntpTime - httpsTime) <= MaxClockSkewSeconds ? httpsTime : 0;
+
+        if (httpsTime > 0)
+            return httpsTime;
+
+        return 0;
+    }
+
+    private static double GetNtpUdpTime()
     {
         try
         {
             var packet = new byte[48];
-            packet[0] = 0x1b; // LI=0, VN=3, Mode=3 (client) — matches Python exactly
+            packet[0] = 0x1b; // LI=0, VN=3, Mode=3 (client)
 
             using var udp = new UdpClient();
-            udp.Client.ReceiveTimeout = 3_000; // 3s — matches Python timeout=3
+            udp.Client.ReceiveTimeout = 3_000;
             udp.Connect(NtpServer, NtpPort);
             udp.Send(packet, packet.Length);
 
@@ -37,7 +56,6 @@ internal static class NtpClient
 
             if (response.Length >= 48)
             {
-                // Transmit timestamp at bytes 40-43 (seconds since 1900)
                 uint seconds = (uint)response[40] << 24
                              | (uint)response[41] << 16
                              | (uint)response[42] << 8
@@ -46,6 +64,29 @@ internal static class NtpClient
             }
         }
         catch { }
+
+        return 0;
+    }
+
+    private static double GetHttpsTime()
+    {
+        try
+        {
+            using var response = HttpsClient.GetAsync(HttpsTimeUrl).GetAwaiter().GetResult();
+            if (!response.IsSuccessStatusCode)
+                return 0;
+
+            using var stream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
+            using var doc = JsonDocument.Parse(stream);
+            if (doc.RootElement.TryGetProperty("unixtime", out var unixTime)
+                && unixTime.TryGetInt64(out var value)
+                && value > 0)
+            {
+                return value;
+            }
+        }
+        catch { }
+
         return 0;
     }
 }

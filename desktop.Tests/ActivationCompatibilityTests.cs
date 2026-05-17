@@ -132,6 +132,158 @@ public class ActivationCompatibilityTests
     }
 
     [Fact]
+    public void LicenseToken_materializes_signed_heartbeat_policy_from_v7_jws()
+    {
+        const string fingerprint = "1111111111111111111111111111111111111111111111111111111111111111";
+        const string productId = "prod_smartprinter";
+        const string issuer = "http://103.82.24.37";
+        const string kid = "prod_smartprinter_v2";
+
+        var key = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
+        {
+            ExportPolicy = KeyExportPolicies.AllowPlaintextArchiving,
+        });
+
+        var fpClaim = Sha256Hex($"{productId}:{fingerprint}");
+        var token = CreateJws(
+            key,
+            issuer,
+            productId,
+            "dev_heartbeat_policy",
+            fpClaim,
+            1893456000,
+            kid,
+            heartbeatRequired: false,
+            heartbeatGraceDays: 0);
+
+        var licenseTokenType = GetActivationType("MyPrinter.Desktop.Activation.LicenseToken");
+        var fromSignedToken = licenseTokenType.GetMethod(
+            "FromSignedToken",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)])!;
+
+        var instance = fromSignedToken.Invoke(null, [token, fingerprint, productId]);
+        instance.Should().NotBeNull();
+
+        GetBool(instance!, "HeartbeatRequired").Should().BeFalse(
+            "heartbeat_required is a signed policy claim and must not be inferred from an unsigned response");
+        GetInt(instance!, "HeartbeatGraceDays").Should().Be(0);
+    }
+
+    [Fact]
+    public void VerifySignatureWithKeyset_rejects_tampered_local_heartbeat_policy()
+    {
+        const string fingerprint = "2222222222222222222222222222222222222222222222222222222222222222";
+        const string productId = "prod_smartprinter";
+        const string issuer = "http://103.82.24.37";
+        const string kid = "prod_smartprinter_v2";
+
+        var key = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
+        {
+            ExportPolicy = KeyExportPolicies.AllowPlaintextArchiving,
+        });
+
+        var rawPublicKey = key.PublicKey.Export(KeyBlobFormat.RawPublicKey);
+        var keysetJson = JsonSerializer.Serialize(new[]
+        {
+            new
+            {
+                kid,
+                key = Base64UrlEncode(rawPublicKey),
+            },
+        });
+        var fpClaim = Sha256Hex($"{productId}:{fingerprint}");
+        var token = CreateJws(
+            key,
+            issuer,
+            productId,
+            "dev_tamper_policy",
+            fpClaim,
+            1893456000,
+            kid,
+            heartbeatRequired: false,
+            heartbeatGraceDays: 0);
+
+        var licenseTokenType = GetActivationType("MyPrinter.Desktop.Activation.LicenseToken");
+        var instance = licenseTokenType.GetMethod(
+            "FromSignedToken",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)])!
+            .Invoke(null, [token, fingerprint, productId])!;
+
+        licenseTokenType.GetProperty("HeartbeatGraceDays")!.SetValue(instance, 30);
+
+        var verifyWithKeyset = licenseTokenType.GetMethod(
+            "VerifySignatureWithKeyset",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)])!;
+
+        ((bool)verifyWithKeyset.Invoke(instance, [keysetJson, productId, issuer])!).Should().BeFalse(
+            "heartbeat policy is signed by the activation server and local tampering must invalidate the license");
+    }
+
+    [Fact]
+    public void LicenseGuard_offline_parser_accepts_v7_compact_jws_license_file_content()
+    {
+        const string fingerprint = "3333333333333333333333333333333333333333333333333333333333333333";
+        const string productId = "prod_smartprinter";
+        const string issuer = "http://103.82.24.37";
+        const string kid = "prod_smartprinter_v2";
+
+        var key = new Key(SignatureAlgorithm.Ed25519, new KeyCreationParameters
+        {
+            ExportPolicy = KeyExportPolicies.AllowPlaintextArchiving,
+        });
+
+        var fpClaim = Sha256Hex($"{productId}:{fingerprint}");
+        var token = CreateJws(
+            key,
+            issuer,
+            productId,
+            "dev_offline_jws",
+            fpClaim,
+            1893456000,
+            kid,
+            heartbeatRequired: false,
+            heartbeatGraceDays: 0);
+
+        var licenseGuardType = GetActivationType("MyPrinter.Desktop.Activation.LicenseGuard");
+        var parser = licenseGuardType.GetMethod(
+            "ParseOfflineLicenseContent",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string)]);
+
+        parser.Should().NotBeNull("offline .lic files generated by ACTIVSYS are compact JWS token strings");
+
+        var instance = parser!.Invoke(null, [$"  {token}\r\n", fingerprint, productId]);
+        instance.Should().NotBeNull();
+        GetString(instance!, "Token").Should().Be(token);
+        GetString(instance!, "Fingerprint").Should().Be(fingerprint);
+        GetString(instance!, "ProductId").Should().Be(productId);
+        GetLong(instance!, "Expiry").Should().Be(1893456000);
+        GetBool(instance!, "HeartbeatRequired").Should().BeFalse();
+        GetInt(instance!, "HeartbeatGraceDays").Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(1_700_000_000, 1_700_000_030, 1_700_000_030)]
+    [InlineData(1_700_000_000, 1_700_000_120, 0)]
+    [InlineData(0, 1_700_000_030, 1_700_000_030)]
+    [InlineData(1_700_000_000, 0, 0)]
+    public void NtpClient_trusts_https_time_and_never_raw_udp_ntp_alone(double ntpTime, double httpsTime, double expected)
+    {
+        var ntpClientType = GetActivationType("MyPrinter.Desktop.Activation.NtpClient");
+        var selector = ntpClientType.GetMethod(
+            "SelectTrustedTime",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            [typeof(double), typeof(double)]);
+
+        selector.Should().NotBeNull("trusted time selection must mirror ACTIVSYS: HTTPS is canonical, UDP NTP is only a cross-check");
+
+        ((double)selector!.Invoke(null, [ntpTime, httpsTime])!).Should().Be(expected);
+    }
+
+    [Fact]
     public void LicenseToken_can_verify_v7_jws_against_matching_keyset_entry()
     {
         const string fingerprint = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
@@ -261,15 +413,36 @@ public class ActivationCompatibilityTests
     }
 
     [Fact]
-    public void Committed_activation_config_template_does_not_ship_plaintext_http()
+    public void Committed_activation_config_matches_registered_smartprinter_endpoint()
     {
         var repoRoot = GetRepoRoot();
         var configPath = Path.Combine(repoRoot, "desktop", "smartprinter.appsettings.json");
         using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
         var activation = doc.RootElement.GetProperty("Activation");
 
-        activation.GetProperty("ServerUrl").GetString().Should().StartWith("https://");
-        activation.GetProperty("AllowInsecureHttp").GetBoolean().Should().BeFalse();
+        activation.GetProperty("ServerUrl").GetString().Should().Be("http://103.82.24.37");
+        activation.GetProperty("ProductId").GetString().Should().Be("prod_smartprinter");
+        activation.GetProperty("AllowInsecureHttp").GetBoolean().Should().BeTrue(
+            "the registered activation server currently uses HTTP, so the override must be explicit");
+    }
+
+    [Fact]
+    public void Committed_smartprinter_keyset_matches_activation_system_rotation_set()
+    {
+        var repoRoot = GetRepoRoot();
+        var keysetPath = Path.Combine(repoRoot, "desktop", "Activation", "license_keyset_prod_smartprinter.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(keysetPath));
+
+        var keys = doc.RootElement.EnumerateArray()
+            .ToDictionary(
+                entry => entry.GetProperty("kid").GetString()!,
+                entry => entry.GetProperty("key").GetString()!);
+
+        keys.Should().BeEquivalentTo(new Dictionary<string, string>
+        {
+            ["prod_smartprinter_v1"] = "49otbCKjFpFXkaolcqRJ6YvYeCdtmQ6NJq7tuvt_bWg",
+            ["prod_smartprinter_v2"] = "lPwBOiJYVdBEwFSX0ry378ejwuv9iBLCdcvWVujfkec",
+        });
     }
 
     [Fact]
@@ -309,7 +482,7 @@ public class ActivationCompatibilityTests
         source.Should().NotContain("if (string.IsNullOrWhiteSpace(token.Token)) return false;");
         source.Should().Contain("var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);");
         source.Should().Contain("token.LastOnlineCheck = hasCompactToken ? effectiveTime : 0;");
-        source.Should().Contain("if (hasCompactToken)");
+        source.Should().Contain("if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))");
     }
 
     private static Type GetActivationType(string fullName)
@@ -330,7 +503,16 @@ public class ActivationCompatibilityTests
     private static long GetLong(object target, string propertyName)
         => (long)(target.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(target) ?? 0L);
 
-    private static string CreateJws(Key key, string issuer, string audience, string subject, string fpClaim, long exp, string kid)
+    private static string CreateJws(
+        Key key,
+        string issuer,
+        string audience,
+        string subject,
+        string fpClaim,
+        long exp,
+        string kid,
+        bool heartbeatRequired = true,
+        int heartbeatGraceDays = 7)
     {
         var header = JsonSerializer.SerializeToUtf8Bytes(new { alg = "EdDSA", kid });
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
@@ -340,6 +522,8 @@ public class ActivationCompatibilityTests
             sub = subject,
             exp,
             fp = fpClaim,
+            heartbeat_required = heartbeatRequired,
+            heartbeat_grace_days = heartbeatGraceDays,
         });
 
         var headerB64 = Base64UrlEncode(header);

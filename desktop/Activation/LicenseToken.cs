@@ -18,6 +18,7 @@ internal sealed class LicenseToken
 
     [JsonPropertyName("_last_seen")] public double LastSeen { get; set; }
     [JsonPropertyName("_last_online_check")] public double LastOnlineCheck { get; set; }
+    [JsonPropertyName("_heartbeat_required")] public bool? HeartbeatRequired { get; set; }
     [JsonPropertyName("_heartbeat_grace_days")] public int HeartbeatGraceDays { get; set; } = 30;
     [JsonPropertyName("_last_trusted_time")] public double LastTrustedTime { get; set; }
 
@@ -34,6 +35,21 @@ internal sealed class LicenseToken
         if (!root.TryGetProperty("exp", out var expiry) || !expiry.TryGetInt64(out var expiryValue))
             throw new ArgumentException("Signed token payload is missing a valid exp claim.", nameof(token));
 
+        var heartbeatRequired = true;
+        if (root.TryGetProperty("heartbeat_required", out var heartbeatRequiredProp))
+        {
+            if (heartbeatRequiredProp.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                throw new ArgumentException("Signed token payload heartbeat_required claim must be a boolean.", nameof(token));
+            heartbeatRequired = heartbeatRequiredProp.GetBoolean();
+        }
+
+        var heartbeatGraceDays = 30;
+        if (root.TryGetProperty("heartbeat_grace_days", out var heartbeatGraceDaysProp))
+        {
+            if (!heartbeatGraceDaysProp.TryGetInt32(out heartbeatGraceDays) || heartbeatGraceDays is < 0 or > 365)
+                throw new ArgumentException("Signed token payload heartbeat_grace_days claim must be an integer from 0 to 365.", nameof(token));
+        }
+
         return new LicenseToken
         {
             Fingerprint = fingerprint,
@@ -41,6 +57,8 @@ internal sealed class LicenseToken
             Token = token,
             Expiry = expiryValue,
             Version = 3,
+            HeartbeatRequired = heartbeatRequired,
+            HeartbeatGraceDays = heartbeatGraceDays,
         };
     }
 
@@ -157,6 +175,28 @@ internal sealed class LicenseToken
             if (!string.IsNullOrWhiteSpace(expectedIssuer) &&
                 (!payload.TryGetProperty("iss", out var iss) || iss.GetString() != expectedIssuer))
                 return false;
+            if (payload.TryGetProperty("heartbeat_required", out var heartbeatRequired))
+            {
+                if (heartbeatRequired.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    return false;
+
+                var signedHeartbeatRequired = heartbeatRequired.GetBoolean();
+                if (HeartbeatRequired.HasValue && HeartbeatRequired.Value != signedHeartbeatRequired)
+                    return false;
+                HeartbeatRequired = signedHeartbeatRequired;
+            }
+            else if (!HeartbeatRequired.HasValue)
+            {
+                HeartbeatRequired = true;
+            }
+
+            if (payload.TryGetProperty("heartbeat_grace_days", out var heartbeatGraceDays))
+            {
+                if (!heartbeatGraceDays.TryGetInt32(out var signedHeartbeatGraceDays) || signedHeartbeatGraceDays is < 0 or > 365)
+                    return false;
+                if (HeartbeatGraceDays != signedHeartbeatGraceDays)
+                    return false;
+            }
 
             var message = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
             var algoType = SignatureAlgorithm.Ed25519;

@@ -1,7 +1,7 @@
 {
   "Activation": {
-    "ServerUrl": "https://your-activation-server.com",
+    "ServerUrl": "http://103.82.24.37",
     "ProductId": "prod_smartprinter",
-    "AllowInsecureHttp": false
+    "AllowInsecureHttp": true
   }
 }
