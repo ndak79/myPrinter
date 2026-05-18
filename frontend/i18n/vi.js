@@ -128,6 +128,8 @@ window.VI_STRINGS = {
     noPlan: 'Không có kế hoạch in để khôi phục.',
     noSelection: 'Chọn ít nhất một tờ bị lỗi.',
     multiCopyUnsupported: 'Không thể khôi phục theo từng tờ khi in nhiều bản copy. Hãy kiểm tra xấp giấy và in lại riêng bản copy bị lỗi.',
+    copyLabel: 'Bản copy',
+    copyOption: (copy) => `Bản ${copy}`,
     sheet: (n) => `Tờ ${n}`,
     copySheet: (copy, sheet) => `Bản ${copy} · Tờ ${sheet}`,
     front: (n) => n ? `Mặt trước: Trang ${n}` : 'Mặt trước: Trắng',

@@ -1936,6 +1936,29 @@ kbd {
     padding-right: 0.25rem;
 }
 
+.recovery-copy-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 0.75rem;
+}
+
+.recovery-copy-row label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.recovery-copy-select {
+    min-width: 8rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
 .recovery-sheet-item {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -1990,6 +2013,12 @@ kbd {
 
     .recovery-range-row {
         grid-template-columns: 1fr;
+    }
+
+    .recovery-copy-row {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0.35rem;
     }
 
     .recovery-action-row {

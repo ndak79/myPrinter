@@ -115,6 +115,8 @@ window.EN_STRINGS = {
     noPlan: 'No print plan is available for recovery.',
     noSelection: 'Select at least one failed sheet.',
     multiCopyUnsupported: 'Sheet recovery is not available for multi-copy manual duplex jobs. Check the stack and reprint the affected copy separately.',
+    copyLabel: 'Copy',
+    copyOption: (copy) => `Copy ${copy}`,
     sheet: (n) => `Sheet ${n}`,
     copySheet: (copy, sheet) => `Copy ${copy} · Sheet ${sheet}`,
     front: (n) => n ? `Front: Page ${n}` : 'Front: Blank',

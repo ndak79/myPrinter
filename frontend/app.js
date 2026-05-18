@@ -60,6 +60,7 @@ const I18nModule = {
         document.title = this.t('app.title');
         // Static text nodes (auto-detect HTML to use innerHTML vs textContent)
         document.querySelectorAll('[data-i18n]').forEach(el => {
+            if (el.id === 'print-btn' && el.dataset.mode) return;
             const key = el.dataset.i18n;
             const text = this.t(key);
             if (text !== key) {
@@ -70,6 +71,12 @@ const I18nModule = {
                 }
             }
         });
+        const printBtn = document.getElementById('print-btn');
+        if (printBtn?.dataset.mode === 'flip-paused') {
+            printBtn.textContent = this.t('print.reopenFlip');
+        } else if (printBtn?.dataset.mode === 'cancellable') {
+            printBtn.textContent = this.t('print.cancel');
+        }
         // Placeholders
         document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
             const key = el.dataset.i18nPlaceholder;
@@ -3363,6 +3370,7 @@ const PrintModule = {
 // ═══════════════════════════════════════════════════════════════════
 const Phase1RecoveryModule = {
     _sheets: [],
+    _activeCopy: 1,
 
     init() {
         document.getElementById('phase1-recovery-close')?.addEventListener('click', () => this.close());
@@ -3377,6 +3385,7 @@ const Phase1RecoveryModule = {
         const btn = document.getElementById('phase1-recovery-open-btn');
         const sheets = this._getSheets();
         this._sheets = sheets;
+        this._activeCopy = Math.min(this._activeCopy, this._jobCopies());
         if (btn) btn.disabled = sheets.length === 0;
     },
 
@@ -3416,49 +3425,84 @@ const Phase1RecoveryModule = {
         return sheet.sheetIndex ?? sheet.SheetIndex;
     },
 
+    _ensureCopyFilter() {
+        const list = document.getElementById('phase1-recovery-list');
+        if (!list?.parentNode) return;
+
+        document.getElementById('phase1-recovery-copy-row')?.remove();
+        const copies = this._jobCopies();
+        if (copies <= 1) return;
+
+        const row = document.createElement('div');
+        row.id = 'phase1-recovery-copy-row';
+        row.className = 'recovery-copy-row';
+
+        const label = document.createElement('label');
+        label.htmlFor = 'phase1-recovery-copy';
+        label.textContent = I18nModule.t('recovery.copyLabel');
+
+        const select = document.createElement('select');
+        select.id = 'phase1-recovery-copy';
+        select.className = 'recovery-copy-select';
+        for (let copy = 1; copy <= copies; copy++) {
+            const option = document.createElement('option');
+            option.value = String(copy);
+            option.textContent = I18nModule.t('recovery.copyOption')(copy);
+            select.appendChild(option);
+        }
+        select.value = String(this._activeCopy);
+        select.addEventListener('change', () => {
+            this._activeCopy = Math.max(1, parseInt(select.value, 10) || 1);
+            this._renderList();
+        });
+
+        row.append(label, select);
+        list.parentNode.insertBefore(row, list);
+    },
+
     _renderList() {
         const list = document.getElementById('phase1-recovery-list');
         if (!list) return;
         list.textContent = '';
+        this._ensureCopyFilter();
 
         const copies = this._jobCopies();
+        const copyNumber = Math.min(this._activeCopy, copies);
 
-        for (let copyNumber = 1; copyNumber <= copies; copyNumber++) {
-            for (const sheet of this._sheets) {
-                const idx = this._sheetIndex(sheet);
-                const front = sheet.front || sheet.Front;
-                const back = sheet.back || sheet.Back;
+        for (const sheet of this._sheets) {
+            const idx = this._sheetIndex(sheet);
+            const front = sheet.front || sheet.Front;
+            const back = sheet.back || sheet.Back;
 
-                const label = document.createElement('label');
-                label.className = 'recovery-sheet-item';
+            const label = document.createElement('label');
+            label.className = 'recovery-sheet-item';
 
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.dataset.sheetIndex = String(idx);
-                checkbox.dataset.copyNumber = String(copyNumber);
-                checkbox.addEventListener('change', () => this._updateSelectedStatus());
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.dataset.sheetIndex = String(idx);
+            checkbox.dataset.copyNumber = String(copyNumber);
+            checkbox.addEventListener('change', () => this._updateSelectedStatus());
 
-                const body = document.createElement('div');
-                const title = document.createElement('div');
-                title.className = 'recovery-sheet-title';
-                title.textContent = copies > 1
-                    ? I18nModule.t('recovery.copySheet')(copyNumber, idx)
-                    : I18nModule.t('recovery.sheet')(idx);
+            const body = document.createElement('div');
+            const title = document.createElement('div');
+            title.className = 'recovery-sheet-title';
+            title.textContent = copies > 1
+                ? I18nModule.t('recovery.copySheet')(copyNumber, idx)
+                : I18nModule.t('recovery.sheet')(idx);
 
-                const meta = document.createElement('div');
-                meta.className = 'recovery-sheet-meta';
+            const meta = document.createElement('div');
+            meta.className = 'recovery-sheet-meta';
 
-                const frontSpan = document.createElement('span');
-                frontSpan.textContent = this._pageLabel(front, 'front');
+            const frontSpan = document.createElement('span');
+            frontSpan.textContent = this._pageLabel(front, 'front');
 
-                const backSpan = document.createElement('span');
-                backSpan.textContent = this._pageLabel(back, 'back');
+            const backSpan = document.createElement('span');
+            backSpan.textContent = this._pageLabel(back, 'back');
 
-                meta.append(frontSpan, backSpan);
-                body.append(title, meta);
-                label.append(checkbox, body);
-                list.appendChild(label);
-            }
+            meta.append(frontSpan, backSpan);
+            body.append(title, meta);
+            label.append(checkbox, body);
+            list.appendChild(label);
         }
     },
 
@@ -3549,6 +3593,8 @@ const Phase1RecoveryModule = {
 // ═══════════════════════════════════════════════════════════════════
 const Phase2RecoveryModule = {
     _rows: [],
+    _baseRows: [],
+    _activeCopy: 1,
 
     init() {
         document.getElementById('phase2-recovery-close')?.addEventListener('click', () => this.close());
@@ -3563,7 +3609,9 @@ const Phase2RecoveryModule = {
     },
 
     openCheck() {
-        this._rows = this._getPhase2Rows();
+        this._baseRows = this._getPhase2Rows();
+        this._activeCopy = Math.min(this._activeCopy, this._jobCopies());
+        this._rows = this._visibleRows();
         this._renderList();
         this._setStatus('');
         this._showPanel('check');
@@ -3571,7 +3619,9 @@ const Phase2RecoveryModule = {
     },
 
     openRecovery() {
-        this._rows = this._getPhase2Rows();
+        this._baseRows = this._getPhase2Rows();
+        this._activeCopy = Math.min(this._activeCopy, this._jobCopies());
+        this._rows = this._visibleRows();
         this._renderList();
         const range = document.getElementById('phase2-recovery-range');
         if (range) range.value = '';
@@ -3594,7 +3644,7 @@ const Phase2RecoveryModule = {
         document.getElementById('phase2-select-panel')?.classList.toggle('hidden', name !== 'select');
         document.getElementById('phase2-flip-panel')?.classList.toggle('hidden', name !== 'flip');
         const needsRecovery = document.getElementById('phase2-recovery-needed');
-        if (needsRecovery) needsRecovery.disabled = this._rows.length === 0;
+        if (needsRecovery) needsRecovery.disabled = this._baseRows.length === 0;
         const complete = document.getElementById('phase2-recovery-complete');
         if (complete) complete.disabled = name === 'select' || name === 'flip';
     },
@@ -3617,7 +3667,7 @@ const Phase2RecoveryModule = {
             if (Number.isFinite(idx)) byBackPage.set(idx, sheet);
         }
 
-        const baseRows = phase2Pages
+        return phase2Pages
             .map((processedPage, i) => {
                 const sheet = byBackPage.get(processedPage);
                 if (!sheet) return null;
@@ -3625,15 +3675,12 @@ const Phase2RecoveryModule = {
             })
             .filter(Boolean)
             .sort((a, b) => this._sheetIndex(a.sheet) - this._sheetIndex(b.sheet));
+    },
 
+    _visibleRows() {
         const copies = this._jobCopies();
-        const rows = [];
-        for (let copyNumber = 1; copyNumber <= copies; copyNumber++) {
-            for (const row of baseRows) {
-                rows.push({ ...row, copyNumber });
-            }
-        }
-        return rows;
+        const copyNumber = Math.min(this._activeCopy, copies);
+        return this._baseRows.map(row => ({ ...row, copyNumber }));
     },
 
     _sheetIndex(sheet) {
@@ -3645,10 +3692,47 @@ const Phase2RecoveryModule = {
         return I18nModule.t(`recovery.${side}`)(page.originalPageNumber ?? page.OriginalPageNumber);
     },
 
+    _ensureCopyFilter() {
+        const list = document.getElementById('phase2-recovery-list');
+        if (!list?.parentNode) return;
+
+        document.getElementById('phase2-recovery-copy-row')?.remove();
+        const copies = this._jobCopies();
+        if (copies <= 1) return;
+
+        const row = document.createElement('div');
+        row.id = 'phase2-recovery-copy-row';
+        row.className = 'recovery-copy-row';
+
+        const label = document.createElement('label');
+        label.htmlFor = 'phase2-recovery-copy';
+        label.textContent = I18nModule.t('recovery.copyLabel');
+
+        const select = document.createElement('select');
+        select.id = 'phase2-recovery-copy';
+        select.className = 'recovery-copy-select';
+        for (let copy = 1; copy <= copies; copy++) {
+            const option = document.createElement('option');
+            option.value = String(copy);
+            option.textContent = I18nModule.t('recovery.copyOption')(copy);
+            select.appendChild(option);
+        }
+        select.value = String(this._activeCopy);
+        select.addEventListener('change', () => {
+            this._activeCopy = Math.max(1, parseInt(select.value, 10) || 1);
+            this._rows = this._visibleRows();
+            this._renderList();
+        });
+
+        row.append(label, select);
+        list.parentNode.insertBefore(row, list);
+    },
+
     _renderList() {
         const list = document.getElementById('phase2-recovery-list');
         if (!list) return;
         list.textContent = '';
+        this._ensureCopyFilter();
 
         for (const row of this._rows) {
             const sheet = row.sheet;

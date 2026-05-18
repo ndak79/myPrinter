@@ -1,6 +1,5 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+([-.][A-Za-z0-9.]+)?$')]
-    [string]$Version = "1.0.0",
+    [string]$Version = "",
     [string]$ServerUrl = "",
     [string]$ProductId = "prod_smartprinter",
     [switch]$AllowInsecureHttp,
@@ -42,6 +41,26 @@ function Get-DotnetCli {
     }
 
     throw ".NET SDK 10.x is required to build this product. Install .NET 10 SDK or place dotnet.exe at %LOCALAPPDATA%\Microsoft\dotnet-codex-10\dotnet.exe."
+}
+
+function Get-NextInstallerVersion([string]$DistDir) {
+    $baseVersion = [version]"1.0.0"
+    if (Test-Path -LiteralPath $DistDir) {
+        $versions = Get-ChildItem -LiteralPath $DistDir -Filter "smartPrinter-setup-*.exe" -File -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $name = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+                $raw = $name -replace '^smartPrinter-setup-', ''
+                $parsed = $null
+                if ([version]::TryParse($raw, [ref]$parsed)) { $parsed }
+            } |
+            Sort-Object
+
+        if ($versions) {
+            $baseVersion = $versions[-1]
+        }
+    }
+
+    return "{0}.{1}.{2}" -f $baseVersion.Major, $baseVersion.Minor, ($baseVersion.Build + 1)
 }
 
 function Convert-Base64UrlToBytes([string]$Value) {
@@ -106,6 +125,16 @@ $IssPath = Resolve-ChildPath $RepoRoot "installer\myPrinter.iss"
 $TemplateConfigPath = Resolve-ChildPath $RepoRoot "desktop\smartprinter.appsettings.json"
 $IconPath = Resolve-ChildPath $RepoRoot "desktop\app.ico"
 $DotnetPath = Get-DotnetCli
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = Get-NextInstallerVersion $DistDir
+}
+
+if ($Version -notmatch '^\d+\.\d+\.\d+([-.][A-Za-z0-9.]+)?$') {
+    throw "Version '$Version' must match semantic version format, for example 1.0.1."
+}
+
+Write-Host "Building installer version $Version"
 
 Write-Host "[1/5] Cleaning publish and dist output..."
 if (Test-Path -LiteralPath $PublishDir) { Remove-Item -LiteralPath $PublishDir -Recurse -Force }
