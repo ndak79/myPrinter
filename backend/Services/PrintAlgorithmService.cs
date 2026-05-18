@@ -884,8 +884,6 @@ public class PrintAlgorithmService
         if (jobState == null) throw new ArgumentNullException(nameof(jobState));
         if (!jobState.IsManualDuplex || jobState.WaitingForFlip || !jobState.BackPassSent)
             throw new InvalidOperationException("Manual duplex job must have sent the back pass before phase-2 recovery.");
-        if (jobState.WaitingForRecoveryFlip)
-            throw new InvalidOperationException("A phase-2 recovery job is already waiting for flip.");
         if (jobState.ManualPlan == null)
             throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed back-pass sheets.");
         if (sheetIndices == null || sheetIndices.Length == 0)

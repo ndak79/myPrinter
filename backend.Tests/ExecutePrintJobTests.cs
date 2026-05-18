@@ -363,6 +363,40 @@ public class ExecutePrintJobTests
     }
 
     [Fact]
+    public void StartManualDuplexBackSheetRecovery_WhenWaitingForRecoveryFlip_ReprintsFrontsForRetry()
+    {
+        var pages = Enumerable.Range(1, 6)
+            .Select(i => new ManualDuplexPageInfo
+            {
+                ProcessedIndex = i,
+                OriginalPageNumber = i,
+                IsLandscape = false
+            })
+            .ToList();
+
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = false,
+            BackPassSent = true,
+            WaitingForRecoveryFlip = true,
+            RecoverySheetIndices = new[] { 1 },
+            RecoveryBackPages = new[] { 2 },
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", pages)
+        };
+
+        var printedCount = _sut.StartManualDuplexBackSheetRecovery(job, new[] { 1, 3 });
+
+        printedCount.Should().Be(2);
+        job.WaitingForRecoveryFlip.Should().BeTrue();
+        job.RecoverySheetIndices.Should().BeEquivalentTo(new[] { 1, 3 }, opts => opts.WithStrictOrdering());
+        job.RecoveryBackPages.Should().BeEquivalentTo(new[] { 6, 2 }, opts => opts.WithStrictOrdering());
+        _mockWord.Verify(w => w.PrintPdf(@"C:\fake\processed.pdf", "TestPrinter", "1,5"), Times.Once);
+    }
+
+    [Fact]
     public void StartManualDuplexBackSheetRecovery_RequiresBackPassSent()
     {
         var job = new PrintJobState

@@ -3371,6 +3371,7 @@ const PrintModule = {
 const Phase1RecoveryModule = {
     _sheets: [],
     _activeCopy: 1,
+    _printAttempts: 0,
 
     init() {
         document.getElementById('phase1-recovery-close')?.addEventListener('click', () => this.close());
@@ -3397,6 +3398,8 @@ const Phase1RecoveryModule = {
         }
         this._renderList();
         this._setStatus('');
+        this._printAttempts = 0;
+        this._updateSubmitLabel();
         document.getElementById('phase1-recovery-modal')?.classList.remove('hidden');
         document.getElementById('phase1-recovery-range')?.focus();
     },
@@ -3551,6 +3554,14 @@ const Phase1RecoveryModule = {
         if (el) el.textContent = text || '';
     },
 
+    _updateSubmitLabel() {
+        const submit = document.getElementById('phase1-recovery-submit');
+        if (!submit) return;
+        submit.textContent = this._printAttempts > 0
+            ? I18nModule.t('recovery.retrySubmit')
+            : I18nModule.t('recovery.submit');
+    },
+
     async _submit() {
         const sheetIndices = this._selectedSheetIndices();
         if (sheetIndices.length === 0) {
@@ -3576,7 +3587,9 @@ const Phase1RecoveryModule = {
             if (!res.ok || !result.success) throw new Error(result.message || res.statusText);
 
             const message = I18nModule.t('recovery.printed')(result.printedSheets || sheetIndices.length);
-            this._setStatus(message);
+            this._printAttempts++;
+            this._updateSubmitLabel();
+            this._setStatus(`${message} ${I18nModule.t('recovery.retryHint')}`);
             showToast(message, 'success');
         } catch (err) {
             const message = I18nModule.t('recovery.failed')(err.message);
@@ -3595,6 +3608,8 @@ const Phase2RecoveryModule = {
     _rows: [],
     _baseRows: [],
     _activeCopy: 1,
+    _lastSheetIndices: [],
+    _frontPrintAttempts: 0,
 
     init() {
         document.getElementById('phase2-recovery-close')?.addEventListener('click', () => this.close());
@@ -3604,6 +3619,7 @@ const Phase2RecoveryModule = {
         document.getElementById('phase2-recovery-apply-range')?.addEventListener('click', () => this._applyRange());
         document.getElementById('phase2-recovery-clear')?.addEventListener('click', () => this._clearSelection());
         document.getElementById('phase2-recovery-submit')?.addEventListener('click', () => this._startRecovery());
+        document.getElementById('phase2-recovery-retry-fronts')?.addEventListener('click', () => this._retryRecoveryFronts());
         document.getElementById('phase2-recovery-continue')?.addEventListener('click', () => this._continueRecovery());
         document.getElementById('phase2-recovery-complete')?.addEventListener('click', () => this._complete());
     },
@@ -3612,6 +3628,8 @@ const Phase2RecoveryModule = {
         this._baseRows = this._getPhase2Rows();
         this._activeCopy = Math.min(this._activeCopy, this._jobCopies());
         this._rows = this._visibleRows();
+        this._lastSheetIndices = [];
+        this._frontPrintAttempts = 0;
         this._renderList();
         this._setStatus('');
         this._showPanel('check');
@@ -3622,6 +3640,8 @@ const Phase2RecoveryModule = {
         this._baseRows = this._getPhase2Rows();
         this._activeCopy = Math.min(this._activeCopy, this._jobCopies());
         this._rows = this._visibleRows();
+        this._lastSheetIndices = [];
+        this._frontPrintAttempts = 0;
         this._renderList();
         const range = document.getElementById('phase2-recovery-range');
         if (range) range.value = '';
@@ -3821,8 +3841,8 @@ const Phase2RecoveryModule = {
         if (el) el.textContent = text || '';
     },
 
-    async _startRecovery() {
-        const sheetIndices = this._selectedSheetIndices();
+    async _startRecovery(sheetIndicesOverride = null) {
+        const sheetIndices = Array.isArray(sheetIndicesOverride) ? sheetIndicesOverride : this._selectedSheetIndices();
         if (sheetIndices.length === 0) {
             this._setStatus(I18nModule.t('recovery.noSelection'));
             return;
@@ -3849,8 +3869,12 @@ const Phase2RecoveryModule = {
                 AppState.currentJob = result.jobState;
                 AppState.currentJob._historyEntry = histEntry;
             }
+            this._lastSheetIndices = sheetIndices.slice();
+            this._frontPrintAttempts++;
 
-            const message = I18nModule.t('phase2Recovery.frontPrinted')(result.printedSheets || sheetIndices.length);
+            const message = this._frontPrintAttempts > 1
+                ? I18nModule.t('phase2Recovery.frontRetried')(result.printedSheets || sheetIndices.length)
+                : I18nModule.t('phase2Recovery.frontPrinted')(result.printedSheets || sheetIndices.length);
             this._setStatus(message);
             showToast(message, 'success');
             if (result.waitingForRecoveryFlip) this._showPanel('flip');
@@ -3860,6 +3884,24 @@ const Phase2RecoveryModule = {
             showToast(message, 'error');
         } finally {
             if (submit) submit.disabled = false;
+        }
+    },
+
+    async _retryRecoveryFronts() {
+        const sheetIndices = this._lastSheetIndices.length > 0
+            ? this._lastSheetIndices
+            : this._selectedSheetIndices();
+        if (sheetIndices.length === 0) {
+            this._setStatus(I18nModule.t('recovery.noSelection'));
+            return;
+        }
+
+        const btn = document.getElementById('phase2-recovery-retry-fronts');
+        if (btn) btn.disabled = true;
+        try {
+            await this._startRecovery(sheetIndices);
+        } finally {
+            if (btn) btn.disabled = false;
         }
     },
 
