@@ -6,8 +6,19 @@ partial class MainForm
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && (components != null))
-            components.Dispose();
+        if (disposing)
+        {
+            _webView?.Dispose();
+            if (_trayIcon != null)
+                _trayIcon.Visible = false;
+            _trayIcon?.Dispose();
+            foreach (var image in _ownedTrayImages)
+                image.Dispose();
+            _ownedTrayImages.Clear();
+            _windowIcon?.Dispose();
+            _trayNotifyIcon?.Dispose();
+            components?.Dispose();
+        }
         base.Dispose(disposing);
     }
 

@@ -22,6 +22,16 @@ window.addEventListener('pdfjsReady', _initPdfWorker);
 // Also try immediately in case script already loaded
 _initPdfWorker();
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    }[ch]));
+}
+
 // ── i18n ─────────────────────────────────────────────────────────
 const I18nModule = {
     _lang: localStorage.getItem('lang') || 'vi',
@@ -1110,6 +1120,7 @@ const ToastModule = {
     show(message, type = 'info', duration = 3000) {
         const container = document.getElementById('toast-container');
         if (!container) return;
+        const safeType = ['success', 'error', 'info'].includes(type) ? type : 'info';
 
         // Enforce max stack
         const existing = container.querySelectorAll('.toast-item:not(.dismissing)');
@@ -1118,16 +1129,16 @@ const ToastModule = {
         }
 
         const icons = { success: '✅', error: '❌', info: 'ℹ️' };
-        const icon  = icons[type] || 'ℹ️';
+        const icon  = icons[safeType] || 'ℹ️';
 
         const item = document.createElement('div');
-        item.className = `toast-item toast-item-border-${type}`;
+        item.className = `toast-item toast-item-border-${safeType}`;
         item.innerHTML = `
             <div class="toast-item-body">
                 <span class="toast-item-icon">${icon}</span>
-                <span class="toast-item-msg">${message}</span>
+                <span class="toast-item-msg">${escapeHtml(message)}</span>
             </div>
-            <div class="toast-countdown toast-countdown-${type}"
+            <div class="toast-countdown toast-countdown-${safeType}"
                  style="animation-duration: ${duration}ms;"></div>
         `;
 
@@ -2553,17 +2564,24 @@ const HistoryModule = {
             duplex: I18nModule.t('mode.smart'),
             booklet: I18nModule.t('mode.booklet'),
         };
-        container.innerHTML = items.map((item, idx) => `
+        container.innerHTML = items.map((item, idx) => {
+            const file = escapeHtml(item.file);
+            const printer = escapeHtml(item.printer);
+            const pages = escapeHtml(item.pages);
+            const mode = escapeHtml(modeLabel[item.mode] || item.mode);
+            const copies = escapeHtml(item.copies);
+            const time = escapeHtml(item.time);
+            return `
             <div class="history-item">
                 <div class="history-item-actions">
                     <button class="history-action-btn history-reprint-btn" data-idx="${idx}" title="${I18nModule.t('historyItem.reprint')}">🔁</button>
                     <button class="history-action-btn" data-delete="${idx}" title="${I18nModule.t('historyItem.delete')}">✕</button>
                 </div>
-                <div class="history-file">📄 ${item.file}</div>
-                <div class="history-meta">🖨️ ${item.printer} · ${I18nModule.t('historyItem.pages')(item.pages)} · ${modeLabel[item.mode] || item.mode} · ${I18nModule.t('historyItem.copies')(item.copies)}</div>
-                <div class="history-time">${item.time}</div>
+                <div class="history-file">📄 ${file}</div>
+                <div class="history-meta">🖨️ ${printer} · ${escapeHtml(I18nModule.t('historyItem.pages')(pages))} · ${mode} · ${escapeHtml(I18nModule.t('historyItem.copies')(copies))}</div>
+                <div class="history-time">${time}</div>
             </div>
-        `).join('');
+        `; }).join('');
 
         // Attach delete handlers
         container.querySelectorAll('[data-delete]').forEach(btn => {
@@ -3919,7 +3937,7 @@ const SummaryModule = {
             <span>⏱ ${timeStr}</span>
             ${copies !== null && copies > 1 ? `<span>${I18nModule.t('summary.copies')(copies)}</span>` : ''}
             ${multiFile ? `<span>${I18nModule.t('summary.files')(activeFiles.length)}</span>` : ''}
-            ${printer ? `<span>· 🖨️ ${printer.name}</span>` : ''}
+            ${printer ? `<span>· 🖨️ ${escapeHtml(printer.name)}</span>` : ''}
         `;
     },
 };
@@ -3996,7 +4014,7 @@ function showCardError(cardEl, message, retryFn) {
     errEl.className = 'card-error-message';
     errEl.innerHTML = `
         <span class="error-icon">⚠️</span>
-        <span class="error-text">${message}</span>
+        <span class="error-text">${escapeHtml(message)}</span>
         ${retryFn ? `<button class="card-error-retry">${I18nModule.t('error.retry')}</button>` : ''}
     `;
     if (retryFn) {
@@ -4108,36 +4126,43 @@ const ConfirmPrintModal = {
             ? I18nModule.t('confirmRow.sheets')(sheets, copies)
             : I18nModule.t('confirmRow.sheetsMixed')(sheets);
 
+        const safeFileLabel = escapeHtml(fileLabel);
+        const safePrinterName = escapeHtml(printer?.name || '—');
+        const safeModeLabel = escapeHtml(modeLabel[mode] || mode);
+        const safePagesValue = escapeHtml(I18nModule.t('confirmRow.pages')(pages, rangeStr));
+        const safeCopiesStr = escapeHtml(copiesStr);
+        const safeTimeStr = escapeHtml(timeStr);
+
         container.innerHTML = `
             <div class="confirm-row">
                 <span class="confirm-row-icon">📄</span>
                 <span class="confirm-row-label">${I18nModule.t('confirmRow.file')}</span>
-                <span class="confirm-row-value">${fileLabel}</span>
+                <span class="confirm-row-value">${safeFileLabel}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">🖨️</span>
                 <span class="confirm-row-label">${I18nModule.t('confirmRow.printer')}</span>
-                <span class="confirm-row-value">${printer?.name || '—'}</span>
+                <span class="confirm-row-value">${safePrinterName}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">📋</span>
                 <span class="confirm-row-label">${I18nModule.t('confirmRow.mode')}</span>
-                <span class="confirm-row-value">${modeLabel[mode] || mode}</span>
+                <span class="confirm-row-value">${safeModeLabel}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">📖</span>
                 <span class="confirm-row-label">${I18nModule.t('confirmRow.pagesLabel')}</span>
-                <span class="confirm-row-value">${I18nModule.t('confirmRow.pages')(pages, rangeStr)}</span>
+                <span class="confirm-row-value">${safePagesValue}</span>
             </div>
             <div class="confirm-row highlight">
                 <span class="confirm-row-icon">🗒️</span>
                 <span class="confirm-row-label">${I18nModule.t('confirmRow.sheetsLabel')}</span>
-                <span class="confirm-row-value">${copiesStr}</span>
+                <span class="confirm-row-value">${safeCopiesStr}</span>
             </div>
             <div class="confirm-row">
                 <span class="confirm-row-icon">⏱️</span>
                 <span class="confirm-row-label">${I18nModule.t('confirmRow.time')}</span>
-                <span class="confirm-row-value">${timeStr}</span>
+                <span class="confirm-row-value">${safeTimeStr}</span>
             </div>
         `;
     },

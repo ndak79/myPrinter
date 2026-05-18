@@ -20,7 +20,8 @@ internal static class NtpClient
     private const int    MaxClockSkewSeconds = 60;
 
     private static readonly HttpClient HttpsClient = new(
-        new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+        new HttpClientHandler
+            { AllowAutoRedirect = false, UseProxy = false, CheckCertificateRevocationList = true })
     {
         Timeout = TimeSpan.FromSeconds(5),
     };

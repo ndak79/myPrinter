@@ -1,5 +1,6 @@
 ﻿using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using System.Runtime.InteropServices;
 
 namespace MyPrinter.Desktop;
 
@@ -7,6 +8,9 @@ public partial class MainForm : Form
 {
     private WebView2 _webView = null!;
     private NotifyIcon _trayIcon = null!;
+    private readonly List<Image> _ownedTrayImages = new();
+    private Icon? _windowIcon;
+    private Icon? _trayNotifyIcon;
     private bool _reallyExit = false;
 
     public MainForm()
@@ -26,7 +30,8 @@ public partial class MainForm : Form
         MinimumSize   = new Size(900, 600);
         BackColor     = Color.FromArgb(15, 23, 42);
         ShowInTaskbar = true;
-        Icon          = CreatePrinterIcon();
+        _windowIcon   = CreatePrinterIcon();
+        Icon          = _windowIcon;
     }
 
     // ── System Tray ────────────────────────────────────────────
@@ -38,24 +43,25 @@ public partial class MainForm : Form
 
         var openItem = new ToolStripMenuItem(
             "Open  —  Smart Printer",
-            CreateMenuBitmap(Color.FromArgb(16, 185, 129), "+"),
+            CreateOwnedMenuBitmap(Color.FromArgb(16, 185, 129), "+"),
             (_, _) => ShowWindow());
         openItem.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
         menu.Items.Add(openItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(
             "Hide",
-            CreateMenuBitmap(Color.FromArgb(100, 116, 139), "-"),
+            CreateOwnedMenuBitmap(Color.FromArgb(100, 116, 139), "-"),
             (_, _) => HideWindow()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem(
             "Exit",
-            CreateMenuBitmap(Color.FromArgb(239, 68, 68), "x"),
+            CreateOwnedMenuBitmap(Color.FromArgb(239, 68, 68), "x"),
             (_, _) => ExitApp()));
 
+        _trayNotifyIcon = CreatePrinterIcon();
         _trayIcon = new NotifyIcon
         {
-            Icon             = CreatePrinterIcon(),
+            Icon             = _trayNotifyIcon,
             Text             = "Smart Printer",
             ContextMenuStrip = menu,
             Visible          = true,
@@ -77,6 +83,13 @@ public partial class MainForm : Form
         _trayIcon.BalloonTipTitle = "Smart Printer";
         _trayIcon.BalloonTipText  = "App is running. Click the icon to open.";
         _trayIcon.ShowBalloonTip(2000);
+    }
+
+    private Bitmap CreateOwnedMenuBitmap(Color color, string symbol)
+    {
+        var bitmap = CreateMenuBitmap(color, symbol);
+        _ownedTrayImages.Add(bitmap);
+        return bitmap;
     }
 
 
@@ -144,7 +157,6 @@ public partial class MainForm : Form
             return;
         }
 
-        _webView?.Dispose();
         base.OnFormClosing(e);
     }
 
@@ -215,9 +227,21 @@ public partial class MainForm : Form
         using var dotBrush = new SolidBrush(Color.FromArgb(255, 52, 211, 153)); // bright green
         g.FillEllipse(dotBrush, 22, 14, 2.5f, 2.5f);
 
-        // Convert Bitmap → Icon
-        return Icon.FromHandle(bmp.GetHicon());
+        var nativeIconHandle = bmp.GetHicon();
+        try
+        {
+            using var icon = Icon.FromHandle(nativeIconHandle);
+            return (Icon)icon.Clone();
+        }
+        finally
+        {
+            DestroyIcon(nativeIconHandle);
+        }
     }
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyIcon(IntPtr nativeIconHandle);
 
     // ── GDI+ helper: rounded rectangle path ─────────────────────
     private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(float x, float y, float w, float h, float r)

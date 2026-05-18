@@ -32,7 +32,7 @@ public static class BackendStartup
         {
             options.AddPolicy("LocalWebApp", policy =>
             {
-                policy.AllowAnyOrigin()
+                policy.SetIsOriginAllowed(IsAllowedLocalFrontendOrigin)
                       .AllowAnyMethod()
                       .AllowAnyHeader();
             });
@@ -495,22 +495,26 @@ public static class BackendStartup
             return Results.Ok(new PrintResponse { Success = true, Message = "Đã hủy lệnh in" });
         });
 
-        app.MapPost("/api/printer/settings", (PrinterSettingsRequest req) =>
+        app.MapPost("/api/printer/settings", (PrinterSettingsRequest req, PrinterManagementService printerService) =>
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(req.PrinterName))
                     return Results.BadRequest(new { success = false, message = "Printer name is required" });
 
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "rundll32.exe",
-                    Arguments = $"printui.dll,PrintUIEntry /e /n \"{req.PrinterName}\"",
-                    UseShellExecute = true,
-                };
+                var printer = printerService.GetAllPrinters().FirstOrDefault(p =>
+                    string.Equals(p.Name, req.PrinterName, StringComparison.OrdinalIgnoreCase));
+                if (printer == null)
+                    return Results.NotFound(new { success = false, message = "Printer not found" });
+
+                var psi = BuildPrinterSettingsStartInfo(printer.Name);
                 Process.Start(psi);
 
                 return Results.Ok(new { success = true, message = "Printer settings dialog opened" });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { success = false, message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -519,5 +523,38 @@ public static class BackendStartup
         });
 
         return app;
+    }
+
+    internal static ProcessStartInfo BuildPrinterSettingsStartInfo(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName))
+            throw new ArgumentException("Printer name is required.", nameof(printerName));
+        if (printerName.Any(ch => ch == '"' || char.IsControl(ch)))
+            throw new ArgumentException("Printer name contains unsupported characters.", nameof(printerName));
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "rundll32.exe",
+            UseShellExecute = false,
+        };
+        psi.ArgumentList.Add("printui.dll,PrintUIEntry");
+        psi.ArgumentList.Add("/e");
+        psi.ArgumentList.Add("/n");
+        psi.ArgumentList.Add(printerName.Trim());
+        return psi;
+    }
+
+    private static bool IsAllowedLocalFrontendOrigin(string origin)
+    {
+        if (string.Equals(origin, "null", StringComparison.Ordinal))
+            return true;
+
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+            return false;
+
+        if (uri.Scheme is not ("http" or "https"))
+            return false;
+
+        return uri.IsLoopback;
     }
 }

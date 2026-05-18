@@ -104,6 +104,7 @@ $PublishDir = Resolve-ChildPath $RepoRoot "publish"
 $DistDir = Resolve-ChildPath $RepoRoot "dist"
 $IssPath = Resolve-ChildPath $RepoRoot "installer\myPrinter.iss"
 $TemplateConfigPath = Resolve-ChildPath $RepoRoot "desktop\smartprinter.appsettings.json"
+$IconPath = Resolve-ChildPath $RepoRoot "desktop\app.ico"
 $DotnetPath = Get-DotnetCli
 
 Write-Host "[1/5] Cleaning publish and dist output..."
@@ -192,14 +193,23 @@ $requiredFiles = @(
     (Join-Path $PublishDir "frontend\index.html")
 )
 
+if (-not (Test-Path -LiteralPath $IconPath)) {
+    throw "Installer icon is missing: $IconPath"
+}
+
 foreach ($file in $requiredFiles) {
     if (-not (Test-Path -LiteralPath $file)) {
         throw "Publish output is missing required file: $file"
     }
 }
 
+$frontendTestsSegment = "frontend\tests"
 $frontendArtifacts = Get-ChildItem -LiteralPath (Join-Path $PublishDir "frontend") -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name.EndsWith(".backup", [System.StringComparison]::OrdinalIgnoreCase) -or $_.Name -eq "_fix_guide.js" }
+    Where-Object {
+        $_.Name.EndsWith(".backup", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $_.Name -eq "_fix_guide.js" -or
+        $_.FullName.IndexOf($frontendTestsSegment, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+    }
 if ($frontendArtifacts) {
     $artifactList = ($frontendArtifacts | ForEach-Object { $_.FullName }) -join [Environment]::NewLine
     throw "Publish output contains frontend backup/dev artifacts:$([Environment]::NewLine)$artifactList"
@@ -223,6 +233,7 @@ Write-Host "[5/5] Building installer..."
     "/DPublishDir=$PublishDir" `
     "/DOutputDir=$DistDir" `
     "/DKeysetFileName=$keysetFileName" `
+    "/DAppIconFile=$IconPath" `
     $IssPath
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed." }
 

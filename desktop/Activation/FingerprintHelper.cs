@@ -1,7 +1,6 @@
 using System;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
+using System.Management;
 using System.Net.NetworkInformation;
 // Note: SHA256 and Encoding are NOT imported here — ComputeFingerprint() uses fully-qualified
 // System.Security.Cryptography.SHA256 and System.Text.Encoding.UTF8 to avoid ambiguity.
@@ -50,51 +49,36 @@ internal static class FingerprintHelper
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    /// <summary>
-    /// Run a PowerShell Get-CimInstance query. Mirrors the Python primary path only;
-    /// unlike Python _wmi_query(), this C# version does not fall back to wmic.exe.
-    /// Returns empty string on failure or placeholder values.
-    /// </summary>
     private static string WmiQuery(string className, string field)
     {
+        if (!IsWmiIdentifier(className) || !IsWmiIdentifier(field))
+            return string.Empty;
+
         try
         {
-            // Identical command to Python: Get-CimInstance -ClassName <class> | Select -First 1
-            var ps = $"(Get-CimInstance -ClassName {className} | Select-Object -First 1).{field}";
-            using var proc = new Process
-            {
-                StartInfo = new ProcessStartInfo
-                {
-                    // ⚠️ Use absolute System32 path — matches Python LG-04 hardening against
-                    // search-path hijacking. Bare "powershell" is vulnerable if PATH is tampered.
-                    FileName               = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.System),
-                        @"WindowsPowerShell\v1.0\powershell.exe"),
-                    Arguments              = $"-NoProfile -Command \"{ps}\"",
-                    RedirectStandardOutput = true,
-                    UseShellExecute        = false,
-                    CreateNoWindow         = true,
-                }
-            };
-            proc.Start();
-            // ⚠️ WaitForExit BEFORE ReadToEnd can deadlock if stdout pipe buffer fills (typically
-            // 4KB on Windows). Safe here because WMI single-field responses are always a few bytes.
-            // If WMI output ever grows (e.g., verbose warnings), switch to async reads.
-            if (!proc.WaitForExit(15_000))
-            {
-                try { proc.Kill(); } catch { }
-                return string.Empty;
-            }
-            var value = proc.StandardOutput.ReadToEnd().Trim();
+            using var searcher = new ManagementObjectSearcher($"SELECT {field} FROM {className}");
+            searcher.Options.Timeout = TimeSpan.FromSeconds(15);
+            using var results = searcher.Get();
 
-            // Reject placeholder / empty values — same list as Python
-            var bad = new[] { "", "default string", "to be filled by o.e.m.", "none" };
-            if (!string.IsNullOrEmpty(value) && !bad.Contains(value.ToLowerInvariant()))
-                return value;
+            foreach (ManagementBaseObject result in results)
+            {
+                using (result)
+                {
+                    var value = result[field]?.ToString()?.Trim() ?? string.Empty;
+                    var bad = new[] { "", "default string", "to be filled by o.e.m.", "none" };
+
+                    if (!bad.Contains(value.ToLowerInvariant()))
+                        return value;
+                }
+            }
         }
         catch { }
+
         return string.Empty;
     }
+
+    private static bool IsWmiIdentifier(string value)
+        => !string.IsNullOrWhiteSpace(value) && value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch == '_');
 
     internal static string GetSystemUuid() => WmiQuery("Win32_ComputerSystemProduct", "UUID");
     internal static string GetCpuId()      => WmiQuery("Win32_Processor",             "ProcessorId");

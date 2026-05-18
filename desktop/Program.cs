@@ -81,7 +81,8 @@ static class Program
             return;
         }
 
-        Application.Run(new MainForm());
+        using var mainForm = new MainForm();
+        Application.Run(mainForm);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         BackendApp?.StopAsync(cts.Token).GetAwaiter().GetResult();

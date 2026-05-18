@@ -91,6 +91,27 @@ public class ActivationCompatibilityTests
     }
 
     [Fact]
+    public async Task ActivateAsync_reports_activation_server_redirect_location_without_following_it()
+    {
+        using var server = new TestJsonServer(_ => Task.FromResult(JsonResponse.Redirect("https://103.82.24.37/activate")));
+
+        var activationClient = GetActivationType("MyPrinter.Desktop.Activation.ActivationClient");
+        var method = activationClient.GetMethod(
+            "ActivateAsync",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string), typeof(string), typeof(string)]);
+
+        method.Should().NotBeNull();
+
+        var task = (Task)method!.Invoke(null, [server.BaseUrl, "ABCD-EFGH-IJKL-MNOP", new string('b', 64), "prod_smartprinter"])!;
+        await task;
+
+        var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+        GetString(result, "Error").Should().Contain("https://103.82.24.37/activate");
+        GetString(result, "Error").Should().Contain("fix the activation server HTTP/TLS proxy");
+    }
+
+    [Fact]
     public void LicenseToken_can_be_built_from_v7_jws_and_verify_signature_against_product_claims()
     {
         const string fingerprint = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -458,7 +479,9 @@ public class ActivationCompatibilityTests
         script.Should().Contain("#define KeysetFileName \"license_keyset_prod_smartprinter.json\"");
         script.Should().Contain("Source: \"{#PublishDir}\\Activation\\{#KeysetFileName}\"");
         script.Should().Contain("Source: \"{#PublishDir}\\frontend\\*\"");
-        script.Should().Contain("Excludes: \"*.backup,_fix_guide.js\"");
+        script.Should().Contain("Excludes: \"*.backup,_fix_guide.js,tests\\*\"");
+        script.Should().Contain("Flags: nowait postinstall skipifsilent runascurrentuser");
+        script.Should().Contain("SetupIconFile={#AppIconFile}");
     }
 
     [Fact]
@@ -475,8 +498,11 @@ public class ActivationCompatibilityTests
         script.Should().Contain("Get-DotnetCli");
         script.Should().Contain("Validate-Keyset");
         script.Should().Contain("prod_smartprinter_v2");
-        script.Should().Contain("Where-Object { $_.Name.EndsWith(\".backup\"");
+        script.Should().Contain("$_.Name.EndsWith(\".backup\"");
+        script.Should().Contain("$_.Name -eq \"_fix_guide.js\"");
+        script.Should().Contain("frontend\\tests");
         script.Should().Contain("/DKeysetFileName=$keysetFileName");
+        script.Should().Contain("/DAppIconFile=$IconPath");
     }
 
     [Fact]
@@ -487,6 +513,7 @@ public class ActivationCompatibilityTests
         var script = File.ReadAllText(scriptPath);
 
         script.Should().Contain("build-installer.ps1");
+        script.Should().NotContain("-ExecutionPolicy Bypass");
         script.Should().Contain("-ServerUrl \"http://103.82.24.37\"");
         script.Should().Contain("-ProductId \"prod_smartprinter\"");
         script.Should().Contain("-AllowInsecureHttp");
@@ -499,7 +526,9 @@ public class ActivationCompatibilityTests
         var csprojPath = Path.Combine(repoRoot, "desktop", "MyPrinter.Desktop.csproj");
         var project = File.ReadAllText(csprojPath);
 
-        project.Should().Contain("Exclude=\"..\\frontend\\**\\*.backup;..\\frontend\\**\\_fix_guide.js\"");
+        project.Should().Contain("Exclude=\"..\\frontend\\**\\*.backup;..\\frontend\\**\\_fix_guide.js;..\\frontend\\tests\\**\\*\"");
+        project.Should().Contain("<ApplicationIcon>app.ico</ApplicationIcon>");
+        File.Exists(Path.Combine(repoRoot, "desktop", "app.ico")).Should().BeTrue();
     }
 
     [Fact]
@@ -513,6 +542,82 @@ public class ActivationCompatibilityTests
         source.Should().Contain("var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);");
         source.Should().Contain("token.LastOnlineCheck = hasCompactToken ? effectiveTime : 0;");
         source.Should().Contain("if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))");
+    }
+
+    [Fact]
+    public void Activation_http_clients_check_tls_certificate_revocation()
+    {
+        var repoRoot = GetRepoRoot();
+        var activationClient = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "ActivationClient.cs"));
+        var ntpClient = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "NtpClient.cs"));
+
+        activationClient.Should().Contain("CheckCertificateRevocationList = true");
+        ntpClient.Should().Contain("CheckCertificateRevocationList = true");
+    }
+
+    [Fact]
+    public void MainForm_disposes_owned_native_resources()
+    {
+        var repoRoot = GetRepoRoot();
+        var designer = File.ReadAllText(Path.Combine(repoRoot, "desktop", "MainForm.Designer.cs"));
+        var program = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Program.cs"));
+
+        designer.Should().Contain("_webView?.Dispose();");
+        designer.Should().Contain("_trayIcon.Visible = false;");
+        designer.Should().Contain("_trayIcon?.Dispose();");
+        designer.Should().Contain("foreach (var image in _ownedTrayImages)");
+        designer.Should().Contain("_windowIcon?.Dispose();");
+        designer.Should().Contain("_trayNotifyIcon?.Dispose();");
+        program.Should().Contain("using var mainForm = new MainForm();");
+        program.Should().Contain("Application.Run(mainForm);");
+    }
+
+    [Fact]
+    public void MainForm_releases_owned_gdi_resources()
+    {
+        var repoRoot = GetRepoRoot();
+        var mainForm = File.ReadAllText(Path.Combine(repoRoot, "desktop", "MainForm.cs"));
+
+        mainForm.Should().Contain("_ownedTrayImages.Add(bitmap);");
+        mainForm.Should().Contain("DefaultDllImportSearchPaths(DllImportSearchPath.System32)");
+        mainForm.Should().Contain("DestroyIcon(nativeIconHandle)");
+        mainForm.Should().Contain("return (Icon)icon.Clone();");
+    }
+
+    [Fact]
+    public void Activation_http_requests_dispose_request_content()
+    {
+        var repoRoot = GetRepoRoot();
+        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "ActivationClient.cs"));
+
+        source.Should().Contain("using var content = new StringContent");
+        source.Should().Contain("using var res  = await _httpActivate.PostAsync");
+        source.Should().Contain("using var res  = await _httpHeartbeat.PostAsync");
+    }
+
+    [Fact]
+    public void FingerprintHelper_uses_managed_wmi_without_powershell_process()
+    {
+        var repoRoot = GetRepoRoot();
+        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "FingerprintHelper.cs"));
+
+        source.Should().Contain("ManagementObjectSearcher");
+        source.Should().NotContain("powershell.exe");
+        source.Should().NotContain("ProcessStartInfo");
+        source.Should().NotContain("System.Diagnostics");
+    }
+
+    [Fact]
+    public void Frontend_entrypoint_uses_local_pdfjs_and_no_remote_runtime_dependencies()
+    {
+        var repoRoot = GetRepoRoot();
+        var index = File.ReadAllText(Path.Combine(repoRoot, "frontend", "index.html"));
+
+        index.Should().Contain("import * as pdfjsLib from '/lib/pdf.min.mjs'");
+        index.Should().NotContain("https://cdnjs.cloudflare.com");
+        index.Should().NotContain("fonts.googleapis.com");
+        index.Should().NotContain("fonts.gstatic.com");
+        File.Exists(Path.Combine(repoRoot, "frontend", "lib", "pdf.min.mjs")).Should().BeTrue();
     }
 
     private static Type GetActivationType(string fullName)
@@ -636,6 +741,8 @@ public class ActivationCompatibilityTests
                 }
 
                 var response = await _handler(context.Request);
+                if (!string.IsNullOrWhiteSpace(response.Location))
+                    context.Response.RedirectLocation = response.Location;
                 var bytes = Encoding.UTF8.GetBytes(response.Body);
                 context.Response.StatusCode = (int)response.StatusCode;
                 context.Response.ContentType = "application/json";
@@ -664,8 +771,9 @@ public class ActivationCompatibilityTests
         }
     }
 
-    private sealed record JsonResponse(HttpStatusCode StatusCode, string Body)
+    private sealed record JsonResponse(HttpStatusCode StatusCode, string Body, string? Location = null)
     {
         public static JsonResponse Ok(object body) => new(HttpStatusCode.OK, JsonSerializer.Serialize(body));
+        public static JsonResponse Redirect(string location) => new(HttpStatusCode.MovedPermanently, "", location);
     }
 }

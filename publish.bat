@@ -7,7 +7,7 @@ echo   myPrinter - Product Build
 echo ============================================
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build-installer.ps1" ^
+powershell.exe -NoProfile -File "%~dp0build-installer.ps1" ^
     -ServerUrl "http://103.82.24.37" ^
     -ProductId "prod_smartprinter" ^
     -AllowInsecureHttp

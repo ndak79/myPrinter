@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MyPrinter</AssemblyName>
     <RootNamespace>MyPrinter.Desktop</RootNamespace>
+    <ApplicationIcon>app.ico</ApplicationIcon>
 
     <!-- App manifest: request admin for WMI/printer access, DPI awareness -->
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -35,6 +36,9 @@
     <!-- Ed25519 signature verification for license tokens -->
     <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
 
+    <!-- Managed WMI queries for activation fingerprinting -->
+    <PackageReference Include="System.Management" Version="10.0.0" />
+
     <!-- Backend API (same solution) -->
     <ProjectReference Include="..\backend\PrinterApp.csproj" />
   </ItemGroup>
@@ -57,7 +61,7 @@
 
   <!-- Bundle frontend files into output directory -->
   <ItemGroup>
-    <None Include="..\frontend\**\*" Exclude="..\frontend\**\*.backup;..\frontend\**\_fix_guide.js">
+    <None Include="..\frontend\**\*" Exclude="..\frontend\**\*.backup;..\frontend\**\_fix_guide.js;..\frontend\tests\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>frontend\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>

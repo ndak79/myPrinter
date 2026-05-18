@@ -29,9 +29,11 @@ internal static class ActivationClient
     // Without this, HttpClient inherits ambient proxy/CA environment variables (HTTPS_PROXY, etc.).
     // Activation keys and fingerprints MUST NOT be routed through unintended proxy infrastructure.
     // If a proxy is required, configure it explicitly; do NOT rely on machine/environment defaults.
-    private static readonly HttpClient _httpActivate  = new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+    private static readonly HttpClient _httpActivate  = new(new HttpClientHandler
+        { AllowAutoRedirect = false, UseProxy = false, CheckCertificateRevocationList = true })
         { Timeout = TimeSpan.FromSeconds(30) };
-    private static readonly HttpClient _httpHeartbeat = new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false })
+    private static readonly HttpClient _httpHeartbeat = new(new HttpClientHandler
+        { AllowAutoRedirect = false, UseProxy = false, CheckCertificateRevocationList = true })
         { Timeout = TimeSpan.FromSeconds(10) };
 
     /// <summary>
@@ -49,13 +51,28 @@ internal static class ActivationClient
                 fingerprint,
                 product_id = productId,
             });
-            var res  = await _httpActivate.PostAsync(
+            using var content = new StringContent(body, Encoding.UTF8, "application/json");
+            using var res  = await _httpActivate.PostAsync(
                 $"{serverUrl.TrimEnd('/')}/activate",
-                new StringContent(body, Encoding.UTF8, "application/json"));
+                content);
 
             var json = await res.Content.ReadAsStringAsync();
             if (!res.IsSuccessStatusCode)
             {
+                if (IsRedirect(res))
+                {
+                    var location = res.Headers.Location?.ToString();
+                    var suffix = string.IsNullOrWhiteSpace(location)
+                        ? ""
+                        : $" to '{location}'";
+                    return new ActivateResponse(
+                        null,
+                        $"Activation server redirected{suffix}. Configure Activation.ServerUrl to the final reachable endpoint or fix the activation server HTTP/TLS proxy.",
+                        false,
+                        null,
+                        null);
+                }
+
                 var err = TryGetString(json, "error") ?? $"HTTP {(int)res.StatusCode}";
                 return new ActivateResponse(null, err, false, null, null);
             }
@@ -102,11 +119,14 @@ internal static class ActivationClient
                 product_id = productId,
                 license_token = licenseToken,
             });
-            var res  = await _httpHeartbeat.PostAsync(
+            using var content = new StringContent(body, Encoding.UTF8, "application/json");
+            using var res  = await _httpHeartbeat.PostAsync(
                 $"{serverUrl.TrimEnd('/')}/heartbeat",
-                new StringContent(body, Encoding.UTF8, "application/json"));
+                content);
 
             var json = await res.Content.ReadAsStringAsync();
+
+            if (IsRedirect(res)) return null;
 
             if (res.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
@@ -135,6 +155,9 @@ internal static class ActivationClient
         }
         catch { return null; }
     }
+
+    private static bool IsRedirect(HttpResponseMessage response)
+        => (int)response.StatusCode is >= 300 and <= 399;
 
     private static string? TryGetString(string json, string field)
     {
