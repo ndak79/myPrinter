@@ -133,6 +133,18 @@ public partial class MainForm : Form
         BringToFront();
     }
 
+    public void ShowFromExternalActivation()
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(ShowFromExternalActivation);
+            return;
+        }
+
+        ShowWindow();
+        SetForegroundWindow(Handle);
+    }
+
     private void HideWindow()
     {
         ShowInTaskbar = false;
@@ -242,6 +254,10 @@ public partial class MainForm : Form
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr nativeIconHandle);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     // ── GDI+ helper: rounded rectangle path ─────────────────────
     private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(float x, float y, float w, float h, float r)

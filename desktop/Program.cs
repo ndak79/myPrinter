@@ -20,6 +20,13 @@ static class Program
     {
         ApplicationConfiguration.Initialize();
 
+        using var singleInstance = SingleInstanceCoordinator.Create();
+        if (!singleInstance.IsPrimary)
+        {
+            singleInstance.SignalExistingInstance();
+            return;
+        }
+
         try
         {
             var (serverUrl, productId, allowInsecure) = LoadActivationConfig();
@@ -82,6 +89,23 @@ static class Program
         }
 
         using var mainForm = new MainForm();
+        _ = mainForm.Handle;
+        using var activationListener = singleInstance.StartActivationListener(() =>
+        {
+            if (mainForm.IsDisposed)
+                return;
+
+            try
+            {
+                mainForm.BeginInvoke(mainForm.ShowFromExternalActivation);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        });
         Application.Run(mainForm);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
