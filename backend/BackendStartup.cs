@@ -555,6 +555,7 @@ public static class BackendStartup
         if (uri.Scheme is not ("http" or "https"))
             return false;
 
-        return uri.IsLoopback;
+        return uri.IsLoopback
+            || string.Equals(uri.Host, "app.local", StringComparison.OrdinalIgnoreCase);
     }
 }

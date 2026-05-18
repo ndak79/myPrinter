@@ -13,6 +13,7 @@ public sealed class BackendCorsTests
     [Theory]
     [InlineData("http://localhost:8080")]
     [InlineData("http://127.0.0.1:5173")]
+    [InlineData("https://app.local")]
     [InlineData("null")]
     public async Task Preflight_allows_local_frontend_origins(string origin)
     {
