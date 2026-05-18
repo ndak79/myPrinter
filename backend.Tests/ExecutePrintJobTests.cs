@@ -241,7 +241,7 @@ public class ExecutePrintJobTests
     }
 
     [Fact]
-    public void ReprintManualDuplexFrontSheets_RejectsMultiCopyJobs()
+    public void ReprintManualDuplexFrontSheets_AllowsDuplicateSheetsForMultiCopyJobs()
     {
         var job = new PrintJobState
         {
@@ -257,11 +257,20 @@ public class ExecutePrintJobTests
             })
         };
 
-        var act = () => _sut.ReprintManualDuplexFrontSheets(job, new[] { 1 });
+        string? subsetPath = null;
+        _mockWord
+            .Setup(w => w.CreatePdfSubset(@"C:\fake\processed.pdf", It.IsAny<string>(), It.IsAny<int[]>()))
+            .Callback<string, string, int[]>((_, targetPath, _) => subsetPath = targetPath);
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*multiple copies*");
-        _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+        var printedCount = _sut.ReprintManualDuplexFrontSheets(job, new[] { 1, 1 });
+
+        printedCount.Should().Be(2);
+        subsetPath.Should().NotBeNullOrWhiteSpace();
+        _mockWord.Verify(w => w.CreatePdfSubset(
+            @"C:\fake\processed.pdf",
+            It.IsAny<string>(),
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 1, 1 }))), Times.Once);
+        _mockWord.Verify(w => w.PrintPdf(subsetPath!, "TestPrinter", null, null), Times.Once);
     }
 
     [Fact]
@@ -378,8 +387,17 @@ public class ExecutePrintJobTests
     }
 
     [Fact]
-    public void StartManualDuplexBackSheetRecovery_RejectsMultiCopyJobs()
+    public void StartManualDuplexBackSheetRecovery_AllowsDuplicateSheetsForMultiCopyJobs()
     {
+        var pages = Enumerable.Range(1, 6)
+            .Select(i => new ManualDuplexPageInfo
+            {
+                ProcessedIndex = i,
+                OriginalPageNumber = i,
+                IsLandscape = false
+            })
+            .ToList();
+
         var job = new PrintJobState
         {
             IsManualDuplex = true,
@@ -388,17 +406,25 @@ public class ExecutePrintJobTests
             Copies = 2,
             TempPdfPath = @"C:\fake\processed.pdf",
             PrinterName = "TestPrinter",
-            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", new List<ManualDuplexPageInfo>
-            {
-                new() { ProcessedIndex = 1, OriginalPageNumber = 1 },
-                new() { ProcessedIndex = 2, OriginalPageNumber = 2 }
-            })
+            ManualPlan = ManualDuplexPlan.Build(@"C:\fake\processed.pdf", pages)
         };
 
-        var act = () => _sut.StartManualDuplexBackSheetRecovery(job, new[] { 1 });
+        string? subsetPath = null;
+        _mockWord
+            .Setup(w => w.CreatePdfSubset(@"C:\fake\processed.pdf", It.IsAny<string>(), It.IsAny<int[]>()))
+            .Callback<string, string, int[]>((_, targetPath, _) => subsetPath = targetPath);
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*multiple copies*");
-        _mockWord.Verify(w => w.PrintPdf(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>()), Times.Never);
+        var printedCount = _sut.StartManualDuplexBackSheetRecovery(job, new[] { 1, 3, 3 });
+
+        printedCount.Should().Be(3);
+        job.WaitingForRecoveryFlip.Should().BeTrue();
+        job.RecoverySheetIndices.Should().BeEquivalentTo(new[] { 1, 3, 3 }, opts => opts.WithStrictOrdering());
+        job.RecoveryBackPages.Should().BeEquivalentTo(new[] { 6, 6, 2 }, opts => opts.WithStrictOrdering());
+        subsetPath.Should().NotBeNullOrWhiteSpace();
+        _mockWord.Verify(w => w.CreatePdfSubset(
+            @"C:\fake\processed.pdf",
+            It.IsAny<string>(),
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 1, 5, 5 }))), Times.Once);
+        _mockWord.Verify(w => w.PrintPdf(subsetPath!, "TestPrinter", null, null), Times.Once);
     }
 }

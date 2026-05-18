@@ -854,16 +854,15 @@ public class PrintAlgorithmService
             throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed front-pass sheets.");
         if (sheetIndices == null || sheetIndices.Length == 0)
             throw new InvalidOperationException("At least one failed sheet must be selected.");
-        if (jobState.Copies > 1)
-            throw new InvalidOperationException("Sheet recovery is not supported for manual duplex jobs with multiple copies.");
-
-        var wanted = sheetIndices
+        var sheetsByIndex = jobState.ManualPlan.Sheets.ToDictionary(s => s.SheetIndex);
+        var selectedSheets = sheetIndices
             .Where(i => i > 0)
-            .Distinct()
-            .ToHashSet();
+            .Select(i => sheetsByIndex.TryGetValue(i, out var sheet) ? sheet : null)
+            .Where(s => s != null)
+            .Select(s => s!)
+            .ToArray();
 
-        var frontPages = jobState.ManualPlan.Sheets
-            .Where(s => wanted.Contains(s.SheetIndex))
+        var frontPages = selectedSheets
             .Select(s => s.Front)
             .Where(p => p != null && !p.IsBlank && p.ProcessedIndex > 0)
             .Select(p => p.ProcessedIndex)
@@ -873,13 +872,9 @@ public class PrintAlgorithmService
             throw new InvalidOperationException("No matching front pages were found for the selected failed sheets.");
 
         var pageRange = string.Join(",", frontPages);
-        Console.WriteLine($"[Phase1Recovery] Reprinting front sheet(s) {string.Join(",", wanted.OrderBy(i => i))}: processed pages {pageRange}");
+        Console.WriteLine($"[Phase1Recovery] Reprinting front sheet(s) {string.Join(",", selectedSheets.Select(s => s.SheetIndex))}: processed pages {pageRange}");
 
-        _wordService.PrintPdf(
-            jobState.TempPdfPath,
-            jobState.PrinterName,
-            pageRange: pageRange
-        );
+        PrintRecoveryPages(jobState, frontPages, "manual_duplex_phase1_recovery");
 
         return frontPages.Length;
     }
@@ -895,17 +890,12 @@ public class PrintAlgorithmService
             throw new InvalidOperationException("Manual duplex plan is missing; cannot recover failed back-pass sheets.");
         if (sheetIndices == null || sheetIndices.Length == 0)
             throw new InvalidOperationException("At least one failed sheet must be selected.");
-        if (jobState.Copies > 1)
-            throw new InvalidOperationException("Sheet recovery is not supported for manual duplex jobs with multiple copies.");
-
-        var wantedSheets = sheetIndices
+        var sheetsByIndex = jobState.ManualPlan.Sheets.ToDictionary(s => s.SheetIndex);
+        var selectedSheets = sheetIndices
             .Where(i => i > 0)
-            .Distinct()
-            .ToHashSet();
-
-        var selectedSheets = jobState.ManualPlan.Sheets
-            .Where(s => wantedSheets.Contains(s.SheetIndex))
-            .OrderBy(s => s.SheetIndex)
+            .Select(i => sheetsByIndex.TryGetValue(i, out var sheet) ? sheet : null)
+            .Where(s => s != null)
+            .Select(s => s!)
             .ToArray();
 
         var frontPages = selectedSheets
@@ -917,14 +907,11 @@ public class PrintAlgorithmService
         if (frontPages.Length == 0)
             throw new InvalidOperationException("No matching front pages were found for the selected failed sheets.");
 
-        var wantedBackPages = selectedSheets
+        var backPagesInPrintOrder = selectedSheets
+            .Reverse()
             .Select(s => s.Back)
             .Where(p => p != null && !p.IsBlank && p.ProcessedIndex > 0)
             .Select(p => p.ProcessedIndex)
-            .ToHashSet();
-
-        var backPagesInPrintOrder = jobState.ManualPlan.Phase2Pages
-            .Where(wantedBackPages.Contains)
             .ToArray();
 
         jobState.RecoverySheetIndices = selectedSheets.Select(s => s.SheetIndex).ToArray();
@@ -934,13 +921,41 @@ public class PrintAlgorithmService
         var pageRange = string.Join(",", frontPages);
         Console.WriteLine($"[Phase2Recovery] Printing replacement front sheet(s) {string.Join(",", jobState.RecoverySheetIndices)}: processed pages {pageRange}");
 
-        _wordService.PrintPdf(
-            jobState.TempPdfPath,
-            jobState.PrinterName,
-            pageRange: pageRange
-        );
+        PrintRecoveryPages(jobState, frontPages, "manual_duplex_phase2_recovery_front");
 
         return frontPages.Length;
+    }
+
+    private void PrintRecoveryPages(PrintJobState jobState, int[] processedPages, string tempNamePrefix)
+    {
+        var hasDuplicatePages = processedPages.Length != processedPages.Distinct().Count();
+        if (!hasDuplicatePages)
+        {
+            _wordService.PrintPdf(
+                jobState.TempPdfPath,
+                jobState.PrinterName,
+                pageRange: string.Join(",", processedPages)
+            );
+            return;
+        }
+
+        var subsetPath = Path.Combine(Path.GetTempPath(), $"{tempNamePrefix}_{Guid.NewGuid():N}.pdf");
+        jobState.IntermediateFiles.Add(subsetPath);
+
+        try
+        {
+            _wordService.CreatePdfSubset(jobState.TempPdfPath, subsetPath, processedPages);
+            _wordService.PrintPdf(
+                subsetPath,
+                jobState.PrinterName,
+                pageRange: null
+            );
+        }
+        finally
+        {
+            FileSessionService.DeleteFileSafe(subsetPath);
+            jobState.IntermediateFiles.Remove(subsetPath);
+        }
     }
 
     public int ContinueManualDuplexBackSheetRecovery(PrintJobState jobState)

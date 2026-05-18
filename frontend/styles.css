@@ -1855,14 +1855,50 @@ kbd {
 
 /* ── Improved Flip Modal (3) ───────────────────────────────── */
 .modal-flip {
+    max-height: 90vh;
     max-width: 600px;
     width: 90vw;
+}
+
+.modal-flip .modal-footer {
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding: 0.625rem 1.5rem 0.75rem;
 }
 
 .recovery-open-btn {
     margin-right: auto;
     border-color: rgba(245, 158, 11, 0.45);
     color: #f59e0b;
+}
+
+.modal-flip .recovery-open-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    max-width: 180px;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-radius: 6px;
+    background: transparent;
+    font-size: 0.84rem;
+    font-weight: 600;
+    line-height: 1.2;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+.modal-flip .flip-continue-btn {
+    justify-content: center;
+    min-height: 46px;
+    max-width: 360px;
+    padding: 0.7rem 1.4rem;
+    border-radius: 10px;
+    font-size: 1rem;
+    line-height: 1.2;
 }
 
 .modal-recovery {
@@ -1941,6 +1977,17 @@ kbd {
 }
 
 @media (max-width: 640px) {
+    .modal-flip .modal-footer {
+        align-items: stretch;
+        flex-direction: column-reverse;
+    }
+
+    .modal-flip .recovery-open-btn,
+    .modal-flip .flip-continue-btn {
+        width: 100%;
+        max-width: none;
+    }
+
     .recovery-range-row {
         grid-template-columns: 1fr;
     }

@@ -3386,10 +3386,6 @@ const Phase1RecoveryModule = {
             showToast(I18nModule.t('recovery.noPlan'), 'error');
             return;
         }
-        if (this._jobCopies() > 1) {
-            showToast(I18nModule.t('recovery.multiCopyUnsupported'), 'error');
-            return;
-        }
         this._renderList();
         this._setStatus('');
         document.getElementById('phase1-recovery-modal')?.classList.remove('hidden');
@@ -3407,7 +3403,8 @@ const Phase1RecoveryModule = {
     },
 
     _jobCopies() {
-        return AppState.currentJob?.copies ?? AppState.currentJob?.Copies ?? 1;
+        const copies = AppState.currentJob?.copies ?? AppState.currentJob?.Copies ?? 1;
+        return Math.max(1, parseInt(copies, 10) || 1);
     },
 
     _pageLabel(page, side) {
@@ -3424,37 +3421,44 @@ const Phase1RecoveryModule = {
         if (!list) return;
         list.textContent = '';
 
-        for (const sheet of this._sheets) {
-            const idx = this._sheetIndex(sheet);
-            const front = sheet.front || sheet.Front;
-            const back = sheet.back || sheet.Back;
+        const copies = this._jobCopies();
 
-            const label = document.createElement('label');
-            label.className = 'recovery-sheet-item';
+        for (let copyNumber = 1; copyNumber <= copies; copyNumber++) {
+            for (const sheet of this._sheets) {
+                const idx = this._sheetIndex(sheet);
+                const front = sheet.front || sheet.Front;
+                const back = sheet.back || sheet.Back;
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.dataset.sheetIndex = String(idx);
-            checkbox.addEventListener('change', () => this._updateSelectedStatus());
+                const label = document.createElement('label');
+                label.className = 'recovery-sheet-item';
 
-            const body = document.createElement('div');
-            const title = document.createElement('div');
-            title.className = 'recovery-sheet-title';
-            title.textContent = I18nModule.t('recovery.sheet')(idx);
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.dataset.sheetIndex = String(idx);
+                checkbox.dataset.copyNumber = String(copyNumber);
+                checkbox.addEventListener('change', () => this._updateSelectedStatus());
 
-            const meta = document.createElement('div');
-            meta.className = 'recovery-sheet-meta';
+                const body = document.createElement('div');
+                const title = document.createElement('div');
+                title.className = 'recovery-sheet-title';
+                title.textContent = copies > 1
+                    ? I18nModule.t('recovery.copySheet')(copyNumber, idx)
+                    : I18nModule.t('recovery.sheet')(idx);
 
-            const frontSpan = document.createElement('span');
-            frontSpan.textContent = this._pageLabel(front, 'front');
+                const meta = document.createElement('div');
+                meta.className = 'recovery-sheet-meta';
 
-            const backSpan = document.createElement('span');
-            backSpan.textContent = this._pageLabel(back, 'back');
+                const frontSpan = document.createElement('span');
+                frontSpan.textContent = this._pageLabel(front, 'front');
 
-            meta.append(frontSpan, backSpan);
-            body.append(title, meta);
-            label.append(checkbox, body);
-            list.appendChild(label);
+                const backSpan = document.createElement('span');
+                backSpan.textContent = this._pageLabel(back, 'back');
+
+                meta.append(frontSpan, backSpan);
+                body.append(title, meta);
+                label.append(checkbox, body);
+                list.appendChild(label);
+            }
         }
     },
 
@@ -3504,11 +3508,6 @@ const Phase1RecoveryModule = {
     },
 
     async _submit() {
-        if (this._jobCopies() > 1) {
-            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
-            return;
-        }
-
         const sheetIndices = this._selectedSheetIndices();
         if (sheetIndices.length === 0) {
             this._setStatus(I18nModule.t('recovery.noSelection'));
@@ -3566,7 +3565,7 @@ const Phase2RecoveryModule = {
     openCheck() {
         this._rows = this._getPhase2Rows();
         this._renderList();
-        this._setStatus(this._jobCopies() > 1 ? I18nModule.t('recovery.multiCopyUnsupported') : '');
+        this._setStatus('');
         this._showPanel('check');
         document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
     },
@@ -3577,11 +3576,6 @@ const Phase2RecoveryModule = {
         const range = document.getElementById('phase2-recovery-range');
         if (range) range.value = '';
         document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
-        if (this._jobCopies() > 1) {
-            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
-            this._showPanel('check');
-            return;
-        }
         this._setStatus('');
         this._showPanel('select');
         range?.focus();
@@ -3600,13 +3594,14 @@ const Phase2RecoveryModule = {
         document.getElementById('phase2-select-panel')?.classList.toggle('hidden', name !== 'select');
         document.getElementById('phase2-flip-panel')?.classList.toggle('hidden', name !== 'flip');
         const needsRecovery = document.getElementById('phase2-recovery-needed');
-        if (needsRecovery) needsRecovery.disabled = this._jobCopies() > 1;
+        if (needsRecovery) needsRecovery.disabled = this._rows.length === 0;
         const complete = document.getElementById('phase2-recovery-complete');
         if (complete) complete.disabled = name === 'select' || name === 'flip';
     },
 
     _jobCopies() {
-        return AppState.currentJob?.copies ?? AppState.currentJob?.Copies ?? 1;
+        const copies = AppState.currentJob?.copies ?? AppState.currentJob?.Copies ?? 1;
+        return Math.max(1, parseInt(copies, 10) || 1);
     },
 
     _getPhase2Rows() {
@@ -3622,7 +3617,7 @@ const Phase2RecoveryModule = {
             if (Number.isFinite(idx)) byBackPage.set(idx, sheet);
         }
 
-        return phase2Pages
+        const baseRows = phase2Pages
             .map((processedPage, i) => {
                 const sheet = byBackPage.get(processedPage);
                 if (!sheet) return null;
@@ -3630,6 +3625,15 @@ const Phase2RecoveryModule = {
             })
             .filter(Boolean)
             .sort((a, b) => this._sheetIndex(a.sheet) - this._sheetIndex(b.sheet));
+
+        const copies = this._jobCopies();
+        const rows = [];
+        for (let copyNumber = 1; copyNumber <= copies; copyNumber++) {
+            for (const row of baseRows) {
+                rows.push({ ...row, copyNumber });
+            }
+        }
+        return rows;
     },
 
     _sheetIndex(sheet) {
@@ -3659,12 +3663,15 @@ const Phase2RecoveryModule = {
             checkbox.type = 'checkbox';
             checkbox.dataset.sheetIndex = String(idx);
             checkbox.dataset.passIndex = String(row.passIndex);
+            checkbox.dataset.copyNumber = String(row.copyNumber || 1);
             checkbox.addEventListener('change', () => this._updateSelectedStatus());
 
             const body = document.createElement('div');
             const title = document.createElement('div');
             title.className = 'recovery-sheet-title';
-            title.textContent = I18nModule.t('phase2Recovery.passSheet')(row.passIndex, idx);
+            title.textContent = this._jobCopies() > 1
+                ? I18nModule.t('phase2Recovery.passCopySheet')(row.copyNumber, idx)
+                : I18nModule.t('phase2Recovery.passSheet')(row.passIndex, idx);
 
             const meta = document.createElement('div');
             meta.className = 'recovery-sheet-meta';
@@ -3731,11 +3738,6 @@ const Phase2RecoveryModule = {
     },
 
     async _startRecovery() {
-        if (this._jobCopies() > 1) {
-            this._setStatus(I18nModule.t('recovery.multiCopyUnsupported'));
-            return;
-        }
-
         const sheetIndices = this._selectedSheetIndices();
         if (sheetIndices.length === 0) {
             this._setStatus(I18nModule.t('recovery.noSelection'));
