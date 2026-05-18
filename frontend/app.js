@@ -2615,6 +2615,15 @@ const HistoryModule = {
 const PrintModule = {
     _lastFlipInstruction: null,
 
+    _setPrintButtonIdle(btn = document.getElementById('print-btn')) {
+        if (!btn) return;
+        btn.dataset.mode = '';
+        btn.classList.remove('cancellable');
+        btn.textContent = I18nModule.t('btn.print');
+        btn.style.background = '';
+        btn.style.opacity = '';
+    },
+
     init() {
         const btn = document.getElementById('print-btn');
         btn.addEventListener('click', (e) => {
@@ -2640,9 +2649,7 @@ const PrintModule = {
                     }
                     AppState.currentJob = null;
                     AppState.pendingPrintQueue = null;  // B18-FE-1 fix: clear stale queue on cancel
-                    btn.dataset.mode = '';
-                    btn.classList.remove('cancellable');
-                    btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
+                    this._setPrintButtonIdle(btn);
                     PrintModule.updateButton();
                 })();
                 return;
@@ -2966,9 +2973,7 @@ const PrintModule = {
             const resetBtn = () => {
                 AppState.currentJob = null;
                 if (btn) {
-                    btn.dataset.mode = '';
-                    btn.classList.remove('cancellable');
-                    btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
+                    this._setPrintButtonIdle(btn);
                     PrintModule.updateButton();
                 }
             };
@@ -3004,9 +3009,7 @@ const PrintModule = {
             AppState.pendingPrintQueue = null;
             const btn = document.getElementById('print-btn');
             if (btn) {
-                btn.dataset.mode = '';
-                btn.classList.remove('cancellable');
-                btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
+                this._setPrintButtonIdle(btn);
                 PrintModule.updateButton();
             }
         }
@@ -3017,9 +3020,7 @@ const PrintModule = {
         const resetBtn = options.resetBtn || (() => {
             AppState.currentJob = null;
             if (btn) {
-                btn.dataset.mode = '';
-                btn.classList.remove('cancellable');
-                btn.innerHTML = `<span class="btn-icon">🖨️</span> ${I18nModule.t('print.start').replace('🖨 ', '')}`;
+                this._setPrintButtonIdle(btn);
                 PrintModule.updateButton();
             }
         });
@@ -3199,7 +3200,7 @@ const PrintModule = {
         setTimeout(() => {
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = originalText;
+                this._setPrintButtonIdle(btn);
                 btn.style.background = '';
                 btn.style.opacity = '';
                 PrintModule.updateButton();
