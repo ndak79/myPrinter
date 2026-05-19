@@ -116,7 +116,7 @@ public static class LicenseGuard
         return (true, null);
     }
 
-    public static async Task<bool> ActivateOfflineAsync(string licFilePath)
+    public static Task<bool> ActivateOfflineAsync(string licFilePath)
     {
         EnsureConfigured();
         try
@@ -125,45 +125,31 @@ public static class LicenseGuard
             var fp = GetFingerprint();
             var token = ParseOfflineLicenseContent(content, fp, _productId!);
             if (token == null)
-                return false;
+                return Task.FromResult(false);
             if (!token.IsSupportedFormat())
-                return false;
+                return Task.FromResult(false);
 
             if (!token.FingerprintMatches(fp))
-                return false;
+                return Task.FromResult(false);
             if (!token.VerifySignatureWithKeyset(_publicKeysetJson!, _productId!, _serverUrl!))
-                return false;
+                return Task.FromResult(false);
 
-            var ntpTime = NtpClient.GetNtpTime();
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var effectiveTime = ntpTime > 0 ? ntpTime : now;
+            var effectiveTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if (token.IsExpired(effectiveTime))
-                return false;
+                return Task.FromResult(false);
 
-            var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);
             token.LastSeen = effectiveTime;
-            token.LastOnlineCheck = hasCompactToken ? effectiveTime : 0;
+            token.LastOnlineCheck = 0;
             token.LastTrustedTime = effectiveTime;
 
-            // Legacy offline licenses do not include the compact server token needed by /heartbeat.
-            // In that case we only persist the locally verified token.
-            if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))
-            {
-                var hb = await ActivationClient.HeartbeatAsync(_serverUrl!, fp, _productId!, token.Token);
-                if (hb != null && (hb.PermanentlyInvalid || hb.Revoked || !hb.Valid))
-                    return false;
-                if (hb != null)
-                    token.LastOnlineCheck = effectiveTime;
-            }
-
             if (!LicenseStorage.TrySave(token))
-                return false;
+                return Task.FromResult(false);
 
-            return true;
+            return Task.FromResult(true);
         }
         catch
         {
-            return false;
+            return Task.FromResult(false);
         }
     }
 

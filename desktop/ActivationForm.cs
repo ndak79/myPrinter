@@ -104,7 +104,7 @@ public partial class ActivationForm : Form
         }
     }
 
-    // Async to match ActivateOfflineAsync (NTP + heartbeat should not block UI thread)
+    // Keep the UI handler async; offline .lic import itself is local-only and does not require network.
     private async Task OnImportLicClickedAsync()
     {
         using var ofd = new OpenFileDialog

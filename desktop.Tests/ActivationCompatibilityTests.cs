@@ -532,16 +532,36 @@ public class ActivationCompatibilityTests
     }
 
     [Fact]
-    public void LicenseGuard_keeps_legacy_tokens_on_the_offline_path()
+    public void LicenseGuard_keeps_offline_import_local_only()
     {
         var repoRoot = GetRepoRoot();
         var sourcePath = Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs");
         var source = File.ReadAllText(sourcePath);
+        var offlineBody = ExtractMethodSource(source, "public static Task<bool> ActivateOfflineAsync");
 
-        source.Should().NotContain("if (string.IsNullOrWhiteSpace(token.Token)) return false;");
-        source.Should().Contain("var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);");
-        source.Should().Contain("token.LastOnlineCheck = hasCompactToken ? effectiveTime : 0;");
-        source.Should().Contain("if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))");
+        offlineBody.Should().NotContain("if (string.IsNullOrWhiteSpace(token.Token)) return false;");
+        offlineBody.Should().NotContain("var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);");
+        offlineBody.Should().NotContain("NtpClient.GetNtpTime()");
+        offlineBody.Should().NotContain("ActivationClient.HeartbeatAsync");
+        offlineBody.Should().Contain("token.LastOnlineCheck = 0;");
+    }
+
+    [Fact]
+    public void Offline_license_import_does_not_require_internet()
+    {
+        var repoRoot = GetRepoRoot();
+        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs"));
+        var offlineBody = ExtractMethodSource(source, "public static Task<bool> ActivateOfflineAsync");
+        offlineBody.Should().NotContain("NtpClient.GetNtpTime()");
+        offlineBody.Should().NotContain("ActivationClient.HeartbeatAsync");
+        offlineBody.Should().Contain("DateTimeOffset.UtcNow.ToUnixTimeSeconds()");
+
+        var onlineStart = source.IndexOf("public static async Task<(bool Ok, string? Error)> ActivateOnlineAsync", StringComparison.Ordinal);
+        var offlineStart = source.IndexOf("public static Task<bool> ActivateOfflineAsync", StringComparison.Ordinal);
+        onlineStart.Should().BeGreaterThanOrEqualTo(0);
+        var onlineBody = source[onlineStart..offlineStart];
+        onlineBody.Should().Contain("NtpClient.GetNtpTime()");
+        onlineBody.Should().Contain("ActivationClient.HeartbeatAsync");
     }
 
     [Fact]
@@ -702,6 +722,32 @@ public class ActivationCompatibilityTests
 
     private static string GetRepoRoot()
         => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+
+    private static string ExtractMethodSource(string source, string methodDeclaration)
+    {
+        var start = source.IndexOf(methodDeclaration, StringComparison.Ordinal);
+        start.Should().BeGreaterThanOrEqualTo(0);
+
+        var braceStart = source.IndexOf('{', start);
+        braceStart.Should().BeGreaterThanOrEqualTo(0);
+
+        var depth = 0;
+        for (var i = braceStart; i < source.Length; i++)
+        {
+            if (source[i] == '{')
+            {
+                depth++;
+            }
+            else if (source[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                    return source[start..(i + 1)];
+            }
+        }
+
+        throw new InvalidOperationException($"Could not extract method source for {methodDeclaration}.");
+    }
 
     private sealed class TestJsonServer : IDisposable
     {
