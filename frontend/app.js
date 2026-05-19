@@ -6196,6 +6196,7 @@ const ViewModeModule = {
 // ── GuideModule ────────────────────────────────────────────────
 const GuideModule = {
     _activeTab: 'start',
+    _stableSizeByLang: new Map(),
 
     init() {
         document.getElementById('guide-btn')?.addEventListener('click', () => this.open());
@@ -6214,11 +6215,18 @@ const GuideModule = {
                 this.close();
             }
         });
+        window.addEventListener('resize', () => {
+            this._stableSizeByLang.clear();
+            if (!document.getElementById('guide-modal')?.classList.contains('hidden')) {
+                this._applyStableSize(true);
+            }
+        });
     },
 
     open() {
         document.getElementById('guide-modal')?.classList.remove('hidden');
         this.renderCurrentTab();
+        this._applyStableSize();
     },
 
     close() {
@@ -6230,6 +6238,68 @@ const GuideModule = {
         if (!body) return;
         const content = I18nModule.t(`guide.${this._activeTab}.content`);
         body.innerHTML = typeof content === 'string' ? content : '';
+        this._applyStableSize();
+    },
+
+    _applyStableSize(forceRemeasure = false) {
+        const modal = document.querySelector('#guide-modal .modal-guide');
+        if (!modal) return;
+        if (document.getElementById('guide-modal')?.classList.contains('hidden')) return;
+
+        const lang = I18nModule._lang || 'vi';
+        if (forceRemeasure) {
+            this._stableSizeByLang.delete(lang);
+        }
+
+        let size = this._stableSizeByLang.get(lang);
+        if (!size) {
+            size = this._measureStableModalSize(modal);
+            this._stableSizeByLang.set(lang, size);
+        }
+
+        const { width, height } = size;
+        modal.style.width = `${width}px`;
+        modal.style.maxWidth = `${width}px`;
+        modal.style.height = `${height}px`;
+        modal.style.maxHeight = `${height}px`;
+    },
+
+    _measureStableModalSize(modal) {
+        const liveWidth = Math.max(
+            Math.round(modal.getBoundingClientRect().width),
+            Math.min(Math.round(window.innerWidth * 0.94), 1080),
+        );
+
+        const measure = modal.cloneNode(true);
+        measure.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+        measure.style.position = 'fixed';
+        measure.style.left = '-20000px';
+        measure.style.top = '0';
+        measure.style.visibility = 'hidden';
+        measure.style.pointerEvents = 'none';
+        measure.style.width = `${liveWidth}px`;
+        measure.style.maxWidth = `${liveWidth}px`;
+        measure.style.height = 'auto';
+        measure.style.maxHeight = 'none';
+
+        const measureBody = measure.querySelector('.guide-body');
+        if (measureBody) {
+            const recoveryContent = I18nModule.t('guide.recovery.content');
+            measureBody.innerHTML = typeof recoveryContent === 'string' ? recoveryContent : '';
+        }
+
+        measure.querySelectorAll('.guide-tab').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === 'recovery');
+        });
+
+        document.body.appendChild(measure);
+        const measuredHeight = Math.ceil(measure.scrollHeight);
+        document.body.removeChild(measure);
+
+        return {
+            width: liveWidth,
+            height: Math.min(measuredHeight, Math.floor(window.innerHeight * 0.85)),
+        };
     },
 };
 

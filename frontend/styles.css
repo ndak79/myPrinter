@@ -2537,6 +2537,7 @@ kbd {
   max-height:       85vh;
   display:          flex;
   flex-direction:   column;
+  overflow:         hidden;
 }
 .guide-tabs {
   display:          flex;
