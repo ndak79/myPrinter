@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const indexHtml = readFileSync(resolve(__dirname, '..', 'index.html'), 'utf8');
+const appJs = readFileSync(resolve(__dirname, '..', 'app.js'), 'utf8');
+const stylesCss = readFileSync(resolve(__dirname, '..', 'styles.css'), 'utf8');
+const viJs = readFileSync(resolve(__dirname, '..', 'i18n', 'vi.js'), 'utf8');
+const enJs = readFileSync(resolve(__dirname, '..', 'i18n', 'en.js'), 'utf8');
+
+assert.match(indexHtml, /<div class="print-actions"[^>]*>/);
+assert.match(indexHtml, /<div class="print-actions"[\s\S]*id="recovery-btn"[\s\S]*id="print-btn"[\s\S]*id="complete-print-btn"[\s\S]*<\/div>/);
+assert.match(stylesCss, /\.print-actions\s*{[\s\S]*display:\s*flex;/);
+assert.match(stylesCss, /\.print-actions\s*{[\s\S]*position:\s*relative;/);
+assert.match(stylesCss, /\.print-actions\s+\.btn-complete-print[\s\S]*flex:\s*0 0 auto;/);
+assert.match(stylesCss, /\.print-actions\s+\.btn-print[\s\S]*flex:\s*0 0 auto;/);
+assert.match(stylesCss, /\.print-actions\s+\.btn-recovery[\s\S]*flex:\s*0 0 auto;/);
+assert.match(stylesCss, /@keyframes completePrintPulse/);
+assert.match(stylesCss, /\.btn-complete-print\.attention/);
+
+assert.match(indexHtml, /id="flip-cancel-print-btn"/);
+assert.match(indexHtml, /id="phase1-recovery-open-btn"[\s\S]*id="flip-cancel-print-btn"[\s\S]*id="continue-btn"/);
+assert.doesNotMatch(indexHtml, /id="flip-timer-enable"/);
+assert.doesNotMatch(indexHtml, /id="flip-timer-bar"/);
+assert.doesNotMatch(indexHtml, /id="flip-timer-fill"/);
+assert.doesNotMatch(appJs, /flip-timer-enable/);
+assert.doesNotMatch(appJs, /flip-timer-bar/);
+assert.doesNotMatch(appJs, /flip-timer-fill/);
+assert.doesNotMatch(appJs, /setInterval\(\(\) => \{[\s\S]*continue-btn/);
+assert.match(appJs, /document\.getElementById\('flip-cancel-print-btn'\)\?\.addEventListener\('click', \(\) => this\._cancelCurrentPrintJob\(\)\);/);
+assert.match(appJs, /document\.getElementById\('complete-print-btn'\)\?\.addEventListener\('click', \(\) => this\._completeCurrentManualJobFromToolbar\(\)\);/);
+assert.match(appJs, /async _completeCurrentManualJobFromToolbar\(\)[\s\S]*await this\._completeCurrentManualJob\(\);/);
+assert.match(appJs, /if \(completeBtn\) completeBtn\.disabled = true;/);
+assert.match(appJs, /if \(completeBtn && this\._activeRecoveryPhase\(\) === 'phase2'\) completeBtn\.disabled = false;/);
+assert.match(appJs, /async _cancelCurrentPrintJob\(\)/);
+assert.match(appJs, /document\.getElementById\('flip-modal'\)\?\.classList\.add\('hidden'\);/);
+assert.match(viJs, /cancelFromFlip:\s*'[^']+'/);
+assert.match(enJs, /cancelFromFlip:\s*'[^']+'/);
+assert.doesNotMatch(viJs, /autoTimer:/);
+assert.doesNotMatch(enJs, /autoTimer:/);
+
+assert.doesNotMatch(appJs, /Phase2RecoveryModule\.openCheck\(\)/);
+assert.doesNotMatch(appJs, /phase2-recovery-good'\)\?\.addEventListener/);
+assert.doesNotMatch(appJs, /_completionReady/);
+assert.match(appJs, /btn\.dataset\.mode = 'phase2-review';[\s\S]*btn\.textContent = I18nModule\.t\('print\.cancel'\);/);
+assert.match(appJs, /completeBtn\.hidden = !showComplete;/);
+assert.match(appJs, /completeBtn\.classList\.toggle\('attention', showComplete\);/);
+assert.match(viJs, /completeMain:\s*'[^']+'/);
+assert.match(enJs, /completeMain:\s*'[^']+'/);

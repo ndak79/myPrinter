@@ -94,7 +94,6 @@ window.EN_STRINGS = {
     check1: '1. Wait for printing to finish — light stops blinking',
     check2: '2. Remove the paper stack — follow the arrow direction',
     check3: '3. Place back in tray — blank side facing up',
-    autoTimer: 'Auto-continue after <strong>30 seconds</strong>',
     continue: '✓ Paper Placed - Continue Printing',
     paperPrinted: 'Printed paper',
     side1Done: 'side 1 ✓',
@@ -129,12 +128,8 @@ window.EN_STRINGS = {
   },
 
   phase2Recovery: {
-    title: 'Check back-side print',
-    reviewButton: 'Check / finish print',
+    title: 'Fix back-side print issues',
     backSent: 'Back side sent. Check the stack before finishing.',
-    checkIntro: 'Printers resume after jams differently. Check the stack before marking this job complete.',
-    goodStack: 'Stack is good',
-    needRecovery: 'Need recovery',
     selectIntro: 'Select damaged or uncertain sheets. The app will reprint both sides onto replacement sheets.',
     passRangePlaceholder: 'Example: sheet 1-3, 5',
     passSheet: (_pass, sheet) => `Sheet ${sheet}`,
@@ -147,7 +142,6 @@ window.EN_STRINGS = {
     flipIntro: 'Take the replacement sheets just printed on the front side, place them back in the tray using the same flip direction, then print the back side for this mini stack.',
     printReplacementBacks: 'Paper placed - print backs',
     backPrinted: (n) => `Printed back side for ${n} replacement sheet(s). Replace the damaged sheets, then finish the job.`,
-    complete: 'Finish print job',
   },
 
   confirm: {
@@ -160,6 +154,8 @@ window.EN_STRINGS = {
   print: {
     start: '🖨 Start Printing',
     cancel: '✕ Cancel Print',
+    cancelFromFlip: 'Cancel print',
+    completeMain: 'Finish print job',
     reopenFlip: '↩ Reopen flip guide',
     printing: (i, total) => `⏳ Printing file ${i}/${total}...`,
     sendingSingle: '⏳ Sending print job...',

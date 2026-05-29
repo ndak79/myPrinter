@@ -61,9 +61,12 @@
   <button id="guide-btn" class="btn-icon-sm" data-i18n="btn.guide">❓ Hướng dẫn</button>
   <button id="lang-toggle-btn" class="btn-icon-sm">🌐 VI</button>
 
-  <!-- Print button -->
-  <button id="print-btn" class="btn-print" disabled data-i18n="btn.print">🖨 In</button>
-  <button id="recovery-btn" class="btn-recovery hidden" type="button" hidden data-i18n="btn.recovery">Cứu lỗi In</button>
+  <!-- Print actions -->
+  <div class="print-actions" aria-label="Thao tác in">
+    <button id="recovery-btn" class="btn-recovery hidden" type="button" hidden data-i18n="btn.recovery">Cứu lỗi In</button>
+    <button id="print-btn" class="btn-print" disabled data-i18n="btn.print">🖨 In</button>
+    <button id="complete-print-btn" class="btn-complete-print hidden" type="button" hidden data-i18n="print.completeMain">Hoàn tất lệnh in</button>
+  </div>
 </header>
 
   <!-- ── Row 2: File tabs ───────────────────────────────── -->
@@ -170,17 +173,10 @@
             <div class="flip-diagram" id="instruction-visual"></div>
             <p class="instruction-text" id="instruction-text"></p>
 
-<!-- Auto-continue timer (optional) -->
-            <label class="flip-timer-toggle">
-                <input type="checkbox" id="flip-timer-enable">
-                <span data-i18n="flip.autoTimer">Tự động tiếp tục sau <strong>30 giây</strong></span>
-            </label>
-            <div class="flip-timer-bar hidden" id="flip-timer-bar">
-                <div class="flip-timer-fill" id="flip-timer-fill"></div>
-            </div>
         </div>
         <div class="modal-footer">
             <button id="phase1-recovery-open-btn" class="btn-outline recovery-open-btn" data-i18n="recovery.open">Giấy bị kẹt / hỏng</button>
+            <button id="flip-cancel-print-btn" class="btn-cancel flip-cancel-btn" type="button" data-i18n="print.cancelFromFlip">Huỷ in</button>
             <button id="continue-btn" class="btn-primary flip-continue-btn" data-i18n="flip.continue">✓ Đã Đặt Giấy - Tiếp Tục In</button>
         </div>
     </div>
@@ -216,19 +212,11 @@
     <div class="modal-overlay" id="phase2-recovery-overlay"></div>
     <div class="modal-content modal-recovery">
         <div class="modal-header">
-            <h2 data-i18n="phase2Recovery.title">Kiểm tra sau khi in mặt sau</h2>
+            <h2 data-i18n="phase2Recovery.title">Cứu lỗi sau khi in mặt sau</h2>
             <button class="modal-close" id="phase2-recovery-close">&#10005;</button>
         </div>
         <div class="modal-body">
-            <div id="phase2-check-panel">
-                <p class="recovery-intro" data-i18n="phase2Recovery.checkIntro">Máy in có thể tự in tiếp sau kẹt giấy theo nhiều cách khác nhau. Hãy kiểm tra xấp giấy trước khi hoàn tất.</p>
-                <div class="recovery-action-row">
-                    <button id="phase2-recovery-good" class="btn-primary" type="button" data-i18n="phase2Recovery.goodStack">Xấp giấy ổn</button>
-                    <button id="phase2-recovery-needed" class="btn-outline" type="button" data-i18n="phase2Recovery.needRecovery">Cần khôi phục</button>
-                </div>
-            </div>
-
-            <div id="phase2-select-panel" class="hidden">
+            <div id="phase2-select-panel">
                 <p class="recovery-intro" data-i18n="phase2Recovery.selectIntro">Chọn các tờ bị hỏng hoặc chưa chắc đã in xong. Ứng dụng sẽ in lại cả mặt trước và mặt sau cho các tờ thay thế.</p>
                 <div class="recovery-range-row">
                     <input id="phase2-recovery-range" class="recovery-range-input" type="text" placeholder="Ví dụ: lượt 1-3, 5" data-i18n-placeholder="phase2Recovery.passRangePlaceholder">
@@ -250,9 +238,6 @@
             </div>
 
             <div id="phase2-recovery-status" class="recovery-status"></div>
-        </div>
-        <div class="modal-footer">
-            <button id="phase2-recovery-complete" class="btn-primary" type="button" data-i18n="phase2Recovery.complete">Hoàn tất lệnh in</button>
         </div>
     </div>
 </div>

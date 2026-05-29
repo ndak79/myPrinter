@@ -74,7 +74,7 @@ const I18nModule = {
         const printBtn = document.getElementById('print-btn');
         if (printBtn?.dataset.mode === 'flip-paused') {
             printBtn.textContent = this.t('print.reopenFlip');
-        } else if (printBtn?.dataset.mode === 'cancellable') {
+        } else if (printBtn?.dataset.mode === 'cancellable' || printBtn?.dataset.mode === 'phase2-review') {
             printBtn.textContent = this.t('print.cancel');
         }
         // Placeholders
@@ -2624,6 +2624,42 @@ const PrintModule = {
         btn.style.opacity = '';
     },
 
+    _currentJobId() {
+        return AppState.currentJob?.jobId || AppState.currentJob?.JobId;
+    },
+
+    async _cancelCurrentPrintJob() {
+        const jobId = this._currentJobId();
+        try {
+            if (jobId) {
+                await fetch(`${API_BASE}/print/cancel?jobId=${jobId}`, { method: 'DELETE' });
+            }
+            showToast(I18nModule.t('toast.printCancelled'), 'info');
+            SRModule.announce(I18nModule.t('sr.printCancelled'));
+        } catch {
+            showToast(I18nModule.t('toast.printCancelFailed'), 'error');
+        }
+
+        AppState.currentJob = null;
+        AppState.pendingPrintQueue = null;
+        this._setPrintButtonIdle();
+        document.getElementById('flip-modal')?.classList.add('hidden');
+        document.getElementById('phase1-recovery-modal')?.classList.add('hidden');
+        document.getElementById('phase2-recovery-modal')?.classList.add('hidden');
+        PrintModule.updateButton();
+    },
+
+    async _completeCurrentManualJobFromToolbar() {
+        const completeBtn = document.getElementById('complete-print-btn');
+        if (completeBtn) completeBtn.disabled = true;
+        try {
+            await this._completeCurrentManualJob();
+        } catch (err) {
+            showToast(I18nModule.t('toast.continueError')(err.message), 'error');
+            if (completeBtn && this._activeRecoveryPhase() === 'phase2') completeBtn.disabled = false;
+        }
+    },
+
     init() {
         const btn = document.getElementById('print-btn');
         btn.addEventListener('click', (e) => {
@@ -2632,26 +2668,14 @@ const PrintModule = {
                 return;
             }
 
-            if (btn.dataset.mode === 'phase2-review' && AppState.currentJob?.jobId) {
-                Phase2RecoveryModule.openCheck();
+            if (btn.dataset.mode === 'phase2-review' && this._currentJobId()) {
+                this._cancelCurrentPrintJob();
                 return;
             }
 
             // Cancel mode (A): if job is waiting for flip, cancel it
-            if (btn.dataset.mode === 'cancellable' && AppState.currentJob?.jobId) {
-                (async () => {
-                    try {
-                        await fetch(`${API_BASE}/print/cancel?jobId=${AppState.currentJob.jobId}`, { method: 'DELETE' });
-                        showToast(I18nModule.t('toast.printCancelled'), 'info');
-                        SRModule.announce(I18nModule.t('sr.printCancelled'));
-                    } catch {
-                        showToast(I18nModule.t('toast.printCancelFailed'), 'error');
-                    }
-                    AppState.currentJob = null;
-                    AppState.pendingPrintQueue = null;  // B18-FE-1 fix: clear stale queue on cancel
-                    this._setPrintButtonIdle(btn);
-                    PrintModule.updateButton();
-                })();
+            if (btn.dataset.mode === 'cancellable' && this._currentJobId()) {
+                this._cancelCurrentPrintJob();
                 return;
             }
 
@@ -2678,6 +2702,8 @@ const PrintModule = {
         document.getElementById('phase1-recovery-open-btn')?.addEventListener('click', () => {
             Phase1RecoveryModule.open();
         });
+        document.getElementById('flip-cancel-print-btn')?.addEventListener('click', () => this._cancelCurrentPrintJob());
+        document.getElementById('complete-print-btn')?.addEventListener('click', () => this._completeCurrentManualJobFromToolbar());
         document.getElementById('recovery-btn')?.addEventListener('click', () => {
             const phase = this._activeRecoveryPhase();
             if (phase === 'phase1') Phase1RecoveryModule.open();
@@ -2704,19 +2730,28 @@ const PrintModule = {
 
     _updateRecoveryButton() {
         const recoveryBtn = document.getElementById('recovery-btn');
-        if (!recoveryBtn) return;
-
+        const completeBtn = document.getElementById('complete-print-btn');
         const phase = this._activeRecoveryPhase();
-        recoveryBtn.hidden = !phase;
-        recoveryBtn.classList.toggle('hidden', !phase);
-        recoveryBtn.disabled = !phase;
-        if (phase) recoveryBtn.dataset.phase = phase;
-        else delete recoveryBtn.dataset.phase;
+        if (recoveryBtn) {
+            recoveryBtn.hidden = !phase;
+            recoveryBtn.classList.toggle('hidden', !phase);
+            recoveryBtn.disabled = !phase;
+            if (phase) recoveryBtn.dataset.phase = phase;
+            else delete recoveryBtn.dataset.phase;
+        }
+
+        const showComplete = phase === 'phase2';
+        if (completeBtn) {
+            completeBtn.hidden = !showComplete;
+            completeBtn.classList.toggle('hidden', !showComplete);
+            completeBtn.disabled = !showComplete;
+            completeBtn.classList.toggle('attention', showComplete);
+        }
     },
 
     _setPrintButtonForFlipPause() {
         const btn = document.getElementById('print-btn');
-        if (!btn || !AppState.currentJob?.jobId) return;
+        if (!btn || !this._currentJobId()) return;
         btn.dataset.mode = 'flip-paused';
         btn.classList.remove('cancellable');
         btn.textContent = I18nModule.t('print.reopenFlip');
@@ -2984,14 +3019,13 @@ const PrintModule = {
                     AppState.currentJob._historyEntry = histEntry;
                     if (btn) {
                         btn.dataset.mode = 'phase2-review';
-                        btn.classList.remove('cancellable');
-                        btn.textContent = I18nModule.t('phase2Recovery.reviewButton');
+                        btn.classList.add('cancellable');
+                        btn.textContent = I18nModule.t('print.cancel');
                         btn.disabled = false;
                         btn.style.opacity = '1';
                     }
                     this._updateRecoveryButton();
                     showToast(I18nModule.t('phase2Recovery.backSent'), 'info');
-                    Phase2RecoveryModule.openCheck();
                     return;
                 }
 
@@ -3324,41 +3358,6 @@ const PrintModule = {
         `;
         document.getElementById('instruction-text').textContent =
             (typeof instruction === 'object' ? instruction?.text || instruction?.Text : instruction) || I18nModule.t('flip.defaultInstruction');
-        const continueBtn = document.getElementById('continue-btn');
-
-        // Optional timer
-        let _timerInterval = null;
-        const timerEnable = document.getElementById('flip-timer-enable');
-        const timerBar    = document.getElementById('flip-timer-bar');
-        const timerFill   = document.getElementById('flip-timer-fill');
-
-        if (timerEnable) {
-            timerEnable.checked = false;
-            timerEnable.onchange = () => {
-                if (timerEnable.checked) {
-                    timerBar?.classList.remove('hidden');
-                    let remaining = 30;
-                    if (timerFill) {
-                        timerFill.style.transition = 'none';
-                        timerFill.style.width = '100%';
-                        setTimeout(() => {
-                            timerFill.style.transition = 'width 30s linear';
-                            timerFill.style.width = '0%';
-                        }, 50);
-                    }
-                    _timerInterval = setInterval(() => {
-                        remaining--;
-                        if (remaining <= 0) {
-                            clearInterval(_timerInterval);
-                            document.getElementById('continue-btn')?.click();
-                        }
-                    }, 1000);
-                } else {
-                    clearInterval(_timerInterval);
-                    timerBar?.classList.add('hidden');
-                }
-            };
-        }
 
         document.getElementById('flip-modal').classList.remove('hidden');
         Phase1RecoveryModule.syncFromJob();
@@ -3615,26 +3614,11 @@ const Phase2RecoveryModule = {
     init() {
         document.getElementById('phase2-recovery-close')?.addEventListener('click', () => this.close());
         document.getElementById('phase2-recovery-overlay')?.addEventListener('click', () => this.close());
-        document.getElementById('phase2-recovery-good')?.addEventListener('click', () => this._complete());
-        document.getElementById('phase2-recovery-needed')?.addEventListener('click', () => this._showSelect());
         document.getElementById('phase2-recovery-apply-range')?.addEventListener('click', () => this._applyRange());
         document.getElementById('phase2-recovery-clear')?.addEventListener('click', () => this._clearSelection());
         document.getElementById('phase2-recovery-submit')?.addEventListener('click', () => this._startRecovery());
         document.getElementById('phase2-recovery-retry-fronts')?.addEventListener('click', () => this._retryRecoveryFronts());
         document.getElementById('phase2-recovery-continue')?.addEventListener('click', () => this._continueRecovery());
-        document.getElementById('phase2-recovery-complete')?.addEventListener('click', () => this._complete());
-    },
-
-    openCheck() {
-        this._baseRows = this._getPhase2Rows();
-        this._activeCopy = Math.min(this._activeCopy, this._jobCopies());
-        this._rows = this._visibleRows();
-        this._lastSheetIndices = [];
-        this._frontPrintAttempts = 0;
-        this._renderList();
-        this._setStatus('');
-        this._showPanel('check');
-        document.getElementById('phase2-recovery-modal')?.classList.remove('hidden');
     },
 
     openRecovery() {
@@ -3656,18 +3640,9 @@ const Phase2RecoveryModule = {
         document.getElementById('phase2-recovery-modal')?.classList.add('hidden');
     },
 
-    _showSelect() {
-        this.openRecovery();
-    },
-
     _showPanel(name) {
-        document.getElementById('phase2-check-panel')?.classList.toggle('hidden', name !== 'check');
         document.getElementById('phase2-select-panel')?.classList.toggle('hidden', name !== 'select');
         document.getElementById('phase2-flip-panel')?.classList.toggle('hidden', name !== 'flip');
-        const needsRecovery = document.getElementById('phase2-recovery-needed');
-        if (needsRecovery) needsRecovery.disabled = this._baseRows.length === 0;
-        const complete = document.getElementById('phase2-recovery-complete');
-        if (complete) complete.disabled = name === 'select' || name === 'flip';
     },
 
     _jobCopies() {
@@ -3925,7 +3900,8 @@ const Phase2RecoveryModule = {
             const message = I18nModule.t('phase2Recovery.backPrinted')(result.printedSheets || 0);
             this._setStatus(message);
             showToast(message, 'success');
-            this._showPanel('check');
+            this.close();
+            PrintModule._updateRecoveryButton();
         } catch (err) {
             const message = I18nModule.t('recovery.failed')(err.message);
             this._setStatus(message);
@@ -3935,14 +3911,6 @@ const Phase2RecoveryModule = {
         }
     },
 
-    async _complete() {
-        try {
-            await PrintModule._completeCurrentManualJob();
-            this.close();
-        } catch (err) {
-            showToast(I18nModule.t('toast.continueError')(err.message), 'error');
-        }
-    },
 };
 
 // ═══════════════════════════════════════════════════════════════════

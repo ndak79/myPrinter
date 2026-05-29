@@ -106,7 +106,6 @@ window.VI_STRINGS = {
     check1: '1. Chờ máy in xong — đèn ngừng nhấp nháy',
     check2: '2. Lấy chồng giấy ra — theo đúng hướng mũi tên',
     check3: '3. Đặt lại vào khay — mặt trắng ngửa lên',
-    autoTimer: 'Tự động tiếp tục sau <strong>30 giây</strong>',
     continue: '✓ Đã Đặt Giấy - Tiếp Tục In',
     // SVG animation text (used in _showFlipModal)
     paperPrinted: 'Giấy đã in',
@@ -142,12 +141,8 @@ window.VI_STRINGS = {
   },
 
   phase2Recovery: {
-    title: 'Kiểm tra sau khi in mặt sau',
-    reviewButton: 'Kiểm tra / hoàn tất',
+    title: 'Cứu lỗi sau khi in mặt sau',
     backSent: 'Đã gửi lượt in mặt sau. Kiểm tra xấp giấy trước khi hoàn tất.',
-    checkIntro: 'Mỗi máy in tự xử lý kẹt giấy khác nhau. Hãy kiểm tra xấp giấy trước khi đánh dấu lệnh in hoàn tất.',
-    goodStack: 'Xấp giấy ổn',
-    needRecovery: 'Cần khôi phục',
     selectIntro: 'Chọn các tờ bị hỏng hoặc chưa chắc đã in xong. Ứng dụng sẽ in lại cả hai mặt trên tờ thay thế.',
     passRangePlaceholder: 'Ví dụ: tờ 1-3, 5',
     passSheet: (_pass, sheet) => `Tờ ${sheet}`,
@@ -160,7 +155,6 @@ window.VI_STRINGS = {
     flipIntro: 'Lấy các tờ thay thế vừa in mặt trước, đặt lại vào khay theo cùng hướng dẫn lật giấy, rồi in mặt sau cho mini stack này.',
     printReplacementBacks: 'Đã đặt giấy - in mặt sau',
     backPrinted: (n) => `Đã in mặt sau cho ${n} tờ thay thế. Thay các tờ hỏng trong xấp giấy rồi hoàn tất lệnh in.`,
-    complete: 'Hoàn tất lệnh in',
   },
 
   // Confirm print modal
@@ -175,6 +169,8 @@ window.VI_STRINGS = {
   print: {
     start: '🖨 Bắt Đầu In',
     cancel: '✕ Huỷ In',
+    cancelFromFlip: 'Huỷ in',
+    completeMain: 'Hoàn tất lệnh in',
     reopenFlip: '↩ Mở hướng dẫn lật giấy',
     printing: (i, total) => `⏳ Đang in file ${i}/${total}...`,
     sendingSingle: '⏳ Đang gửi lệnh in...',
