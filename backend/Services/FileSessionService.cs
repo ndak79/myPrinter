@@ -71,7 +71,6 @@ public sealed class FileSessionService : IDisposable
     public PrintJobState? ClaimJob(string jobId)
     {
         if (!_jobs.TryRemove(jobId, out var job)) return null;
-        PersistJobs();
         return job;
     }
 

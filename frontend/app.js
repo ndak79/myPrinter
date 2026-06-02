@@ -236,7 +236,6 @@ const AppState = {
         this.files                = [];
         this.activeFileIndex      = -1;
         this.currentJob           = null;
-        this.recoveryContext      = null;
         this.pendingPrintQueue    = null;  // B18-FE-1 fix: clear stale queue on full reset
         this.isUserTypingPageRange = false;
         this.printMode            = 'duplex'; // B24-FE-2 fix: reset to default so new session isn't contaminated
@@ -3026,9 +3025,9 @@ const PrintModule = {
             const res    = await fetch(`${API_BASE}/print/continue?jobId=${this._currentJobId()}`, { method: 'POST' });
             const result = await res.json();
             const btn = document.getElementById('print-btn');
-            const resetBtn = () => {
+            const resetBtn = ({ clearRecoveryContext = true } = {}) => {
                 AppState.currentJob = null;
-                AppState.recoveryContext = null;
+                if (clearRecoveryContext) AppState.recoveryContext = null;
                 if (btn) {
                     this._setPrintButtonIdle(btn);
                     PrintModule.updateButton();
@@ -3057,19 +3056,20 @@ const PrintModule = {
                 // BUG-2 fix: reset button even on failure so UI doesn't get stuck
                 showToast(I18nModule.t('toast.uploadError')(result.message), 'error');
                 AppState.pendingPrintQueue = null;
-                resetBtn();
+                resetBtn({ clearRecoveryContext: false });
+                await this.refreshRecoveryContext();
             }
         } catch (err) {
             // BUG-2 fix: also reset on network error
             showToast(I18nModule.t('toast.continueError')(err.message), 'error');
             AppState.currentJob = null;
-            AppState.recoveryContext = null;
             AppState.pendingPrintQueue = null;
             const btn = document.getElementById('print-btn');
             if (btn) {
                 this._setPrintButtonIdle(btn);
                 PrintModule.updateButton();
             }
+            await this.refreshRecoveryContext();
         }
     },
 

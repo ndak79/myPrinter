@@ -313,12 +313,16 @@ public static class BackendStartup
             PrintAlgorithmService printAlgorithm,
             FileSessionService sessions) =>
         {
-            // BE-18-4 fix: hoist jobState outside try so catch blocks can clean up
-            // intermediate files. ClaimJob removes the job from the session dictionary,
-            // so the background TTL sweeper can no longer reach it. If ExecutePrintJob
-            // throws during phase 2, we must explicitly delete IntermediateFiles here —
-            // otherwise they are orphaned on disk permanently.
+            // ClaimJob removes the job from memory to prevent concurrent phase-2 execution.
+            // If phase 2 fails, put it back so the user can retry, cancel, or recover.
+            // The restored job still tracks IntermediateFiles, so cancel/cleanup can delete them later.
             PrintJobState? jobState = null;
+            void RestoreClaimedJobForRecovery()
+            {
+                if (jobState != null)
+                    sessions.AddJob(jobState.JobId, jobState);
+            }
+
             try
             {
                 // BUG-4 fix: guard null/empty jobId before dictionary lookup
@@ -332,7 +336,10 @@ public static class BackendStartup
                     return Results.NotFound(new PrintResponse { Success = false, Message = "Job not found or already completed." });
 
                 if (!jobState.WaitingForFlip)
+                {
+                    RestoreClaimedJobForRecovery();
                     return Results.BadRequest(new PrintResponse { Success = false, Message = "Job is not waiting for flip." });
+                }
 
                 // BE-24-8: execute Phase 2 once per copy (mirrors the Phase 1 loop in /api/print).
                 // jobState.Copies was saved when Phase 1 was started; without this loop the user
@@ -356,13 +363,12 @@ public static class BackendStartup
             }
             catch (InvalidOperationException ex)
             {
-                // Clean up claimed job's temp files — sweeper can no longer reach them.
-                if (jobState != null) FileSessionService.DeleteIntermediateFiles(jobState);
+                RestoreClaimedJobForRecovery();
                 return Results.BadRequest(new PrintResponse { Success = false, Message = ex.Message });
             }
             catch (Exception ex)
             {
-                if (jobState != null) FileSessionService.DeleteIntermediateFiles(jobState);
+                RestoreClaimedJobForRecovery();
                 return Results.Problem($"Error continuing print job: {ex.Message}");
             }
         });

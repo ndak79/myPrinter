@@ -209,4 +209,28 @@ public class FileSessionServiceCleanupTests : IDisposable
         restarted.GetJob(job.JobId).Should().BeNull();
         restarted.GetLatestRecoverableJob().Should().BeNull();
     }
+
+    [Fact]
+    public void ClaimJob_DoesNotClearPersistedRecoveryContext()
+    {
+        var tempPdf = CreateTempFile();
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            TempPdfPath = tempPdf,
+            PrinterName = "TestPrinter"
+        };
+
+        _sut.AddJob(job.JobId, job);
+
+        _sut.ClaimJob(job.JobId).Should().NotBeNull();
+
+        using var restarted = new FileSessionService(_stateFile);
+        var restored = restarted.GetLatestRecoverableJob();
+
+        restored.Should().NotBeNull(
+            "claiming a job only protects the in-memory continue request; persisted recovery context must survive until success, cancel, or cleanup");
+        restored!.JobId.Should().Be(job.JobId);
+    }
 }

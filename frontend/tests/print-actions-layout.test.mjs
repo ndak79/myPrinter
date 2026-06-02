@@ -9,6 +9,7 @@ const appJs = readFileSync(resolve(__dirname, '..', 'app.js'), 'utf8');
 const stylesCss = readFileSync(resolve(__dirname, '..', 'styles.css'), 'utf8');
 const viJs = readFileSync(resolve(__dirname, '..', 'i18n', 'vi.js'), 'utf8');
 const enJs = readFileSync(resolve(__dirname, '..', 'i18n', 'en.js'), 'utf8');
+const continuePrintBlock = appJs.match(/async _continuePrint\(\)\s*\{[\s\S]*?\n    async _completeCurrentManualJob/)?.[0] ?? '';
 
 assert.match(indexHtml, /<div class="print-actions"[^>]*>/);
 assert.match(indexHtml, /<div class="print-actions"[\s\S]*id="recovery-btn"[\s\S]*id="print-btn"[\s\S]*<\/div>/);
@@ -49,6 +50,10 @@ assert.match(appJs, /async refreshRecoveryContext\(/);
 assert.match(appJs, /\/print\/recovery-context/);
 assert.match(appJs, /AppState\.recoveryContext/);
 assert.match(appJs, /_recoverableJob\(\)/);
+assert.doesNotMatch(appJs, /reset\(\)\s*\{[\s\S]*this\.recoveryContext\s*=\s*null;[\s\S]*this\.pendingPrintQueue/);
+assert.match(continuePrintBlock, /else\s*\{\s*\/\/ BUG-2 fix:[\s\S]*await this\.refreshRecoveryContext\(\);/);
+assert.match(continuePrintBlock, /catch \(err\)\s*\{[\s\S]*await this\.refreshRecoveryContext\(\);/);
+assert.doesNotMatch(continuePrintBlock, /catch \(err\)\s*\{[\s\S]*AppState\.recoveryContext\s*=\s*null;/);
 assert.doesNotMatch(viJs, /completeMain:/);
 assert.doesNotMatch(enJs, /completeMain:/);
 assert.doesNotMatch(viJs, /Hoàn tất lệnh in/);
