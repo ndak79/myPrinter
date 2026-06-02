@@ -118,7 +118,7 @@ window.EN_STRINGS = {
     retrySubmit: 'Reprint again',
     noPlan: 'No print plan is available for recovery.',
     noSelection: 'Select at least one failed sheet.',
-    multiCopyUnsupported: 'Sheet recovery is not available for multi-copy manual duplex jobs. Check the stack and reprint the affected copy separately.',
+    multiCopyUnsupported: 'For multi-copy jobs, select the correct copy before choosing failed sheets.',
     copyLabel: 'Copy',
     copyOption: (copy) => `Copy ${copy}`,
     sheet: (n) => `Sheet ${n}`,
@@ -133,7 +133,7 @@ window.EN_STRINGS = {
 
   phase2Recovery: {
     title: 'Fix back-side print issues',
-    backSent: 'Back side sent. Check the stack before finishing.',
+    backSent: 'Back side sent. If a sheet is wrong, use Fix print issue on the toolbar.',
     selectIntro: 'Select damaged or uncertain sheets. The app will reprint both sides onto replacement sheets.',
     passRangePlaceholder: 'Example: sheet 1-3, 5',
     passSheet: (_pass, sheet) => `Sheet ${sheet}`,
@@ -145,7 +145,7 @@ window.EN_STRINGS = {
     frontRetried: (n) => `Reprinted front side for ${n} replacement sheet(s). If they look good, place them back to print backs.`,
     flipIntro: 'Take the replacement sheets just printed on the front side, place them back in the tray using the same flip direction, then print the back side for this mini stack.',
     printReplacementBacks: 'Paper placed - print backs',
-    backPrinted: (n) => `Printed back side for ${n} replacement sheet(s). Replace the damaged sheets, then finish the job.`,
+    backPrinted: (n) => `Printed back side for ${n} replacement sheet(s). Replace the damaged sheets in the stack.`,
   },
 
   confirm: {
@@ -507,7 +507,7 @@ window.EN_STRINGS.guide = {
       <li><code>2-8,12</code>: print pages 2 through 8 and page 12</li>
     </ul>
     <h4>Use the preview</h4>
-    <p>Right-click a page to exclude it, make it one-sided, rotate it, or restore normal two-sided printing.</p>
+    <p>Right-click a page to exclude it, make it one-sided, rotate it, restore normal two-sided printing, or insert a blank page before/after it in Print Preview. Blank pages can be removed from the sheet view.</p>
     <h4>Multiple files</h4>
     <p>Each file has its own tab and keeps its own settings: selected pages, copies, rotation, and landscape handling.</p>
   ` },
@@ -523,7 +523,7 @@ window.EN_STRINGS.guide = {
   ` },
   recovery: { content: `
       <h3>Fix a paper jam or damaged sheet</h3>
-      <p>The <strong>Fix print issue</strong> button stays on the main toolbar and becomes active when the app still has a recoverable manual print job.</p>
+      <p>The <strong>Fix print issue</strong> button stays on the main toolbar and becomes active when the app still has a recoverable manual two-sided job. If nothing is wrong, no extra button is required after the printer finishes.</p>
       <h4>Jam before flipping the paper</h4>
     <ol>
       <li>Click <strong>Fix print issue</strong> while the flip guide is open.</li>
@@ -533,11 +533,11 @@ window.EN_STRINGS.guide = {
     </ol>
     <h4>Problem after the back-side pass</h4>
     <ol>
-      <li>Click <strong>Fix print issue</strong> on the post-back-pass review step.</li>
+      <li>After the printer sends the back-side pass, inspect the stack. If a sheet is damaged, missing, or uncertain, click <strong>Fix print issue</strong> on the main toolbar.</li>
       <li>Select damaged sheets by the displayed sheet number: <strong>Sheet 1</strong>, <strong>Sheet 2</strong>, ...</li>
       <li>Print replacement fronts, flip only those replacement sheets, then print their backs.</li>
-        <li>Replace the damaged sheets in the stack, then continue printing.</li>
+      <li>Replace the damaged sheets in the stack. If nothing is wrong, the job is already finished from the user's side.</li>
     </ol>
-    <p>For multi-copy jobs, per-sheet recovery is not available. Check the stack and reprint only the copy that failed.</p>
+    <p>For multi-copy jobs, select the correct copy before choosing failed sheets so the app reprints the right replacement sheets.</p>
   ` },
 };

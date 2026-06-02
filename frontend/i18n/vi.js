@@ -131,7 +131,7 @@ window.VI_STRINGS = {
     retrySubmit: 'In lại lần nữa',
     noPlan: 'Không có kế hoạch in để khôi phục.',
     noSelection: 'Chọn ít nhất một tờ bị lỗi.',
-    multiCopyUnsupported: 'Không thể khôi phục theo từng tờ khi in nhiều bản copy. Hãy kiểm tra xấp giấy và in lại riêng bản copy bị lỗi.',
+    multiCopyUnsupported: 'Nếu in nhiều bản copy, hãy chọn đúng bản copy trước khi chọn các tờ lỗi.',
     copyLabel: 'Bản copy',
     copyOption: (copy) => `Bản ${copy}`,
     sheet: (n) => `Tờ ${n}`,
@@ -146,7 +146,7 @@ window.VI_STRINGS = {
 
   phase2Recovery: {
     title: 'Cứu lỗi sau khi in mặt sau',
-    backSent: 'Đã gửi lượt in mặt sau. Kiểm tra xấp giấy trước khi hoàn tất.',
+    backSent: 'Đã gửi lượt in mặt sau. Nếu phát hiện tờ lỗi, dùng Cứu lỗi In trên thanh điều khiển.',
     selectIntro: 'Chọn các tờ bị hỏng hoặc chưa chắc đã in xong. Ứng dụng sẽ in lại cả hai mặt trên tờ thay thế.',
     passRangePlaceholder: 'Ví dụ: tờ 1-3, 5',
     passSheet: (_pass, sheet) => `Tờ ${sheet}`,
@@ -158,7 +158,7 @@ window.VI_STRINGS = {
     frontRetried: (n) => `Đã in lại mặt trước cho ${n} tờ thay thế. Nếu ổn, đặt lại các tờ này để in mặt sau.`,
     flipIntro: 'Lấy các tờ thay thế vừa in mặt trước, đặt lại vào khay theo cùng hướng dẫn lật giấy, rồi in mặt sau cho mini stack này.',
     printReplacementBacks: 'Đã đặt giấy - in mặt sau',
-    backPrinted: (n) => `Đã in mặt sau cho ${n} tờ thay thế. Thay các tờ hỏng trong xấp giấy rồi hoàn tất lệnh in.`,
+    backPrinted: (n) => `Đã in mặt sau cho ${n} tờ thay thế. Thay các tờ hỏng trong xấp giấy.`,
   },
 
   // Confirm print modal
@@ -531,7 +531,7 @@ window.VI_STRINGS.guide = {
       <li><code>2-8,12</code>: in trang 2 đến 8 và trang 12</li>
     </ul>
     <h4>Chọn trực tiếp trên preview</h4>
-    <p>Click phải vào trang để bỏ in, chọn in 1 mặt, xoay trang, hoặc khôi phục về in 2 mặt.</p>
+    <p>Click phải vào trang để bỏ in, chọn in 1 mặt, xoay trang, khôi phục về in 2 mặt, hoặc chèn trang trắng trước/sau trang đó trong chế độ Xem trước khi in. Trang trắng có thể xóa ngay trong chế độ xem theo tờ.</p>
     <h4>Nhiều file</h4>
     <p>Mỗi file có tab riêng và giữ cài đặt riêng: trang được chọn, số bản, xoay trang và chế độ trang ngang.</p>
   ` },
@@ -547,7 +547,7 @@ window.VI_STRINGS.guide = {
   ` },
   recovery: { content: `
       <h3>Cứu lỗi in khi kẹt giấy hoặc hỏng tờ</h3>
-      <p>Nút <strong>Cứu lỗi In</strong> luôn nằm trên thanh điều khiển chính và tự bật khi app còn nhớ một lệnh in thủ công có thể khôi phục.</p>
+      <p>Nút <strong>Cứu lỗi In</strong> luôn nằm trên thanh điều khiển chính và tự bật khi app còn nhớ một lệnh in hai mặt thủ công có thể khôi phục. Nếu không có lỗi, bạn không cần bấm thêm nút nào sau khi máy in chạy xong.</p>
       <h4>Kẹt giấy trước khi lật giấy</h4>
     <ol>
       <li>Bấm <strong>Cứu lỗi In</strong> khi đang ở màn hướng dẫn lật giấy.</li>
@@ -557,11 +557,11 @@ window.VI_STRINGS.guide = {
     </ol>
     <h4>Lỗi sau khi đã in mặt sau</h4>
     <ol>
-      <li>Bấm <strong>Cứu lỗi In</strong> ở bước kiểm tra sau mặt sau.</li>
+      <li>Sau khi máy in gửi lượt mặt sau, kiểm tra xấp giấy. Nếu có tờ hỏng, thiếu hoặc chưa chắc đúng, bấm <strong>Cứu lỗi In</strong> trên thanh điều khiển chính.</li>
       <li>Chọn các tờ bị hỏng theo số tờ đang hiển thị: <strong>Tờ 1</strong>, <strong>Tờ 2</strong>, ...</li>
       <li>In mặt trước cho tờ thay thế, lật riêng các tờ thay thế đó, rồi in mặt sau.</li>
-      <li>Thay tờ hỏng trong xấp giấy bằng tờ thay thế, sau đó tiếp tục in.</li>
+      <li>Thay tờ hỏng trong xấp giấy bằng tờ thay thế. Nếu không có lỗi, lệnh in đã xong ở phía người dùng.</li>
     </ol>
-    <p>Nếu in nhiều bản copy, app không cứu lỗi theo từng tờ. Hãy kiểm tra xấp giấy và in lại riêng bản copy bị lỗi.</p>
+    <p>Nếu in nhiều bản copy, hãy chọn đúng bản copy trước khi chọn tờ lỗi để app in đúng các tờ thay thế.</p>
   ` },
 };
