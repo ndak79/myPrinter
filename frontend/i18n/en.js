@@ -105,6 +105,10 @@ window.EN_STRINGS = {
 
   recovery: {
     open: 'Paper jam / damaged',
+    unavailable: 'No manual print job is available for recovery',
+    availablePhase1: 'Recover before flipping paper',
+    availablePhase2: 'Recover after back-side printing',
+    noContext: 'No print job is available for recovery.',
     title: 'Recover after paper jam',
     intro: 'Select sheets that jammed, tore, or did not leave the printer. The app will reprint the front side of those sheets so you can replace them before flipping the stack.',
     rangePlaceholder: 'Example: 5-7, 10',
@@ -155,7 +159,6 @@ window.EN_STRINGS = {
     start: '🖨 Start Printing',
     cancel: '✕ Cancel Print',
     cancelFromFlip: 'Cancel print',
-    completeMain: 'Finish print job',
     reopenFlip: '↩ Reopen flip guide',
     printing: (i, total) => `⏳ Printing file ${i}/${total}...`,
     sendingSingle: '⏳ Sending print job...',
@@ -519,9 +522,9 @@ window.EN_STRINGS.guide = {
     <p>If you close the guide by mistake, click <strong>Reopen flip guide</strong>. To stop the job, use <strong>Cancel Print</strong>.</p>
   ` },
   recovery: { content: `
-    <h3>Fix a paper jam or damaged sheet</h3>
-    <p>The <strong>Fix print issue</strong> button appears only while a manual print job is in progress. Use it instead of completing the job when you suspect a sheet is missing, jammed, or damaged.</p>
-    <h4>Jam before flipping the paper</h4>
+      <h3>Fix a paper jam or damaged sheet</h3>
+      <p>The <strong>Fix print issue</strong> button stays on the main toolbar and becomes active when the app still has a recoverable manual print job.</p>
+      <h4>Jam before flipping the paper</h4>
     <ol>
       <li>Click <strong>Fix print issue</strong> while the flip guide is open.</li>
       <li>Select the <strong>physical sheets</strong> that jammed, tore, or did not leave the printer. Example: <code>sheet 1-2</code>.</li>
@@ -533,7 +536,7 @@ window.EN_STRINGS.guide = {
       <li>Click <strong>Fix print issue</strong> on the post-back-pass review step.</li>
       <li>Select damaged sheets by the displayed sheet number: <strong>Sheet 1</strong>, <strong>Sheet 2</strong>, ...</li>
       <li>Print replacement fronts, flip only those replacement sheets, then print their backs.</li>
-      <li>Replace the damaged sheets in the stack, then click <strong>Complete print job</strong>.</li>
+        <li>Replace the damaged sheets in the stack, then continue printing.</li>
     </ol>
     <p>For multi-copy jobs, per-sheet recovery is not available. Check the stack and reprint only the copy that failed.</p>
   ` },

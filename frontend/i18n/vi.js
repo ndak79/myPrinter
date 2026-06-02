@@ -118,6 +118,10 @@ window.VI_STRINGS = {
 
   recovery: {
     open: 'Giấy bị kẹt / hỏng',
+    unavailable: 'Chưa có lệnh in thủ công nào có thể cứu lỗi',
+    availablePhase1: 'Cứu lỗi trước khi lật giấy',
+    availablePhase2: 'Cứu lỗi sau khi in mặt sau',
+    noContext: 'Chưa có lệnh in nào có thể cứu lỗi.',
     title: 'Khôi phục sau kẹt giấy',
     intro: 'Chọn các tờ bị kẹt, bị rách hoặc chưa ra khỏi máy. Ứng dụng sẽ in lại mặt trước của các tờ đó để bạn thay vào xấp giấy trước khi lật.',
     rangePlaceholder: 'Ví dụ: 5-7, 10',
@@ -170,7 +174,6 @@ window.VI_STRINGS = {
     start: '🖨 Bắt Đầu In',
     cancel: '✕ Huỷ In',
     cancelFromFlip: 'Huỷ in',
-    completeMain: 'Hoàn tất lệnh in',
     reopenFlip: '↩ Mở hướng dẫn lật giấy',
     printing: (i, total) => `⏳ Đang in file ${i}/${total}...`,
     sendingSingle: '⏳ Đang gửi lệnh in...',
@@ -543,9 +546,9 @@ window.VI_STRINGS.guide = {
     <p>Nếu lỡ đóng hướng dẫn, bấm nút <strong>Mở hướng dẫn lật giấy</strong> để mở lại. Nếu muốn dừng lệnh, dùng <strong>Huỷ In</strong>.</p>
   ` },
   recovery: { content: `
-    <h3>Cứu lỗi in khi kẹt giấy hoặc hỏng tờ</h3>
-    <p>Nút <strong>Cứu lỗi In</strong> chỉ hiện khi app đang ở giữa một lệnh in thủ công. Hãy dùng nút này thay vì bấm hoàn tất khi còn nghi ngờ xấp giấy bị lỗi.</p>
-    <h4>Kẹt giấy trước khi lật giấy</h4>
+      <h3>Cứu lỗi in khi kẹt giấy hoặc hỏng tờ</h3>
+      <p>Nút <strong>Cứu lỗi In</strong> luôn nằm trên thanh điều khiển chính và tự bật khi app còn nhớ một lệnh in thủ công có thể khôi phục.</p>
+      <h4>Kẹt giấy trước khi lật giấy</h4>
     <ol>
       <li>Bấm <strong>Cứu lỗi In</strong> khi đang ở màn hướng dẫn lật giấy.</li>
       <li>Chọn các <strong>tờ vật lý</strong> bị kẹt, rách hoặc chưa ra khỏi máy. Ví dụ: <code>tờ 1-2</code>.</li>
@@ -557,7 +560,7 @@ window.VI_STRINGS.guide = {
       <li>Bấm <strong>Cứu lỗi In</strong> ở bước kiểm tra sau mặt sau.</li>
       <li>Chọn các tờ bị hỏng theo số tờ đang hiển thị: <strong>Tờ 1</strong>, <strong>Tờ 2</strong>, ...</li>
       <li>In mặt trước cho tờ thay thế, lật riêng các tờ thay thế đó, rồi in mặt sau.</li>
-      <li>Thay tờ hỏng trong xấp giấy bằng tờ thay thế, sau đó bấm <strong>Hoàn tất lệnh in</strong>.</li>
+      <li>Thay tờ hỏng trong xấp giấy bằng tờ thay thế, sau đó tiếp tục in.</li>
     </ol>
     <p>Nếu in nhiều bản copy, app không cứu lỗi theo từng tờ. Hãy kiểm tra xấp giấy và in lại riêng bản copy bị lỗi.</p>
   ` },

@@ -127,6 +127,7 @@ const I18nModule = {
 const AppState = {
     selectedPrinter:       null,
     currentJob:            null,
+    recoveryContext:       null,
     pendingPrintQueue:     null,  // B17-FE-2 fix: queue of remaining files after a manual-flip pause
     isUserTypingPageRange: false,
     printMode:             'duplex',   // 'duplex' | 'booklet'
@@ -235,6 +236,7 @@ const AppState = {
         this.files                = [];
         this.activeFileIndex      = -1;
         this.currentJob           = null;
+        this.recoveryContext      = null;
         this.pendingPrintQueue    = null;  // B18-FE-1 fix: clear stale queue on full reset
         this.isUserTypingPageRange = false;
         this.printMode            = 'duplex'; // B24-FE-2 fix: reset to default so new session isn't contaminated
@@ -2628,6 +2630,33 @@ const PrintModule = {
         return AppState.currentJob?.jobId || AppState.currentJob?.JobId;
     },
 
+    _recoverableJob() {
+        return AppState.currentJob || AppState.recoveryContext;
+    },
+
+    _setRecoveryContext(jobState) {
+        AppState.recoveryContext = jobState || null;
+        this._updateRecoveryButton();
+    },
+
+    async refreshRecoveryContext(jobState = null) {
+        if (jobState) {
+            this._setRecoveryContext(jobState);
+            return jobState;
+        }
+
+        try {
+            const res = await fetch(`${API_BASE}/print/recovery-context`);
+            const result = await res.json();
+            const recovered = result.jobState || result.JobState || null;
+            this._setRecoveryContext(recovered);
+            return recovered;
+        } catch {
+            this._updateRecoveryButton();
+            return null;
+        }
+    },
+
     async _cancelCurrentPrintJob() {
         const jobId = this._currentJobId();
         try {
@@ -2641,23 +2670,13 @@ const PrintModule = {
         }
 
         AppState.currentJob = null;
+        AppState.recoveryContext = null;
         AppState.pendingPrintQueue = null;
         this._setPrintButtonIdle();
         document.getElementById('flip-modal')?.classList.add('hidden');
         document.getElementById('phase1-recovery-modal')?.classList.add('hidden');
         document.getElementById('phase2-recovery-modal')?.classList.add('hidden');
         PrintModule.updateButton();
-    },
-
-    async _completeCurrentManualJobFromToolbar() {
-        const completeBtn = document.getElementById('complete-print-btn');
-        if (completeBtn) completeBtn.disabled = true;
-        try {
-            await this._completeCurrentManualJob();
-        } catch (err) {
-            showToast(I18nModule.t('toast.continueError')(err.message), 'error');
-            if (completeBtn && this._activeRecoveryPhase() === 'phase2') completeBtn.disabled = false;
-        }
     },
 
     init() {
@@ -2703,17 +2722,23 @@ const PrintModule = {
             Phase1RecoveryModule.open();
         });
         document.getElementById('flip-cancel-print-btn')?.addEventListener('click', () => this._cancelCurrentPrintJob());
-        document.getElementById('complete-print-btn')?.addEventListener('click', () => this._completeCurrentManualJobFromToolbar());
         document.getElementById('recovery-btn')?.addEventListener('click', () => {
+            const job = this._recoverableJob();
+            if (!job) {
+                showToast(I18nModule.t('recovery.noContext'), 'info');
+                return;
+            }
+            AppState.currentJob = job;
             const phase = this._activeRecoveryPhase();
             if (phase === 'phase1') Phase1RecoveryModule.open();
             else if (phase === 'phase2') Phase2RecoveryModule.openRecovery();
         });
         this._updateRecoveryButton();
+        this.refreshRecoveryContext();
     },
 
     _activeRecoveryPhase() {
-        const job = AppState.currentJob;
+        const job = this._recoverableJob();
         const jobId = job?.jobId || job?.JobId;
         if (!jobId) return null;
 
@@ -2730,22 +2755,17 @@ const PrintModule = {
 
     _updateRecoveryButton() {
         const recoveryBtn = document.getElementById('recovery-btn');
-        const completeBtn = document.getElementById('complete-print-btn');
         const phase = this._activeRecoveryPhase();
         if (recoveryBtn) {
-            recoveryBtn.hidden = !phase;
-            recoveryBtn.classList.toggle('hidden', !phase);
             recoveryBtn.disabled = !phase;
             if (phase) recoveryBtn.dataset.phase = phase;
             else delete recoveryBtn.dataset.phase;
-        }
-
-        const showComplete = phase === 'phase2';
-        if (completeBtn) {
-            completeBtn.hidden = !showComplete;
-            completeBtn.classList.toggle('hidden', !showComplete);
-            completeBtn.disabled = !showComplete;
-            completeBtn.classList.toggle('attention', showComplete);
+            const titleKey = phase === 'phase1'
+                ? 'recovery.availablePhase1'
+                : phase === 'phase2'
+                    ? 'recovery.availablePhase2'
+                    : 'recovery.unavailable';
+            recoveryBtn.title = I18nModule.t(titleKey);
         }
     },
 
@@ -2921,6 +2941,7 @@ const PrintModule = {
                 if (result.jobState?.waitingForFlip) {
                     // Manual duplex: show flip modal and wait for user to continue
                     AppState.currentJob = result.jobState;
+                    this._setRecoveryContext(result.jobState);
                     // B28-FE-2 fix: save history metadata so _continuePrint can record
                     // this job in history after Phase 2 completes (we return early below
                     // without calling HistoryModule.add, so we must defer it).
@@ -3002,11 +3023,12 @@ const PrintModule = {
         if (!AppState.currentJob) return;
         try {
             showToast(I18nModule.t('toast.printingBack'), 'info');
-            const res    = await fetch(`${API_BASE}/print/continue?jobId=${AppState.currentJob.jobId}`, { method: 'POST' });
+            const res    = await fetch(`${API_BASE}/print/continue?jobId=${this._currentJobId()}`, { method: 'POST' });
             const result = await res.json();
             const btn = document.getElementById('print-btn');
             const resetBtn = () => {
                 AppState.currentJob = null;
+                AppState.recoveryContext = null;
                 if (btn) {
                     this._setPrintButtonIdle(btn);
                     PrintModule.updateButton();
@@ -3017,6 +3039,7 @@ const PrintModule = {
                     const histEntry = AppState.currentJob?._historyEntry;
                     AppState.currentJob = result.jobState;
                     AppState.currentJob._historyEntry = histEntry;
+                    this._setRecoveryContext(result.jobState);
                     if (btn) {
                         btn.dataset.mode = 'phase2-review';
                         btn.classList.add('cancellable');
@@ -3040,6 +3063,7 @@ const PrintModule = {
             // BUG-2 fix: also reset on network error
             showToast(I18nModule.t('toast.continueError')(err.message), 'error');
             AppState.currentJob = null;
+            AppState.recoveryContext = null;
             AppState.pendingPrintQueue = null;
             const btn = document.getElementById('print-btn');
             if (btn) {
@@ -3053,6 +3077,7 @@ const PrintModule = {
         const btn = document.getElementById('print-btn');
         const resetBtn = options.resetBtn || (() => {
             AppState.currentJob = null;
+            AppState.recoveryContext = null;
             if (btn) {
                 this._setPrintButtonIdle(btn);
                 PrintModule.updateButton();
@@ -3174,6 +3199,7 @@ const PrintModule = {
 
                 if (result.jobState?.waitingForFlip) {
                     AppState.currentJob = result.jobState;
+                    this._setRecoveryContext(result.jobState);
                     // B28-FE-2 fix: save history metadata so _continuePrint can record
                     // this chained job in history after Phase 2 completes.
                     AppState.currentJob._historyEntry = {
@@ -3844,6 +3870,7 @@ const Phase2RecoveryModule = {
                 const histEntry = AppState.currentJob?._historyEntry;
                 AppState.currentJob = result.jobState;
                 AppState.currentJob._historyEntry = histEntry;
+                PrintModule._setRecoveryContext(result.jobState);
             }
             this._lastSheetIndices = sheetIndices.slice();
             this._frontPrintAttempts++;
@@ -3895,6 +3922,7 @@ const Phase2RecoveryModule = {
                 const histEntry = AppState.currentJob?._historyEntry;
                 AppState.currentJob = result.jobState;
                 AppState.currentJob._historyEntry = histEntry;
+                PrintModule._setRecoveryContext(result.jobState);
             }
 
             const message = I18nModule.t('phase2Recovery.backPrinted')(result.printedSheets || 0);

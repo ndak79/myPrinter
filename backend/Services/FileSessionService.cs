@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.Json;
 using PrinterApp.Models;
 
 namespace PrinterApp.Services;
@@ -16,9 +17,13 @@ public sealed class FileSessionService : IDisposable
     private readonly ConcurrentDictionary<string, FileSession>   _files = new();
     private readonly ConcurrentDictionary<string, PrintJobState> _jobs  = new();
     private readonly Timer _cleanupTimer;
+    private readonly string _stateFilePath;
+    private readonly object _stateLock = new();
 
-    public FileSessionService()
+    public FileSessionService(string? stateFilePath = null)
     {
+        _stateFilePath = stateFilePath ?? GetDefaultStateFilePath();
+        LoadPersistedJobs();
         _cleanupTimer = new Timer(_ => Cleanup(), null, CleanupInterval, CleanupInterval);
     }
 
@@ -41,10 +46,22 @@ public sealed class FileSessionService : IDisposable
 
     // ─── Jobs ────────────────────────────────────────────────────────────────
 
-    public void AddJob(string jobId, PrintJobState state) => _jobs[jobId] = state;
+    public void AddJob(string jobId, PrintJobState state)
+    {
+        _jobs[jobId] = state;
+        PersistJobs();
+    }
 
     public PrintJobState? GetJob(string jobId)
         => _jobs.TryGetValue(jobId, out var j) ? j : null;
+
+    public PrintJobState? GetLatestRecoverableJob()
+    {
+        return _jobs.Values
+            .Where(IsRecoverable)
+            .OrderByDescending(j => j.CreatedAt)
+            .FirstOrDefault();
+    }
 
     /// <summary>
     /// Atomically removes and returns a job, without deleting its temp file.
@@ -52,7 +69,11 @@ public sealed class FileSessionService : IDisposable
     /// if two requests arrive simultaneously for the same jobId (TOCTOU fix).
     /// </summary>
     public PrintJobState? ClaimJob(string jobId)
-        => _jobs.TryRemove(jobId, out var job) ? job : null;
+    {
+        if (!_jobs.TryRemove(jobId, out var job)) return null;
+        PersistJobs();
+        return job;
+    }
 
     public void RemoveJob(string jobId)
     {
@@ -62,6 +83,7 @@ public sealed class FileSessionService : IDisposable
             // BUG-8-2 fix: also delete all intermediate files tracked during job construction
             foreach (var f in job.IntermediateFiles)
                 DeleteFileSafe(f);
+            PersistJobs();
         }
     }
 
@@ -80,6 +102,7 @@ public sealed class FileSessionService : IDisposable
     public void Cleanup()
     {
         var cutoff = DateTime.UtcNow - SessionTtl;
+        var jobsChanged = false;
 
         foreach (var (id, session) in _files)
         {
@@ -103,6 +126,7 @@ public sealed class FileSessionService : IDisposable
             {
                 _jobs.TryRemove(jobId, out _);
                 Console.WriteLine($"[FileSessionService] Cleaned up orphaned job: {jobId}");
+                jobsChanged = true;
                 continue;
             }
 
@@ -115,6 +139,8 @@ public sealed class FileSessionService : IDisposable
                 Console.WriteLine($"[FileSessionService] Cleaned up expired job: {jobId}");
             }
         }
+
+        if (jobsChanged) PersistJobs();
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -133,6 +159,76 @@ public sealed class FileSessionService : IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"[FileSessionService] WARNING: Could not delete {path}: {ex.Message}");
+        }
+    }
+
+    private static bool IsRecoverable(PrintJobState job)
+    {
+        if (string.IsNullOrWhiteSpace(job.JobId)) return false;
+        if (string.IsNullOrWhiteSpace(job.TempPdfPath) || !File.Exists(job.TempPdfPath)) return false;
+        return job.WaitingForFlip || job.BackPassSent || job.WaitingForRecoveryFlip;
+    }
+
+    private static string GetDefaultStateFilePath()
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "myPrinter");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "recovery-contexts.json");
+    }
+
+    private void LoadPersistedJobs()
+    {
+        try
+        {
+            if (!File.Exists(_stateFilePath)) return;
+
+            var json = File.ReadAllText(_stateFilePath);
+            var jobs = JsonSerializer.Deserialize<List<PrintJobState>>(json);
+            if (jobs == null) return;
+
+            var cutoff = DateTime.UtcNow - SessionTtl;
+            var changed = false;
+            foreach (var job in jobs)
+            {
+                if (job.CreatedAt < cutoff || !IsRecoverable(job))
+                {
+                    DeleteFileSafe(job.TempPdfPath);
+                    foreach (var f in job.IntermediateFiles)
+                        DeleteFileSafe(f);
+                    changed = true;
+                    continue;
+                }
+
+                _jobs[job.JobId] = job;
+            }
+
+            if (changed) PersistJobs();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FileSessionService] WARNING: Could not load recovery state: {ex.Message}");
+        }
+    }
+
+    private void PersistJobs()
+    {
+        try
+        {
+            lock (_stateLock)
+            {
+                var dir = Path.GetDirectoryName(_stateFilePath);
+                if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+
+                var jobs = _jobs.Values.Where(IsRecoverable).OrderBy(j => j.CreatedAt).ToList();
+                var json = JsonSerializer.Serialize(jobs, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(_stateFilePath, json);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FileSessionService] WARNING: Could not persist recovery state: {ex.Message}");
         }
     }
 

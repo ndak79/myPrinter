@@ -297,6 +297,17 @@ public static class BackendStartup
             }
         });
 
+        app.MapGet("/api/print/recovery-context", (FileSessionService sessions) =>
+        {
+            var job = sessions.GetLatestRecoverableJob();
+            return Results.Ok(new PrintResponse
+            {
+                Success = true,
+                Message = job == null ? "No recoverable print job." : "Recoverable print job found.",
+                JobState = job
+            });
+        });
+
         app.MapPost("/api/print/continue", async (
             string jobId,
             PrintAlgorithmService printAlgorithm,
@@ -375,6 +386,7 @@ public static class BackendStartup
                     return Results.NotFound(new Phase2RecoveryResponse { Success = false, Message = "Job not found or already completed." });
 
                 var printed = printAlgorithm.StartManualDuplexBackSheetRecovery(job, request.SheetIndices);
+                sessions.AddJob(job.JobId, job);
                 return Results.Ok(new Phase2RecoveryResponse
                 {
                     Success = true,
@@ -409,6 +421,7 @@ public static class BackendStartup
                     return Results.NotFound(new Phase2RecoveryResponse { Success = false, Message = "Job not found or already completed." });
 
                 var printed = printAlgorithm.ContinueManualDuplexBackSheetRecovery(job);
+                sessions.AddJob(job.JobId, job);
                 return Results.Ok(new Phase2RecoveryResponse
                 {
                     Success = true,
@@ -447,6 +460,7 @@ public static class BackendStartup
                     return Results.NotFound(new Phase1RecoveryResponse { Success = false, Message = "Job not found or already completed." });
 
                 var printed = printAlgorithm.ReprintManualDuplexFrontSheets(job, request.SheetIndices);
+                sessions.AddJob(job.JobId, job);
                 return Results.Ok(new Phase1RecoveryResponse
                 {
                     Success = true,

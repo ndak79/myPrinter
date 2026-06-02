@@ -10,11 +10,14 @@ namespace backend.Tests;
 public class FileSessionServiceCleanupTests : IDisposable
 {
     private readonly FileSessionService _sut;
+    private readonly string _stateFile;
     private readonly List<string> _tempFiles = new();
 
     public FileSessionServiceCleanupTests()
     {
-        _sut = new FileSessionService();
+        _stateFile = Path.Combine(Path.GetTempPath(), $"myprinter-session-{Guid.NewGuid():N}.json");
+        _tempFiles.Add(_stateFile);
+        _sut = new FileSessionService(_stateFile);
     }
 
     public void Dispose()
@@ -136,5 +139,74 @@ public class FileSessionServiceCleanupTests : IDisposable
         // Assert: orphaned job removed even though it's young
         _sut.GetJob(job.JobId).Should().BeNull(
             "a job whose TempPdfPath is missing must be cleaned up regardless of age");
+    }
+
+    [Fact]
+    public void AddJob_PersistsRecoveryContext_ForServiceRestart()
+    {
+        var tempPdf = CreateTempFile();
+        var front = new ManualDuplexPageInfo
+        {
+            ProcessedIndex = 1,
+            OriginalPageNumber = 1,
+            IsBlank = false,
+            IsLandscape = false
+        };
+        var back = new ManualDuplexPageInfo
+        {
+            ProcessedIndex = 2,
+            OriginalPageNumber = 2,
+            IsBlank = false,
+            IsLandscape = false
+        };
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = false,
+            BackPassSent = true,
+            TempPdfPath = tempPdf,
+            PrinterName = "TestPrinter",
+            ManualPlan = new ManualDuplexPlan
+            {
+                ProcessedPdfPath = tempPdf,
+                ProcessedPages = new[] { front, back },
+                Sheets = new[] { new ManualDuplexSheet { SheetIndex = 1, Front = front, Back = back } },
+                Phase1Pages = new[] { 1 },
+                Phase2Pages = new[] { 2 }
+            }
+        };
+
+        _sut.AddJob(job.JobId, job);
+
+        using var restarted = new FileSessionService(_stateFile);
+        var restored = restarted.GetLatestRecoverableJob();
+
+        restored.Should().NotBeNull();
+        restored!.JobId.Should().Be(job.JobId);
+        restored.BackPassSent.Should().BeTrue();
+        restored.ManualPlan.Should().NotBeNull();
+        restored.ManualPlan!.Sheets.Should().HaveCount(1);
+        restored.ManualPlan.Phase2Pages.Should().Equal(2);
+    }
+
+    [Fact]
+    public void RemoveJob_ClearsPersistedRecoveryContext()
+    {
+        var tempPdf = CreateTempFile();
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            TempPdfPath = tempPdf,
+            PrinterName = "TestPrinter"
+        };
+
+        _sut.AddJob(job.JobId, job);
+        _sut.RemoveJob(job.JobId);
+
+        using var restarted = new FileSessionService(_stateFile);
+
+        restarted.GetJob(job.JobId).Should().BeNull();
+        restarted.GetLatestRecoverableJob().Should().BeNull();
     }
 }
