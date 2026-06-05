@@ -229,6 +229,7 @@ window.VI_STRINGS = {
     converting: (name) => `Đang chuyển đổi ${name}...`,
     convertError: (name) => `Lỗi chuyển đổi: ${name}`,
     uploadSuccess: (name, pages) => `Đã tải: ${name} (${pages} trang)`,
+    previewNotReady: 'Bản xem trước PDF chưa sẵn sàng',
     pdfLoaded: (pages) => `Đã tải ${pages} trang`,
     allDouble: 'Đã chọn tất cả in 2 mặt',
     allSingle: 'Đã chọn tất cả in 1 mặt',

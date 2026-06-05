@@ -1126,9 +1126,18 @@ const ToastModule = {
     _MAX: 3,
 
     show(message, type = 'info', duration = 3000) {
+        return this._create(message, type, duration);
+    },
+
+    showPersistent(message, type = 'info') {
+        return this._create(message, type, null);
+    },
+
+    _create(message, type, duration) {
         const container = document.getElementById('toast-container');
-        if (!container) return;
+        if (!container) return { dismiss() {} };
         const safeType = ['success', 'error', 'info'].includes(type) ? type : 'info';
+        const isPersistent = duration === null;
 
         // Enforce max stack
         const existing = container.querySelectorAll('.toast-item:not(.dismissing)');
@@ -1146,8 +1155,8 @@ const ToastModule = {
                 <span class="toast-item-icon">${icon}</span>
                 <span class="toast-item-msg">${escapeHtml(message)}</span>
             </div>
-            <div class="toast-countdown toast-countdown-${safeType}"
-                 style="animation-duration: ${duration}ms;"></div>
+            <div class="toast-countdown toast-countdown-${safeType}${isPersistent ? ' toast-countdown-persistent' : ''}"
+                 ${isPersistent ? '' : `style="animation-duration: ${duration}ms;"`}></div>
         `;
 
         item.addEventListener('click', () => this._dismiss(item));
@@ -1157,7 +1166,13 @@ const ToastModule = {
         const sr = document.getElementById('sr-status');
         if (sr) { sr.textContent = message; setTimeout(() => { sr.textContent = ''; }, 1000); }
 
-        setTimeout(() => this._dismiss(item), duration);
+        const timerId = isPersistent ? null : setTimeout(() => this._dismiss(item), duration);
+        return {
+            dismiss: () => {
+                if (timerId !== null) clearTimeout(timerId);
+                this._dismiss(item);
+            }
+        };
     },
 
     _dismiss(item) {
@@ -1324,6 +1339,8 @@ const UploadModule = {
         const uploadCard = document.getElementById('upload-area')?.closest('.card');
         if (uploadCard) clearCardError(uploadCard);
 
+        let convertingToast = null;
+
         try {
             const formData = new FormData();
             formData.append('file', file);
@@ -1364,10 +1381,12 @@ const UploadModule = {
 
             // Convert if needed
             if (entry.needsConversion) {
-                showToast(I18nModule.t('toast.converting')(entry.name));
+                convertingToast = ToastModule.showPersistent(I18nModule.t('toast.converting')(entry.name));
                 // BUG-U1 fix: check convert response — failure must remove the orphaned entry
                 const convertRes = await fetch(`${API_BASE}/convert?fileId=${entry.id}`, { method: 'POST' });
                 if (!convertRes.ok) {
+                    convertingToast?.dismiss();
+                    convertingToast = null;
                     const idx = AppState.files.indexOf(entry);
                     if (idx !== -1) AppState.removeFile(idx);
                     TabsModule.render();
@@ -1384,12 +1403,17 @@ const UploadModule = {
 
             // Load PDF for this file entry
             await PreviewModule.renderEntry(entry);
+            if (!entry.pdfDoc) {
+                throw new Error(I18nModule.t('toast.previewNotReady'));
+            }
 
             // Render thumb strip + preview panel for new file
             ThumbStripModule.render();
             if (typeof PreviewPanelModule !== 'undefined') {
                 PreviewPanelModule.render(AppState.activeFile);
             }
+            convertingToast?.dismiss();
+            convertingToast = null;
 
             document.getElementById('page-range-section')?.classList.remove('hidden');
             PrintModule.updateButton();
@@ -1407,6 +1431,7 @@ const UploadModule = {
             StepIndicatorModule.update();
             SRModule.announce(I18nModule.t('sr.fileLoaded')(entry.name, entry.totalPageCount));
         } catch (err) {
+            convertingToast?.dismiss();
             const card = document.getElementById('upload-area')?.closest('.card');
             showCardError(card, `Lỗi khi tải file: ${err.message}`, () => document.getElementById('file-input')?.click());
             showToast(I18nModule.t('toast.fileLoadError')(err.message), 'error');

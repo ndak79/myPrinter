@@ -1162,11 +1162,22 @@ input[name="print-mode"]:checked + .mode-card .mode-icon {
     to   { width: 0%; }
 }
 
+@keyframes toastPersistentProgress {
+    0%   { transform: translateX(-100%); width: 35%; }
+    50%  { width: 65%; }
+    100% { transform: translateX(285%); width: 35%; }
+}
+
 .toast-countdown {
     height: 3px;
     border-radius: 0 0 12px 12px;
     animation: toastCountdown linear forwards;
     margin: 0 -1rem;
+}
+
+.toast-countdown-persistent {
+    animation: toastPersistentProgress 1.2s ease-in-out infinite;
+    transform-origin: left center;
 }
 
 .toast-countdown-success { background: #10b981; }

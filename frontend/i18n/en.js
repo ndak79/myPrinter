@@ -210,6 +210,7 @@ window.EN_STRINGS = {
     converting: (name) => `Converting ${name}...`,
     convertError: (name) => `Conversion error: ${name}`,
     uploadSuccess: (name, pages) => `Loaded: ${name} (${pages} pages)`,
+    previewNotReady: 'PDF preview is not ready',
     pdfLoaded: (pages) => `Loaded ${pages} pages`,
     allDouble: 'All pages set to double-sided',
     allSingle: 'All pages set to single-sided',
