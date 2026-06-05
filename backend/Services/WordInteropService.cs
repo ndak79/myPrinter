@@ -10,6 +10,7 @@ using XGraphics = PdfSharp.Drawing.XGraphics;
 using XUnit = PdfSharp.Drawing.XUnit;
 using XImage = PdfSharp.Drawing.XImage;
 using PrinterApp.Models;
+using PrinterApp.Services.WordConversion;
 
 namespace PrinterApp.Services;
 
@@ -80,33 +81,7 @@ public class WordInteropService : IWordInteropService
     // Word COM is ONLY for DOC/DOCX operations
     public void ConvertToPdf(string inputPath, string outputPath)
     {
-        Word.Application? wordApp = null;
-        Word.Document? doc = null;
-
-        try
-        {
-            wordApp = new Word.Application
-            {
-                Visible = false
-            };
-
-            object inputFile = inputPath;
-            object outputFile = outputPath;
-            object missing = Type.Missing;
-
-            doc = wordApp.Documents.Open(ref inputFile, ReadOnly: true);
-            doc.ExportAsFixedFormat(
-                outputPath,
-                Word.WdExportFormat.wdExportFormatPDF,
-                OpenAfterExport: false,
-                OptimizeFor: Word.WdExportOptimizeFor.wdExportOptimizeForPrint,
-                Range: Word.WdExportRange.wdExportAllDocument
-            );
-        }
-        finally
-        {
-            CleanupWordObjects(doc, wordApp);
-        }
+        new VerifiedWordConverter().ConvertToPdf(inputPath, outputPath);
     }
 
     /// <summary>

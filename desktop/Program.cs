@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using MyPrinter.Desktop.Activation;
+using PrinterApp.Services.WordConversion;
 using System;
 using System.IO;
 using System.Net;
@@ -16,8 +17,14 @@ static class Program
     public static WebApplication? BackendApp { get; private set; }
 
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
+        if (WordConversionWorkerCommand.IsWorkerCommand(args))
+        {
+            Environment.ExitCode = WordConversionWorkerCommand.Run(args);
+            return;
+        }
+
         ApplicationConfiguration.Initialize();
 
         using var singleInstance = SingleInstanceCoordinator.Create();

@@ -1,6 +1,13 @@
 // Standalone CLI entry point — delegates all setup to BackendStartup
+using PrinterApp.Services.WordConversion;
 using System.Runtime.Versioning;
 [assembly: SupportedOSPlatform("windows")]
+
+if (WordConversionWorkerCommand.IsWorkerCommand(args))
+{
+    Environment.Exit(WordConversionWorkerCommand.Run(args));
+    return;
+}
 
 var app = PrinterApp.BackendStartup.Build(args);
 
