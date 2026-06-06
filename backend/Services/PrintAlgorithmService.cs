@@ -726,6 +726,18 @@ public class PrintAlgorithmService
         return remapped;
     }
 
+    private static int[] RepeatPagesForCopies(int[] pages, int copies)
+    {
+        if (pages.Length == 0) return pages;
+        copies = Math.Max(1, copies);
+        if (copies == 1) return pages;
+
+        var repeated = new int[pages.Length * copies];
+        for (int copy = 0; copy < copies; copy++)
+            Array.Copy(pages, 0, repeated, copy * pages.Length, pages.Length);
+        return repeated;
+    }
+
     private string GenerateFlipInstructionText(FlipDirection direction, int pageCount)
     {
         // With the new algorithm, user doesn't need to rotate paper - just put it back straight
@@ -772,19 +784,34 @@ public class PrintAlgorithmService
                     throw new InvalidOperationException("No odd pages (Phase 1) to print in manual duplex job.");
                 }
 
-                var oddPagesStr = string.Join(",", jobState.OddPages);
-                Console.WriteLine($"[ExecutePrintJob] Manual duplex phase 1: printing odd pages ({oddPagesStr})");
+                var frontPages = RepeatPagesForCopies(jobState.OddPages, jobState.Copies);
+                var oddPagesStr = string.Join(",", frontPages);
+                Console.WriteLine($"[ExecutePrintJob] Manual duplex phase 1: printing front pages ({oddPagesStr})");
 
-                _wordService.PrintPdf(
-                    jobState.TempPdfPath,
-                    jobState.PrinterName,
-                    pageRange: oddPagesStr
-                );
+                if (frontPages.Length == jobState.OddPages.Length)
+                {
+                    _wordService.PrintPdf(
+                        jobState.TempPdfPath,
+                        jobState.PrinterName,
+                        pageRange: oddPagesStr
+                    );
+                }
+                else
+                {
+                    var frontPassPdfPath = Path.Combine(Path.GetTempPath(), $"manual_duplex_front_{Guid.NewGuid()}.pdf");
+                    _wordService.CreatePdfSubset(jobState.TempPdfPath, frontPassPdfPath, frontPages);
+                    jobState.IntermediateFiles.Add(frontPassPdfPath);
+                    _wordService.PrintPdf(
+                        frontPassPdfPath,
+                        jobState.PrinterName,
+                        pageRange: null
+                    );
+                }
 
                 // Wait for Phase-1 sheets to physically eject before showing the flip modal.
                 // Delay = ceil(sheets / ppm) * 60_000ms, clamped to [4s, 120s].
                 // PpmEstimate comes from WMI / name lookup / port heuristic (see EstimatePpm).
-                int phase1Sheets = (jobState.OddPages.Length + 1) / 2;
+                int phase1Sheets = Math.Max(1, jobState.OddPages.Length) * Math.Max(1, jobState.Copies);
                 int ppm = Math.Max(1, jobState.PpmEstimate);  // guard against 0
                 int estimatedPrintMs = (int)Math.Ceiling(phase1Sheets / (double)ppm * 60_000);
                 int delayMs = Math.Clamp(estimatedPrintMs, 4_000, 120_000);
@@ -808,13 +835,14 @@ public class PrintAlgorithmService
                 }
 
                 Console.WriteLine("[ExecutePrintJob] Manual duplex phase 2: creating smart rotated PDF for back pages");
-                Console.WriteLine($"[ExecutePrintJob] Second phase pages: {string.Join(",", jobState.RemainingPages)}");
+                var backPages = RepeatPagesForCopies(jobState.RemainingPages, jobState.Copies);
+                Console.WriteLine($"[ExecutePrintJob] Second phase pages: {string.Join(",", backPages)}");
 
                 // CreateSmartDuplexPdf BÂY GIỜ chỉ xoay trang theo orientation,
                 // KHÔNG tự OrderByDescending nữa – thứ tự đã được ManualDuplexPlan xử lý đúng.
                 var rotatedPdfPath = _wordService.CreateSmartDuplexPdf(
                     jobState.TempPdfPath,
-                    jobState.RemainingPages
+                    backPages
                 );
 
                 // Track before printing so crash/restart during sleep doesn't orphan the file

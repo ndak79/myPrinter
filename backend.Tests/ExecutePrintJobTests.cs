@@ -92,6 +92,37 @@ public class ExecutePrintJobTests
         _mockWord.Verify(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()), Times.Never);
     }
 
+    [Fact]
+    public void ExecutePrintJob_ManualDuplex_Phase1_MultipleCopies_PrintsOneContinuousFrontPass()
+    {
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            Copies = 3,
+            PpmEstimate = 10_000,
+            OddPages = new[] { 1, 3 },
+            RemainingPages = new[] { 4, 2 },
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter"
+        };
+
+        string? subsetPath = null;
+        _mockWord
+            .Setup(w => w.CreatePdfSubset(@"C:\fake\processed.pdf", It.IsAny<string>(), It.IsAny<int[]>()))
+            .Callback<string, string, int[]>((_, targetPath, _) => subsetPath = targetPath);
+
+        _sut.ExecutePrintJob(job, firstPhase: true);
+
+        subsetPath.Should().NotBeNullOrWhiteSpace();
+        _mockWord.Verify(w => w.CreatePdfSubset(
+            @"C:\fake\processed.pdf",
+            It.IsAny<string>(),
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 1, 3, 1, 3, 1, 3 }))), Times.Once);
+        _mockWord.Verify(w => w.PrintPdf(subsetPath!, "TestPrinter", null, null), Times.Once);
+        _mockWord.Verify(w => w.PrintPdf(@"C:\fake\processed.pdf", "TestPrinter", "1,3", null), Times.Never);
+    }
+
     // ==========================================
     //  MANUAL DUPLEX - PHASE 2
     // ==========================================
@@ -135,6 +166,31 @@ public class ExecutePrintJobTests
 
         _sut.ExecutePrintJob(job, firstPhase: false);
 
+        _mockWord.Verify(w => w.PrintPdf(@"C:\fake\rotated.pdf", "TestPrinter", null), Times.Once);
+    }
+
+    [Fact]
+    public void ExecutePrintJob_ManualDuplex_Phase2_MultipleCopies_PrintsOneContinuousBackPass()
+    {
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+                 .Returns(@"C:\fake\rotated.pdf");
+
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            Copies = 2,
+            OddPages = new[] { 1, 3 },
+            RemainingPages = new[] { 4, 2 },
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter"
+        };
+
+        _sut.ExecutePrintJob(job, firstPhase: false);
+
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(
+            @"C:\fake\processed.pdf",
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 4, 2, 4, 2 }))), Times.Once);
         _mockWord.Verify(w => w.PrintPdf(@"C:\fake\rotated.pdf", "TestPrinter", null), Times.Once);
     }
 

@@ -129,6 +129,8 @@ const AppState = {
     currentJob:            null,
     recoveryContext:       null,
     pendingPrintQueue:     null,  // B17-FE-2 fix: queue of remaining files after a manual-flip pause
+    pendingManualBatch:    null,
+    pendingManualReviewQueue: null,
     isUserTypingPageRange: false,
     printMode:             'duplex',   // 'duplex' | 'booklet'
     viewMode:              'page',     // 'page' | 'sheet'
@@ -237,6 +239,8 @@ const AppState = {
         this.activeFileIndex      = -1;
         this.currentJob           = null;
         this.pendingPrintQueue    = null;  // B18-FE-1 fix: clear stale queue on full reset
+        this.pendingManualBatch   = null;
+        this.pendingManualReviewQueue = null;
         this.isUserTypingPageRange = false;
         this.printMode            = 'duplex'; // B24-FE-2 fix: reset to default so new session isn't contaminated
         this.viewMode             = 'page';   // B24-FE-2 fix: same
@@ -2650,8 +2654,12 @@ const PrintModule = {
         btn.style.opacity = '';
     },
 
+    _jobId(job) {
+        return job?.jobId || job?.JobId;
+    },
+
     _currentJobId() {
-        return AppState.currentJob?.jobId || AppState.currentJob?.JobId;
+        return this._jobId(AppState.currentJob);
     },
 
     _recoverableJob() {
@@ -2682,9 +2690,17 @@ const PrintModule = {
     },
 
     async _cancelCurrentPrintJob() {
-        const jobId = this._currentJobId();
+        const jobIds = new Set();
+        const addJobId = (job) => {
+            const id = this._jobId(job);
+            if (id) jobIds.add(id);
+        };
+        addJobId(AppState.currentJob);
+        addJobId(AppState.recoveryContext);
+        for (const job of AppState.pendingManualBatch?.jobs || []) addJobId(job);
+        for (const job of AppState.pendingManualReviewQueue || []) addJobId(job);
         try {
-            if (jobId) {
+            for (const jobId of jobIds) {
                 await fetch(`${API_BASE}/print/cancel?jobId=${jobId}`, { method: 'DELETE' });
             }
             showToast(I18nModule.t('toast.printCancelled'), 'info');
@@ -2696,6 +2712,8 @@ const PrintModule = {
         AppState.currentJob = null;
         AppState.recoveryContext = null;
         AppState.pendingPrintQueue = null;
+        AppState.pendingManualBatch = null;
+        AppState.pendingManualReviewQueue = null;
         this._setPrintButtonIdle();
         document.getElementById('flip-modal')?.classList.add('hidden');
         document.getElementById('phase1-recovery-modal')?.classList.add('hidden');
@@ -2860,11 +2878,11 @@ const PrintModule = {
 
         const mode = AppState.printMode || 'duplex'; // B25-FE-1: read from AppState (single source of truth); DOM may be stale after reset()
         const modeCode = (mode === 'duplex' || mode === 'normal') ? 0 : 1;
+        const manualJobs = [];
 
         try {
             for (let i = 0; i < filesToPrint.length; i++) {
                 const file = filesToPrint[i];
-                const isLast = i === filesToPrint.length - 1;
 
                 btn.textContent = filesToPrint.length > 1
                     ? I18nModule.t('print.printing')(i + 1, filesToPrint.length)
@@ -2963,13 +2981,11 @@ const PrintModule = {
                 }
 
                 if (result.jobState?.waitingForFlip) {
-                    // Manual duplex: show flip modal and wait for user to continue
-                    AppState.currentJob = result.jobState;
-                    this._setRecoveryContext(result.jobState);
+                    // Manual duplex: collect all front-pass jobs first, then show one flip modal.
+                    const manualJob = result.jobState;
                     // B28-FE-2 fix: save history metadata so _continuePrint can record
-                    // this job in history after Phase 2 completes (we return early below
-                    // without calling HistoryModule.add, so we must defer it).
-                    AppState.currentJob._historyEntry = {
+                    // this job in history after Phase 2 completes.
+                    manualJob._historyEntry = {
                         file:        file.name,
                         fileId:      file.id,
                         printer:     AppState.selectedPrinter.name,
@@ -2980,21 +2996,8 @@ const PrintModule = {
                         copies:      file.copies,
                         collate:     file.collate,
                     };
-                    // B17-FE-2 fix: save remaining files so _continuePrint can resume them
-                    // after the user flips paper and clicks Continue.
-                    AppState.pendingPrintQueue = (i + 1 < filesToPrint.length)
-                        ? { files: filesToPrint, nextIndex: i + 1, modeCode, originalText }
-                        : null;
-                    this._showFlipModal(result.jobState.instruction);
-                    btn.dataset.mode = 'cancellable';
-                    btn.classList.add('cancellable');
-                    btn.textContent = I18nModule.t('print.cancel');
-                    btn.disabled = false;
-                    btn.style.opacity = '1';
-                    this._updateRecoveryButton();
-                    showToast(I18nModule.t('toast.frontDone'), 'info');
-                    // Stop multi-file loop — _continuePrint will resume the queue
-                    return;
+                    manualJobs.push(manualJob);
+                    continue;
                 }
 
                 // Add to history for each file printed
@@ -3010,10 +3013,21 @@ const PrintModule = {
                     collate:     file.collate,
                 });
 
-                if (!isLast) {
-                    // Brief pause between files
-                    await new Promise(r => setTimeout(r, 500));
-                }
+            }
+
+            if (manualJobs.length > 0) {
+                AppState.pendingManualBatch = { jobs: manualJobs, originalText };
+                AppState.currentJob = manualJobs[0];
+                this._setRecoveryContext(manualJobs[0]);
+                this._showFlipModal(manualJobs[0].instruction || manualJobs[0].Instruction);
+                btn.dataset.mode = 'cancellable';
+                btn.classList.add('cancellable');
+                btn.textContent = I18nModule.t('print.cancel');
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                this._updateRecoveryButton();
+                showToast(I18nModule.t('toast.frontDone'), 'info');
+                return;
             }
 
             // All files printed successfully
@@ -3047,6 +3061,71 @@ const PrintModule = {
         if (!AppState.currentJob) return;
         try {
             showToast(I18nModule.t('toast.printingBack'), 'info');
+            const manualBatch = AppState.pendingManualBatch;
+            if (manualBatch?.jobs?.length) {
+                const completedJobs = [];
+                const completedJobIds = new Set();
+                const jobsForBackPass = manualBatch.jobs.slice().reverse();
+                for (const job of jobsForBackPass) {
+                    const jobId = this._jobId(job);
+                    if (!jobId) continue;
+
+                    let result;
+                    try {
+                        const res = await fetch(`${API_BASE}/print/continue?jobId=${jobId}`, { method: 'POST' });
+                        result = await res.json();
+                    } catch (batchErr) {
+                        AppState.pendingManualBatch = {
+                            ...manualBatch,
+                            jobs: manualBatch.jobs.filter(item => !completedJobIds.has(this._jobId(item)))
+                        };
+                        showToast(I18nModule.t('toast.continueError')(batchErr.message), 'error');
+                        AppState.currentJob = job;
+                        this._setRecoveryContext(job);
+                        await this.refreshRecoveryContext(job);
+                        return;
+                    }
+
+                    if (!result.success) {
+                        AppState.pendingManualBatch = {
+                            ...manualBatch,
+                            jobs: manualBatch.jobs.filter(item => !completedJobIds.has(this._jobId(item)))
+                        };
+                        showToast(I18nModule.t('toast.uploadError')(result.message), 'error');
+                        AppState.currentJob = job;
+                        this._setRecoveryContext(job);
+                        await this.refreshRecoveryContext(job);
+                        return;
+                    }
+
+                    const completedJob = result.jobState || result.JobState || job;
+                    completedJob._historyEntry = job._historyEntry;
+                    completedJobs.push(completedJob);
+                    completedJobIds.add(jobId);
+                }
+
+                AppState.pendingManualBatch = null;
+                const completedById = new Map(completedJobs.map(job => [this._jobId(job), job]));
+                const reviewJobs = manualBatch.jobs
+                    .map(job => completedById.get(this._jobId(job)))
+                    .filter(Boolean);
+                AppState.pendingManualReviewQueue = reviewJobs.slice(1);
+                AppState.currentJob = reviewJobs[0] || null;
+                if (AppState.currentJob) this._setRecoveryContext(AppState.currentJob);
+
+                const btn = document.getElementById('print-btn');
+                if (btn && AppState.currentJob) {
+                    btn.dataset.mode = 'phase2-review';
+                    btn.classList.add('cancellable');
+                    btn.textContent = I18nModule.t('print.cancel');
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                }
+                this._updateRecoveryButton();
+                showToast(I18nModule.t('phase2Recovery.backSent'), 'info');
+                return;
+            }
+
             const res    = await fetch(`${API_BASE}/print/continue?jobId=${this._currentJobId()}`, { method: 'POST' });
             const result = await res.json();
             const btn = document.getElementById('print-btn');
@@ -3139,7 +3218,6 @@ const PrintModule = {
         const btn = document.getElementById('print-btn');
         for (let i = nextIndex; i < files.length; i++) {
             const file   = files[i];
-            const isLast = i === files.length - 1;
 
             if (btn) {
                 btn.textContent = I18nModule.t('print.printing')(i + 1, files.length);
@@ -3266,7 +3344,6 @@ const PrintModule = {
                     collate:     file.collate,
                 });
 
-                if (!isLast) await new Promise(r => setTimeout(r, 500));
             } catch (err) {
                 showToast(I18nModule.t('toast.printFileError')(file.name, err.message), 'error');
                 if (btn) { btn.disabled = false; btn.textContent = originalText; btn.style.opacity = ''; }

@@ -246,6 +246,7 @@ public static class BackendStartup
                 // BUG-8-3 fix: clamp copies to [1, 100] — no upper bound check existed,
                 // allowing accidental or malicious requests to loop thousands of times.
                 int copies = Math.Clamp(request.Copies, 1, 100);
+                jobState.Copies = copies;
 
                 // BUG-6 fix: only store the job in session if it's a manual duplex waiting for flip.
                 // Completed non-manual jobs don't need to be stored and would accumulate in memory.
@@ -254,8 +255,6 @@ public static class BackendStartup
                     for (int copy = 0; copy < copies; copy++)
                     {
                         printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
-                        if (copies > 1 && copy < copies - 1)
-                            await Task.Delay(2000);
                     }
                     // BUG-8-2 fix: clean up intermediate temp files now that print is done
                     FileSessionService.DeleteIntermediateFiles(jobState);
@@ -263,20 +262,11 @@ public static class BackendStartup
                 }
                 else
                 {
-                    // BE-26-5: store job in session BEFORE the Phase 1 loop so that if an
-                    // exception occurs on copy 2+, the partial job (already printed fronts)
-                    // is still registered and the user can still trigger Phase 2 via Continue.
-                    jobState.Copies = copies;
+                    // Store before Phase 1 so a partially-sent front pass can still be recovered.
                     sessions.AddJob(jobState.JobId, jobState);
 
-                    // BE-25-3: Phase 1 must also loop copies times (mirrors the Phase 2 loop added in BE-24-8).
-                    // Without this, a user requesting N copies gets only 1 set of fronts but N sets of backs.
-                    for (int copy = 0; copy < copies; copy++)
-                    {
-                        printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
-                        if (copies > 1 && copy < copies - 1)
-                            await Task.Delay(2000);
-                    }
+                    // ExecutePrintJob expands manual-duplex copies into a single continuous side pass.
+                    printAlgorithm.ExecutePrintJob(jobState, firstPhase: true);
                 }
 
                 return Results.Ok(new PrintResponse
@@ -341,15 +331,8 @@ public static class BackendStartup
                     return Results.BadRequest(new PrintResponse { Success = false, Message = "Job is not waiting for flip." });
                 }
 
-                // BE-24-8: execute Phase 2 once per copy (mirrors the Phase 1 loop in /api/print).
-                // jobState.Copies was saved when Phase 1 was started; without this loop the user
-                // gets N copies of the fronts but only 1 copy of the backs.
-                for (int copy = 0; copy < jobState.Copies; copy++)
-                {
-                    printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
-                    if (jobState.Copies > 1 && copy < jobState.Copies - 1)
-                        await Task.Delay(2000); // BE-29-4 fix: async-friendly delay; Thread.Sleep blocked thread pool
-                }
+                // ExecutePrintJob expands manual-duplex copies into a single continuous back pass.
+                printAlgorithm.ExecutePrintJob(jobState, firstPhase: false);
                 jobState.WaitingForFlip = false;
                 jobState.BackPassSent = true;
                 sessions.AddJob(jobState.JobId, jobState);
