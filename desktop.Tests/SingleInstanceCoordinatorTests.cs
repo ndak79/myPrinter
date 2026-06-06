@@ -11,17 +11,22 @@ public class SingleInstanceCoordinatorTests
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         var program = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Program.cs"));
 
+        program.Should().Contain("var startHidden = args.Contains(WindowsStartupService.StartHiddenArgument, StringComparer.OrdinalIgnoreCase);");
         program.Should().Contain("using var singleInstance = SingleInstanceCoordinator.Create();");
         program.Should().Contain("if (!singleInstance.IsPrimary)");
         program.Should().Contain("singleInstance.SignalExistingInstance();");
+        program.Should().Contain("WindowsStartupService.Default.EnsureEnabledByDefault();");
         program.Should().Contain("_ = mainForm.Handle;");
         program.Should().Contain("singleInstance.StartActivationListener");
         program.Should().Contain("ShowFromExternalActivation");
         program.Should().Contain("catch (InvalidOperationException)");
         program.Should().Contain("catch (ObjectDisposedException)");
+        program.Should().Contain("using var mainForm = new MainForm(startHidden);");
 
         program.IndexOf("if (!singleInstance.IsPrimary)", StringComparison.Ordinal)
             .Should().BeLessThan(program.IndexOf("LoadActivationConfig()", StringComparison.Ordinal));
+        program.IndexOf("WindowsStartupService.Default.EnsureEnabledByDefault();", StringComparison.Ordinal)
+            .Should().BeLessThan(program.IndexOf("using var mainForm = new MainForm(startHidden);", StringComparison.Ordinal));
         program.IndexOf("_ = mainForm.Handle;", StringComparison.Ordinal)
             .Should().BeLessThan(program.IndexOf("singleInstance.StartActivationListener", StringComparison.Ordinal));
     }

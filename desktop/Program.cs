@@ -25,6 +25,8 @@ static class Program
             return;
         }
 
+        var startHidden = args.Contains(WindowsStartupService.StartHiddenArgument, StringComparer.OrdinalIgnoreCase);
+
         ApplicationConfiguration.Initialize();
 
         using var singleInstance = SingleInstanceCoordinator.Create();
@@ -62,6 +64,8 @@ static class Program
             return;
         }
 
+        WindowsStartupService.Default.EnsureEnabledByDefault();
+
         BackendPort = FindFreePort(8787);
 
         var backendThread = new Thread(() =>
@@ -95,7 +99,7 @@ static class Program
             return;
         }
 
-        using var mainForm = new MainForm();
+        using var mainForm = new MainForm(startHidden);
         _ = mainForm.Handle;
         using var activationListener = singleInstance.StartActivationListener(() =>
         {

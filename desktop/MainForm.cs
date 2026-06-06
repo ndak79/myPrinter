@@ -17,11 +17,22 @@ public partial class MainForm : Form
     private Icon? _trayNotifyIcon;
     private RuntimeLicenseMonitor? _runtimeLicenseMonitor;
     private ActivationForm? _runtimeActivationForm;
+    private readonly WindowsStartupService _windowsStartupService;
+    private readonly bool _startHidden;
+    private bool _suppressInitialShow;
     private int _runtimeActivationInProgress;
     private bool _reallyExit = false;
 
     public MainForm()
+        : this(startHidden: false)
     {
+    }
+
+    public MainForm(bool startHidden)
+    {
+        _windowsStartupService = WindowsStartupService.Default;
+        _startHidden = startHidden;
+        _suppressInitialShow = startHidden;
         InitializeComponent();
         SetupWindow();
         SetupTray();
@@ -61,6 +72,16 @@ public partial class MainForm : Form
             CreateOwnedMenuBitmap(Color.FromArgb(100, 116, 139), "-"),
             (_, _) => HideWindow()));
         menu.Items.Add(new ToolStripSeparator());
+
+        var startupItem = new ToolStripMenuItem(
+            "Start with Windows",
+            CreateOwnedMenuBitmap(Color.FromArgb(59, 130, 246), "S"));
+        startupItem.CheckOnClick = true;
+        startupItem.Checked = _windowsStartupService.IsEnabled();
+        startupItem.Click += (_, _) => ToggleWindowsStartup(startupItem);
+        menu.Items.Add(startupItem);
+        menu.Items.Add(new ToolStripSeparator());
+
         menu.Items.Add(new ToolStripMenuItem(
             "Exit",
             CreateOwnedMenuBitmap(Color.FromArgb(239, 68, 68), "x"),
@@ -88,9 +109,26 @@ public partial class MainForm : Form
 
         _trayIcon.DoubleClick += (_, _) => ShowWindow();
 
-        _trayIcon.BalloonTipTitle = "Smart Printer";
-        _trayIcon.BalloonTipText  = "App is running. Click the icon to open.";
-        _trayIcon.ShowBalloonTip(2000);
+        if (!_startHidden)
+        {
+            _trayIcon.BalloonTipTitle = "Smart Printer";
+            _trayIcon.BalloonTipText  = "App is running. Click the icon to open.";
+            _trayIcon.ShowBalloonTip(2000);
+        }
+    }
+
+    private void ToggleWindowsStartup(ToolStripMenuItem startupItem)
+    {
+        var result = _windowsStartupService.SetEnabledByUser(startupItem.Checked);
+        if (result.Succeeded)
+            return;
+
+        startupItem.Checked = !startupItem.Checked;
+        MessageBox.Show(
+            result.Error ?? "Could not update Smart Printer auto-start.",
+            "Smart Printer startup setting",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private Bitmap CreateOwnedMenuBitmap(Color color, string symbol)
@@ -242,6 +280,19 @@ public partial class MainForm : Form
         }
 
         base.OnFormClosing(e);
+    }
+
+    protected override void SetVisibleCore(bool value)
+    {
+        if (_suppressInitialShow && value)
+        {
+            _suppressInitialShow = false;
+            ShowInTaskbar = false;
+            base.SetVisibleCore(false);
+            return;
+        }
+
+        base.SetVisibleCore(value);
     }
 
     // ── Tray icon: modern 3D printer in white/green ────────────

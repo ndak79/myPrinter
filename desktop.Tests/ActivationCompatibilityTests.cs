@@ -588,7 +588,7 @@ public class ActivationCompatibilityTests
         designer.Should().Contain("foreach (var image in _ownedTrayImages)");
         designer.Should().Contain("_windowIcon?.Dispose();");
         designer.Should().Contain("_trayNotifyIcon?.Dispose();");
-        program.Should().Contain("using var mainForm = new MainForm();");
+        program.Should().Contain("using var mainForm = new MainForm(startHidden);");
         program.Should().Contain("Application.Run(mainForm);");
     }
 
@@ -602,6 +602,30 @@ public class ActivationCompatibilityTests
         mainForm.Should().Contain("DefaultDllImportSearchPaths(DllImportSearchPath.System32)");
         mainForm.Should().Contain("DestroyIcon(nativeIconHandle)");
         mainForm.Should().Contain("return (Icon)icon.Clone();");
+    }
+
+    [Fact]
+    public void Tray_menu_exposes_windows_startup_toggle()
+    {
+        var repoRoot = GetRepoRoot();
+        var mainForm = File.ReadAllText(Path.Combine(repoRoot, "desktop", "MainForm.cs"));
+
+        mainForm.Should().Contain("\"Start with Windows\"");
+        mainForm.Should().Contain("startupItem.CheckOnClick = true;");
+        mainForm.Should().Contain("_windowsStartupService.IsEnabled()");
+        mainForm.Should().Contain("_windowsStartupService.SetEnabledByUser(startupItem.Checked)");
+        mainForm.Should().Contain("startupItem.Checked = !startupItem.Checked;");
+    }
+
+    [Fact]
+    public void Hidden_startup_suppresses_initial_tray_balloon()
+    {
+        var repoRoot = GetRepoRoot();
+        var mainForm = File.ReadAllText(Path.Combine(repoRoot, "desktop", "MainForm.cs"));
+
+        mainForm.Should().Contain("private readonly bool _startHidden;");
+        mainForm.Should().Contain("if (!_startHidden)");
+        mainForm.Should().Contain("_trayIcon.ShowBalloonTip(2000);");
     }
 
     [Fact]
