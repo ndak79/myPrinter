@@ -286,6 +286,41 @@ public class ActivationCompatibilityTests
         GetInt(instance!, "HeartbeatGraceDays").Should().Be(0);
     }
 
+    [Fact]
+    public void Trusted_time_window_only_exempts_signed_no_heartbeat_licenses()
+    {
+        var licenseGuardType = GetActivationType("MyPrinter.Desktop.Activation.LicenseGuard");
+        var method = licenseGuardType.GetMethod(
+            "IsOfflineTrustedTimeWindowExpired",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            [typeof(double), typeof(double), typeof(bool), typeof(bool)]);
+
+        method.Should().NotBeNull(
+            "the seven-day trusted-time window must be a separate policy decision from signed license expiry");
+
+        const double now = 1_700_000_000;
+        var thirtyDaysAgo = now - 30 * 86400.0;
+
+        ((bool)method!.Invoke(null, [now, thirtyDaysAgo, true, false])!).Should().BeFalse(
+            "licenses signed with heartbeat_required=false must remain valid offline until their signed expiry");
+        ((bool)method.Invoke(null, [now, thirtyDaysAgo, true, true])!).Should().BeTrue(
+            "heartbeat-required licenses still need the anti-rollback trusted-time window");
+        ((bool)method.Invoke(null, [now, thirtyDaysAgo, false, false])!).Should().BeTrue(
+            "legacy/local heartbeat policy fields are not signed and must not disable anti-rollback checks");
+    }
+
+    [Fact]
+    public void LicenseGuard_gates_trusted_time_window_by_signed_heartbeat_policy()
+    {
+        var repoRoot = GetRepoRoot();
+        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs"));
+        var verifyBody = ExtractMethodSource(source, "private static bool VerifyToken");
+
+        verifyBody.Should().Contain(
+            "IsOfflineTrustedTimeWindowExpired(now, lastTrusted, hasSignedHeartbeatPolicy, heartbeatRequired)",
+            "a no-heartbeat key must not be invalidated only because trusted time was unavailable for seven days");
+    }
+
     [Theory]
     [InlineData(1_700_000_000, 1_700_000_030, 1_700_000_030)]
     [InlineData(1_700_000_000, 1_700_000_120, 0)]

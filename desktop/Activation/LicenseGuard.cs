@@ -11,6 +11,9 @@ namespace MyPrinter.Desktop.Activation;
 /// </summary>
 public static class LicenseGuard
 {
+    private const int MaxOfflineTrustedTimeWindowDays = 7;
+    private const double SecondsPerDay = 86400.0;
+
     private static string? _serverUrl;
     private static string? _productId;
     private static string? _publicKeysetJson;
@@ -165,8 +168,11 @@ public static class LicenseGuard
         var ntpTime = NtpClient.GetNtpTime();
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var effectiveTime = ntpTime > 0 ? ntpTime : now;
+        var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);
+        // Only compact JWS carries signed heartbeat policy; legacy/local fields stay fail-closed.
+        var hasSignedHeartbeatPolicy = hasCompactToken;
+        var heartbeatRequired = !hasSignedHeartbeatPolicy || token.HeartbeatRequired.GetValueOrDefault(true);
 
-        const int MaxOfflineWindowDays = 7;
         var lastTrusted = token.LastTrustedTime;
         if (ntpTime > 0)
         {
@@ -176,7 +182,7 @@ public static class LicenseGuard
         {
             token.LastTrustedTime = now;
         }
-        else if ((now - lastTrusted) > MaxOfflineWindowDays * 86400.0)
+        else if (IsOfflineTrustedTimeWindowExpired(now, lastTrusted, hasSignedHeartbeatPolicy, heartbeatRequired))
         {
             return false;
         }
@@ -194,8 +200,7 @@ public static class LicenseGuard
 
         token.LastSeen = Math.Max(effectiveTime, lastSeen);
 
-        var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);
-        if (hasCompactToken && token.HeartbeatRequired.GetValueOrDefault(true))
+        if (hasCompactToken && heartbeatRequired)
         {
             var hb = HeartbeatSync(fp, token.Token);
             if (hb != null)
@@ -236,6 +241,14 @@ public static class LicenseGuard
 
         return true;
     }
+
+    private static bool IsOfflineTrustedTimeWindowExpired(
+        double now,
+        double lastTrusted,
+        bool hasSignedHeartbeatPolicy,
+        bool heartbeatRequired)
+        => (!hasSignedHeartbeatPolicy || heartbeatRequired)
+           && (now - lastTrusted) > MaxOfflineTrustedTimeWindowDays * SecondsPerDay;
 
     private static LicenseToken? ParseOfflineLicenseContent(string content, string fingerprint, string productId)
     {
