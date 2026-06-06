@@ -16,9 +16,17 @@ namespace PrinterApp;
 [SupportedOSPlatform("windows")]
 public static class BackendStartup
 {
+    private const long MaxUploadFileBytes = 100L * 1024 * 1024;
+    private const long MultipartRequestOverheadBytes = 1024 * 1024;
+
     public static WebApplication Build(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+
+        builder.WebHost.ConfigureKestrel(options =>
+        {
+            options.Limits.MaxRequestBodySize = MaxUploadFileBytes + MultipartRequestOverheadBytes;
+        });
 
         // Configure JSON serialization: enums as strings so "CW90", "CCW90", etc.
         // in PageRotations are correctly deserialized into RotationDirection enum values.
@@ -41,7 +49,7 @@ public static class BackendStartup
         // Configure file upload limits
         builder.Services.Configure<FormOptions>(options =>
         {
-            options.MultipartBodyLengthLimit = 104857600; // 100 MB
+            options.MultipartBodyLengthLimit = MaxUploadFileBytes;
         });
 
         // Register services

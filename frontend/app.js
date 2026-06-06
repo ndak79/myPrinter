@@ -1344,14 +1344,14 @@ const UploadModule = {
         if (uploadCard) clearCardError(uploadCard);
 
         let convertingToast = null;
+        const wrap = document.getElementById('upload-progress-wrap');
+        const bar  = document.getElementById('upload-progress-bar');
 
         try {
             const formData = new FormData();
             formData.append('file', file);
 
             // Show progress bar
-            const wrap = document.getElementById('upload-progress-wrap');
-            const bar  = document.getElementById('upload-progress-bar');
             if (wrap) wrap.classList.remove('hidden');
             if (bar) { bar.classList.add('uploading'); bar.style.width = '0%'; }
 
@@ -1367,15 +1367,17 @@ const UploadModule = {
                     if (xhr.status >= 200 && xhr.status < 300) {
                         resolve(JSON.parse(xhr.responseText));
                     } else {
-                        reject(new Error(`Upload failed: ${xhr.status}`));
+                        let message = `Upload failed: ${xhr.status}`;
+                        try {
+                            const parsed = JSON.parse(xhr.responseText);
+                            message = parsed.message || parsed.detail || message;
+                        } catch (_) {}
+                        reject(new Error(message));
                     }
                 };
                 xhr.onerror = () => reject(new Error('Network error during upload'));
                 xhr.send(formData);
             });
-
-            if (wrap) wrap.classList.add('hidden');
-            if (bar) { bar.classList.remove('uploading'); bar.style.width = '0%'; }
 
             if (!result.success) { showToast(I18nModule.t('toast.uploadError')(result.message), 'error'); return; }
 
@@ -1439,6 +1441,9 @@ const UploadModule = {
             const card = document.getElementById('upload-area')?.closest('.card');
             showCardError(card, `Lỗi khi tải file: ${err.message}`, () => document.getElementById('file-input')?.click());
             showToast(I18nModule.t('toast.fileLoadError')(err.message), 'error');
+        } finally {
+            if (wrap) wrap.classList.add('hidden');
+            if (bar) { bar.classList.remove('uploading'); bar.style.width = '0%'; }
         }
     },
 

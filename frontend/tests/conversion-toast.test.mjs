@@ -102,9 +102,14 @@ const convertIndex = uploadBlock.indexOf("await fetch(`${API_BASE}/convert?fileI
 const previewLoadIndex = uploadBlock.indexOf('await PreviewModule.renderEntry(entry)');
 const previewPanelIndex = uploadBlock.indexOf('PreviewPanelModule.render(AppState.activeFile)');
 const dismissIndex = uploadBlock.lastIndexOf('convertingToast?.dismiss()');
+const finallyIndex = uploadBlock.indexOf('finally {');
+const finallyBlock = finallyIndex >= 0 ? uploadBlock.slice(finallyIndex) : '';
 
 assert.ok(showIndex >= 0, 'DOC/DOCX conversion must use a persistent toast handle');
 assert.ok(convertIndex > showIndex, 'conversion request must happen after showing the persistent toast');
 assert.ok(previewLoadIndex > convertIndex, 'PDF preview document must load before dismissing conversion toast');
 assert.ok(previewPanelIndex > previewLoadIndex, 'visible preview panel must render before dismissing conversion toast');
 assert.ok(dismissIndex > previewPanelIndex, 'conversion toast must dismiss only after preview is available on screen');
+assert.ok(finallyIndex > showIndex, 'upload progress cleanup must run from a finally block');
+assert.match(finallyBlock, /wrap\)\s*wrap\.classList\.add\('hidden'\)/);
+assert.match(finallyBlock, /bar\)\s*\{\s*bar\.classList\.remove\('uploading'\);\s*bar\.style\.width = '0%';\s*\}/);
