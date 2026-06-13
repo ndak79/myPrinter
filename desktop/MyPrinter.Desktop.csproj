@@ -33,6 +33,9 @@
       <ExcludeAssets>none</ExcludeAssets>
     </PackageReference>
 
+    <!-- X25519 + ChaCha20-Poly1305 activation transport over HTTP -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+
     <!-- Ed25519 signature verification for license tokens -->
     <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
 

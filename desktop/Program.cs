@@ -13,6 +13,9 @@ namespace MyPrinter.Desktop;
 
 static class Program
 {
+    private const string ExpectedTransportKeyId = "actenc_prod_c094fac09065_v1";
+    private const string ExpectedTransportPublicKey = "OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM";
+
     public static int BackendPort { get; private set; } = 8787;
     public static WebApplication? BackendApp { get; private set; }
 
@@ -38,9 +41,9 @@ static class Program
 
         try
         {
-            var (serverUrl, productId, allowInsecure) = LoadActivationConfig();
+            var (serverUrl, productId, allowInsecure, transportKeyId, transportPublicKey) = LoadActivationConfig();
             var publicKeysetJson = LoadPublicKeysetJson(productId);
-            LicenseGuard.Configure(serverUrl, productId, publicKeysetJson, allowInsecure);
+            LicenseGuard.Configure(serverUrl, productId, publicKeysetJson, allowInsecure, transportKeyId, transportPublicKey);
 
             if (!LicenseGuard.IsActivated())
             {
@@ -179,7 +182,12 @@ static class Program
         return File.ReadAllText(path);
     }
 
-    private static (string ServerUrl, string ProductId, bool AllowInsecureHttp) LoadActivationConfig()
+    private static (
+        string ServerUrl,
+        string ProductId,
+        bool AllowInsecureHttp,
+        string? TransportKeyId,
+        string? TransportPublicKey) LoadActivationConfig()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "smartprinter.appsettings.json");
         if (!File.Exists(path))
@@ -205,6 +213,39 @@ static class Program
                 "Set it to the registered product ID, for example 'prod_smartprinter'.");
 
         var allowInsecure = act.TryGetProperty("AllowInsecureHttp", out var a) && a.GetBoolean();
-        return (url, productId, allowInsecure);
+        var transportKeyId = act.TryGetProperty("TransportKeyId", out var tk) ? tk.GetString()?.Trim() : null;
+        var transportPublicKey = act.TryGetProperty("TransportPublicKey", out var tp) ? tp.GetString()?.Trim() : null;
+
+        ValidateTransportConfig(url, allowInsecure, transportKeyId, transportPublicKey);
+        return (url, productId, allowInsecure, transportKeyId, transportPublicKey);
+    }
+
+    private static void ValidateTransportConfig(
+        string serverUrl,
+        bool allowInsecureHttp,
+        string? transportKeyId,
+        string? transportPublicKey)
+    {
+        var uri = new Uri(serverUrl, UriKind.Absolute);
+        var isLocal = uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || uri.Host.Equals("::1", StringComparison.OrdinalIgnoreCase);
+        var requiresTransport = uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && !isLocal
+            && allowInsecureHttp;
+
+        var hasKeyId = !string.IsNullOrWhiteSpace(transportKeyId);
+        var hasPublicKey = !string.IsNullOrWhiteSpace(transportPublicKey);
+        if (requiresTransport && (!hasKeyId || !hasPublicKey))
+            throw new InvalidOperationException("Non-local HTTP activation requires Activation.TransportKeyId and Activation.TransportPublicKey.");
+        if (hasKeyId != hasPublicKey)
+            throw new InvalidOperationException("Activation.TransportKeyId and Activation.TransportPublicKey must be configured together.");
+        if (!hasKeyId)
+            return;
+
+        if (!string.Equals(transportKeyId, ExpectedTransportKeyId, StringComparison.Ordinal))
+            throw new InvalidOperationException("Activation.TransportKeyId does not match the pinned ACTIVSYS transport key.");
+        if (!string.Equals(transportPublicKey, ExpectedTransportPublicKey, StringComparison.Ordinal))
+            throw new InvalidOperationException("Activation.TransportPublicKey does not match the pinned ACTIVSYS transport key.");
     }
 }

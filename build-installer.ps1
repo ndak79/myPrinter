@@ -2,6 +2,8 @@ param(
     [string]$Version = "",
     [string]$ServerUrl = "",
     [string]$ProductId = "prod_smartprinter",
+    [string]$TransportKeyId = "actenc_prod_c094fac09065_v1",
+    [string]$TransportPublicKey = "OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM",
     [switch]$AllowInsecureHttp,
     [switch]$SkipTests
 )
@@ -168,6 +170,8 @@ if ($ServerUrl) {
             ServerUrl = $ServerUrl
             ProductId = $ProductId
             AllowInsecureHttp = $AllowInsecureHttp.IsPresent
+            TransportKeyId = $TransportKeyId
+            TransportPublicKey = $TransportPublicKey
         }
     } | ConvertTo-Json -Depth 3
 
@@ -189,6 +193,8 @@ if (-not $runtimeConfig.Activation) {
 $resolvedServerUrl = [string]$runtimeConfig.Activation.ServerUrl
 $resolvedProductId = [string]$runtimeConfig.Activation.ProductId
 $resolvedAllowInsecure = [bool]$runtimeConfig.Activation.AllowInsecureHttp
+$resolvedTransportKeyId = [string]$runtimeConfig.Activation.TransportKeyId
+$resolvedTransportPublicKey = [string]$runtimeConfig.Activation.TransportPublicKey
 
 if ([string]::IsNullOrWhiteSpace($resolvedServerUrl) -or $resolvedServerUrl -match 'your-activation-server') {
     throw "Installer config still contains placeholder Activation.ServerUrl. Pass -ServerUrl with the real activation base URL."
@@ -207,6 +213,19 @@ if (($resolvedServerUrl -notmatch '^https://') -and -not $resolvedAllowInsecure)
 }
 
 if (($resolvedServerUrl -notmatch '^https://') -and $resolvedAllowInsecure) {
+    if ([string]::IsNullOrWhiteSpace($resolvedTransportKeyId) -or [string]::IsNullOrWhiteSpace($resolvedTransportPublicKey)) {
+        throw "Non-HTTPS Activation.ServerUrl requires Activation.TransportKeyId and Activation.TransportPublicKey."
+    }
+    if ($resolvedTransportKeyId -ne $TransportKeyId) {
+        throw "Published Activation.TransportKeyId '$resolvedTransportKeyId' does not match requested transport key '$TransportKeyId'."
+    }
+    if ($resolvedTransportPublicKey -ne $TransportPublicKey) {
+        throw "Published Activation.TransportPublicKey does not match requested transport public key."
+    }
+    $rawTransportPublicKey = Convert-Base64UrlToBytes $resolvedTransportPublicKey
+    if ($rawTransportPublicKey.Length -ne 32) {
+        throw "Published Activation.TransportPublicKey must decode to a 32-byte X25519 public key."
+    }
     Write-Warning "Building installer with insecure activation transport: $resolvedServerUrl"
 }
 

@@ -7,11 +7,24 @@ using FluentAssertions;
 using MyPrinter.Desktop;
 using MyPrinter.Desktop.Activation;
 using NSec.Cryptography;
+using Org.BouncyCastle.Crypto.Agreement;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Crypto.Generators;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace desktop.Tests;
 
 public class ActivationCompatibilityTests
 {
+    private const string TestTransportKeyId = "test_transport_v1";
+    private const string TestTransportPrivateKey = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA";
+    private const string TestTransportPublicKey = "B6N8vBQgk8i3VdwbEOhstCY3StFqqFPtC9_AsrhtHHw";
+    private const string TransportRequestType = "aiwa-activation-envelope-v1";
+    private const string TransportResponseType = "aiwa-activation-response-v1";
+    private const string TransportAlgorithm = "X25519-HKDF-SHA256-CHACHA20-POLY1305";
+    private const string TransportDomain = "AIWA-ACTIVATION-ENVELOPE-V1";
+
     [Fact]
     public async Task HeartbeatAsync_sends_product_id_and_license_token_and_accepts_v7_status_response()
     {
@@ -88,6 +101,105 @@ public class ActivationCompatibilityTests
         GetString(result, "Error").Should().BeNull();
         GetString(result, "Token").Should().Be("header.payload.signature");
         GetNullableInt(result, "HeartbeatGraceDays").Should().Be(7);
+    }
+
+    [Fact]
+    public async Task ActivateAsync_encrypts_activation_key_over_http_when_transport_key_is_configured()
+    {
+        using var server = new TestJsonServer(async request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            var body = await reader.ReadToEndAsync();
+            body.Should().NotContain("ABCD-EFGH-IJKL-MNOP");
+            body.Should().NotContain(new string('c', 64));
+            body.Should().NotContain("activation_key");
+
+            var decrypted = DecryptClientEnvelope(body, "/activate", "prod_smartprinter", out var responseContext);
+            decrypted.GetProperty("endpoint").GetString().Should().Be("/activate");
+            decrypted.GetProperty("product_id").GetString().Should().Be("prod_smartprinter");
+            decrypted.GetProperty("activation_key").GetString().Should().Be("ABCD-EFGH-IJKL-MNOP");
+            decrypted.GetProperty("fingerprint").GetString().Should().Be(new string('c', 64));
+
+            return JsonResponse.OkRaw(EncryptServerEnvelope(responseContext, new
+            {
+                status = "activated",
+                license = "header.payload.signature",
+                expires_at = 1893456000,
+                heartbeat_required = true,
+                heartbeat_grace_days = 7,
+            }));
+        });
+
+        var activationClient = GetActivationType("MyPrinter.Desktop.Activation.ActivationClient");
+        ConfigureTransportEncryption(activationClient, TestTransportKeyId, TestTransportPublicKey);
+
+        try
+        {
+            var method = activationClient.GetMethod(
+                "ActivateAsync",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                [typeof(string), typeof(string), typeof(string), typeof(string)]);
+
+            var task = (Task)method!.Invoke(null, [server.BaseUrl, "ABCD-EFGH-IJKL-MNOP", new string('c', 64), "prod_smartprinter"])!;
+            await task;
+
+            var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+            GetString(result, "Error").Should().BeNull();
+            GetString(result, "Token").Should().Be("header.payload.signature");
+            GetNullableInt(result, "HeartbeatGraceDays").Should().Be(7);
+        }
+        finally
+        {
+            ConfigureTransportEncryption(activationClient, null, null);
+        }
+    }
+
+    [Fact]
+    public async Task HeartbeatAsync_encrypts_license_token_over_http_when_transport_key_is_configured()
+    {
+        using var server = new TestJsonServer(async request =>
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+            var body = await reader.ReadToEndAsync();
+            body.Should().NotContain("header.payload.signature");
+            body.Should().NotContain(new string('d', 64));
+            body.Should().NotContain("license_token");
+
+            var decrypted = DecryptClientEnvelope(body, "/heartbeat", "prod_smartprinter", out var responseContext);
+            decrypted.GetProperty("endpoint").GetString().Should().Be("/heartbeat");
+            decrypted.GetProperty("product_id").GetString().Should().Be("prod_smartprinter");
+            decrypted.GetProperty("fingerprint").GetString().Should().Be(new string('d', 64));
+            decrypted.GetProperty("license_token").GetString().Should().Be("header.payload.signature");
+
+            return JsonResponse.OkRaw(EncryptServerEnvelope(responseContext, new
+            {
+                status = "ok",
+                heartbeat_grace_days = 7,
+            }));
+        });
+
+        var activationClient = GetActivationType("MyPrinter.Desktop.Activation.ActivationClient");
+        ConfigureTransportEncryption(activationClient, TestTransportKeyId, TestTransportPublicKey);
+
+        try
+        {
+            var method = activationClient.GetMethod(
+                "HeartbeatAsync",
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+                [typeof(string), typeof(string), typeof(string), typeof(string)]);
+
+            var task = (Task)method!.Invoke(null, [server.BaseUrl, new string('d', 64), "prod_smartprinter", "header.payload.signature"])!;
+            await task;
+
+            var result = task.GetType().GetProperty("Result")!.GetValue(task);
+            result.Should().NotBeNull();
+            GetBool(result!, "Valid").Should().BeTrue();
+            GetInt(result!, "HeartbeatGraceDays").Should().Be(7);
+        }
+        finally
+        {
+            ConfigureTransportEncryption(activationClient, null, null);
+        }
     }
 
     [Fact]
@@ -508,7 +620,9 @@ public class ActivationCompatibilityTests
           "Activation": {
             "ServerUrl": "http://103.82.24.37",
             "ProductId": "prod_smartprinter",
-            "AllowInsecureHttp": true
+            "AllowInsecureHttp": true,
+            "TransportKeyId": "actenc_prod_c094fac09065_v1",
+            "TransportPublicKey": "OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM"
           }
         }
         """);
@@ -526,10 +640,14 @@ public class ActivationCompatibilityTests
             var serverUrl = (string?)result!.GetType().GetField("Item1", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
             var productId = (string?)result.GetType().GetField("Item2", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
             var allowInsecureHttp = (bool?)result.GetType().GetField("Item3", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
+            var transportKeyId = (string?)result.GetType().GetField("Item4", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
+            var transportPublicKey = (string?)result.GetType().GetField("Item5", BindingFlags.Instance | BindingFlags.Public)?.GetValue(result);
 
             serverUrl.Should().Be("http://103.82.24.37");
             productId.Should().Be("prod_smartprinter");
             allowInsecureHttp.Should().BeTrue();
+            transportKeyId.Should().Be("actenc_prod_c094fac09065_v1");
+            transportPublicKey.Should().Be("OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM");
         }
         finally
         {
@@ -552,6 +670,8 @@ public class ActivationCompatibilityTests
         activation.GetProperty("ProductId").GetString().Should().Be("prod_smartprinter");
         activation.GetProperty("AllowInsecureHttp").GetBoolean().Should().BeTrue(
             "the registered activation server currently uses HTTP, so the override must be explicit");
+        activation.GetProperty("TransportKeyId").GetString().Should().Be("actenc_prod_c094fac09065_v1");
+        activation.GetProperty("TransportPublicKey").GetString().Should().Be("OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM");
     }
 
     [Fact]
@@ -601,6 +721,8 @@ public class ActivationCompatibilityTests
         script.Should().Contain("Installer config still contains placeholder Activation.ServerUrl");
         script.Should().Contain("Pass -ServerUrl with the real activation base URL.");
         script.Should().Contain("Non-HTTPS Activation.ServerUrl requires AllowInsecureHttp=true.");
+        script.Should().Contain("Non-HTTPS Activation.ServerUrl requires Activation.TransportKeyId and Activation.TransportPublicKey.");
+        script.Should().Contain("Published Activation.TransportPublicKey must decode to a 32-byte X25519 public key.");
         script.Should().Contain("Run-Tests");
         script.Should().Contain("Get-DotnetCli");
         script.Should().Contain("Validate-Keyset");
@@ -623,6 +745,8 @@ public class ActivationCompatibilityTests
         script.Should().NotContain("-ExecutionPolicy Bypass");
         script.Should().Contain("-ServerUrl \"http://103.82.24.37\"");
         script.Should().Contain("-ProductId \"prod_smartprinter\"");
+        script.Should().Contain("-TransportKeyId \"actenc_prod_c094fac09065_v1\"");
+        script.Should().Contain("-TransportPublicKey \"OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM\"");
         script.Should().Contain("-AllowInsecureHttp");
     }
 
@@ -851,6 +975,166 @@ public class ActivationCompatibilityTests
     private static string Base64UrlEncode(byte[] bytes)
         => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
+    private static byte[] Base64UrlDecode(string value)
+    {
+        value.Should().NotContain("=");
+        var padded = value.Replace('-', '+').Replace('_', '/');
+        var padding = padded.Length % 4;
+        padding.Should().NotBe(1);
+        if (padding != 0)
+            padded += new string('=', 4 - padding);
+        return Convert.FromBase64String(padded);
+    }
+
+    private static void ConfigureTransportEncryption(Type activationClient, string? keyId, string? publicKey)
+    {
+        var method = activationClient.GetMethod(
+            "ConfigureTransportEncryption",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
+            [typeof(string), typeof(string)]);
+
+        method.Should().NotBeNull("client must expose transport encryption configuration for HTTP activation");
+        method!.Invoke(null, [keyId, publicKey]);
+    }
+
+    private static JsonElement DecryptClientEnvelope(
+        string body,
+        string expectedEndpoint,
+        string expectedProductId,
+        out TransportResponseContext responseContext)
+    {
+        using var envelopeDoc = JsonDocument.Parse(body);
+        var envelope = envelopeDoc.RootElement;
+        envelope.GetProperty("type").GetString().Should().Be(TransportRequestType);
+        envelope.GetProperty("alg").GetString().Should().Be(TransportAlgorithm);
+        envelope.GetProperty("kid").GetString().Should().Be(TestTransportKeyId);
+        envelope.GetProperty("product_id").GetString().Should().Be(expectedProductId);
+
+        var keyId = envelope.GetProperty("kid").GetString()!;
+        var productId = envelope.GetProperty("product_id").GetString()!;
+        var ts = envelope.GetProperty("ts").GetInt64();
+        var nonceText = envelope.GetProperty("nonce").GetString()!;
+        var nonce = Base64UrlDecode(nonceText);
+        nonce.Should().HaveCount(12);
+
+        var clientPublic = Base64UrlDecode(envelope.GetProperty("epk").GetString()!);
+        clientPublic.Should().HaveCount(32);
+
+        var serverPrivate = new X25519PrivateKeyParameters(Base64UrlDecode(TestTransportPrivateKey));
+        var serverPublic = serverPrivate.GeneratePublicKey().GetEncoded();
+        var shared = new byte[32];
+        serverPrivate.GenerateSecret(new X25519PublicKeyParameters(clientPublic), shared, 0);
+        var keys = DeriveTransportKeys(shared, keyId, clientPublic, serverPublic);
+
+        var plaintext = Open(
+            keys.RequestKey,
+            nonce,
+            BuildTransportAad("request", expectedEndpoint, keyId, productId, ts, nonceText),
+            Base64UrlDecode(envelope.GetProperty("ct").GetString()!));
+
+        using var payloadDoc = JsonDocument.Parse(plaintext);
+        var payload = payloadDoc.RootElement.Clone();
+        payload.GetProperty("product_id").GetString().Should().Be(productId);
+        payload.GetProperty("ts").GetInt64().Should().Be(ts);
+        payload.GetProperty("nonce").GetString().Should().Be(nonceText);
+
+        responseContext = new TransportResponseContext(
+            expectedEndpoint,
+            keyId,
+            productId,
+            ts,
+            keys.ResponseKey);
+        return payload;
+    }
+
+    private static string EncryptServerEnvelope(TransportResponseContext context, object payload)
+    {
+        var nonce = RandomNumberGenerator.GetBytes(12);
+        var nonceText = Base64UrlEncode(nonce);
+        var plaintext = JsonSerializer.SerializeToUtf8Bytes(payload);
+        var ciphertext = Seal(
+            context.ResponseKey,
+            nonce,
+            BuildTransportAad("response", context.Endpoint, context.KeyId, context.ProductId, context.Timestamp, nonceText),
+            plaintext);
+
+        return JsonSerializer.Serialize(new
+        {
+            type = TransportResponseType,
+            alg = TransportAlgorithm,
+            kid = context.KeyId,
+            nonce = nonceText,
+            ct = Base64UrlEncode(ciphertext),
+        });
+    }
+
+    private static TransportKeys DeriveTransportKeys(
+        byte[] sharedSecret,
+        string keyId,
+        byte[] clientPublic,
+        byte[] serverPublic)
+    {
+        var infoPrefix = Encoding.ASCII.GetBytes($"AIWA transport {keyId}\n");
+        var info = new byte[infoPrefix.Length + clientPublic.Length + 1 + serverPublic.Length];
+        Buffer.BlockCopy(infoPrefix, 0, info, 0, infoPrefix.Length);
+        Buffer.BlockCopy(clientPublic, 0, info, infoPrefix.Length, clientPublic.Length);
+        info[infoPrefix.Length + clientPublic.Length] = (byte)'\n';
+        Buffer.BlockCopy(serverPublic, 0, info, infoPrefix.Length + clientPublic.Length + 1, serverPublic.Length);
+
+        var hkdf = new HkdfBytesGenerator(new Sha256Digest());
+        hkdf.Init(new HkdfParameters(sharedSecret, Encoding.ASCII.GetBytes(TransportDomain), info));
+        var okm = new byte[64];
+        hkdf.GenerateBytes(okm, 0, okm.Length);
+
+        var requestKey = new byte[32];
+        var responseKey = new byte[32];
+        Buffer.BlockCopy(okm, 0, requestKey, 0, 32);
+        Buffer.BlockCopy(okm, 32, responseKey, 0, 32);
+        return new TransportKeys(requestKey, responseKey);
+    }
+
+    private static byte[] BuildTransportAad(
+        string direction,
+        string endpoint,
+        string keyId,
+        string productId,
+        long ts,
+        string nonce)
+        => Encoding.UTF8.GetBytes($"{TransportDomain}\n{direction}\n{endpoint}\n{keyId}\n{productId}\n{ts}\n{nonce}");
+
+    private static byte[] Seal(byte[] key, byte[] nonce, byte[] aad, byte[] plaintext)
+    {
+        var cipher = new Org.BouncyCastle.Crypto.Modes.ChaCha20Poly1305();
+        cipher.Init(true, new AeadParameters(new KeyParameter(key), 128, nonce, aad));
+        var output = new byte[cipher.GetOutputSize(plaintext.Length)];
+        var length = cipher.ProcessBytes(plaintext, 0, plaintext.Length, output, 0);
+        length += cipher.DoFinal(output, length);
+        if (length != output.Length)
+            Array.Resize(ref output, length);
+        return output;
+    }
+
+    private static byte[] Open(byte[] key, byte[] nonce, byte[] aad, byte[] ciphertext)
+    {
+        var cipher = new Org.BouncyCastle.Crypto.Modes.ChaCha20Poly1305();
+        cipher.Init(false, new AeadParameters(new KeyParameter(key), 128, nonce, aad));
+        var output = new byte[cipher.GetOutputSize(ciphertext.Length)];
+        var length = cipher.ProcessBytes(ciphertext, 0, ciphertext.Length, output, 0);
+        length += cipher.DoFinal(output, length);
+        if (length != output.Length)
+            Array.Resize(ref output, length);
+        return output;
+    }
+
+    private sealed record TransportKeys(byte[] RequestKey, byte[] ResponseKey);
+
+    private sealed record TransportResponseContext(
+        string Endpoint,
+        string KeyId,
+        string ProductId,
+        long Timestamp,
+        byte[] ResponseKey);
+
     private static string GetRepoRoot()
         => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 
@@ -951,6 +1235,8 @@ public class ActivationCompatibilityTests
     private sealed record JsonResponse(HttpStatusCode StatusCode, string Body, string? Location = null)
     {
         public static JsonResponse Ok(object body) => new(HttpStatusCode.OK, JsonSerializer.Serialize(body));
+        public static JsonResponse OkRaw(string body) => new(HttpStatusCode.OK, body);
+        public static JsonResponse ErrorRaw(int statusCode, string body) => new((HttpStatusCode)statusCode, body);
         public static JsonResponse Redirect(string location) => new(HttpStatusCode.MovedPermanently, "", location);
     }
 }

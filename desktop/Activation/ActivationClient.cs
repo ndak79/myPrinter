@@ -2,6 +2,7 @@ using System;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
 namespace MyPrinter.Desktop.Activation;
@@ -35,6 +36,18 @@ internal static class ActivationClient
     private static readonly HttpClient _httpHeartbeat = new(new HttpClientHandler
         { AllowAutoRedirect = false, UseProxy = false, CheckCertificateRevocationList = true })
         { Timeout = TimeSpan.FromSeconds(10) };
+    private static readonly object _transportLock = new();
+    private static string? _transportKeyId;
+    private static string? _transportPublicKey;
+
+    public static void ConfigureTransportEncryption(string? keyId, string? publicKey)
+    {
+        lock (_transportLock)
+        {
+            _transportKeyId = string.IsNullOrWhiteSpace(keyId) ? null : keyId.Trim();
+            _transportPublicKey = string.IsNullOrWhiteSpace(publicKey) ? null : publicKey.Trim();
+        }
+    }
 
     /// <summary>
     /// POST /activate — request body: { "activation_key": "...", "fingerprint": "..." }
@@ -45,18 +58,25 @@ internal static class ActivationClient
     {
         try
         {
-            var body = JsonSerializer.Serialize(new
+            var payload = new JsonObject
             {
-                activation_key = activationKey,
-                fingerprint,
-                product_id = productId,
-            });
+                ["activation_key"] = activationKey,
+                ["fingerprint"] = fingerprint,
+                ["product_id"] = productId,
+            };
+            var encryptedRequest = TryEncryptRequest("/activate", productId, payload);
+            var body = encryptedRequest == null
+                ? payload.ToJsonString()
+                : encryptedRequest.Body.ToJsonString();
             using var content = new StringContent(body, Encoding.UTF8, "application/json");
             using var res  = await _httpActivate.PostAsync(
                 $"{serverUrl.TrimEnd('/')}/activate",
                 content);
 
             var json = await res.Content.ReadAsStringAsync();
+            if (encryptedRequest != null && !IsRedirect(res))
+                json = ActivationTransportEnvelope.DecryptResponse(json, encryptedRequest);
+
             if (!res.IsSuccessStatusCode)
             {
                 if (IsRedirect(res))
@@ -113,18 +133,24 @@ internal static class ActivationClient
     {
         try
         {
-            var body = JsonSerializer.Serialize(new
+            var payload = new JsonObject
             {
-                fingerprint,
-                product_id = productId,
-                license_token = licenseToken,
-            });
+                ["fingerprint"] = fingerprint,
+                ["product_id"] = productId,
+                ["license_token"] = licenseToken,
+            };
+            var encryptedRequest = TryEncryptRequest("/heartbeat", productId, payload);
+            var body = encryptedRequest == null
+                ? payload.ToJsonString()
+                : encryptedRequest.Body.ToJsonString();
             using var content = new StringContent(body, Encoding.UTF8, "application/json");
             using var res  = await _httpHeartbeat.PostAsync(
                 $"{serverUrl.TrimEnd('/')}/heartbeat",
                 content);
 
             var json = await res.Content.ReadAsStringAsync();
+            if (encryptedRequest != null && !IsRedirect(res))
+                json = ActivationTransportEnvelope.DecryptResponse(json, encryptedRequest);
 
             if (IsRedirect(res)) return null;
 
@@ -158,6 +184,22 @@ internal static class ActivationClient
 
     private static bool IsRedirect(HttpResponseMessage response)
         => (int)response.StatusCode is >= 300 and <= 399;
+
+    private static ActivationTransportRequest? TryEncryptRequest(string endpoint, string productId, JsonObject payload)
+    {
+        string? keyId;
+        string? publicKey;
+        lock (_transportLock)
+        {
+            keyId = _transportKeyId;
+            publicKey = _transportPublicKey;
+        }
+
+        if (string.IsNullOrWhiteSpace(keyId) || string.IsNullOrWhiteSpace(publicKey))
+            return null;
+
+        return ActivationTransportEnvelope.EncryptRequest(endpoint, productId, payload, keyId, publicKey);
+    }
 
     private static string? TryGetString(string json, string field)
     {

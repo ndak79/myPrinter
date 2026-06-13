@@ -20,7 +20,13 @@ public static class LicenseGuard
     private static string? _publicKeysetJson;
     private static bool _allowInsecureHttp;
 
-    public static void Configure(string serverUrl, string productId, string publicKeysetJson, bool allowInsecureHttp = false)
+    public static void Configure(
+        string serverUrl,
+        string productId,
+        string publicKeysetJson,
+        bool allowInsecureHttp = false,
+        string? transportKeyId = null,
+        string? transportPublicKey = null)
     {
         if (string.IsNullOrWhiteSpace(serverUrl))
             throw new ArgumentException("ServerUrl must not be empty.", nameof(serverUrl));
@@ -42,13 +48,20 @@ public static class LicenseGuard
                 "ServerUrl must use HTTPS for non-local endpoints. " +
                 "Set AllowInsecureHttp=true in smartprinter.appsettings.json to override.",
                 nameof(serverUrl));
+        if (!isLocal && !isHttps && allowInsecureHttp &&
+            (string.IsNullOrWhiteSpace(transportKeyId) || string.IsNullOrWhiteSpace(transportPublicKey)))
+            throw new ArgumentException(
+                "Non-local HTTP activation requires Activation.TransportKeyId and Activation.TransportPublicKey.",
+                nameof(serverUrl));
 
         ValidatePublicKeysetOrThrow(publicKeysetJson);
+        ValidateTransportKeyOrThrow(transportKeyId, transportPublicKey);
 
         _serverUrl = serverUrl.TrimEnd('/');
         _productId = productId.Trim();
         _publicKeysetJson = publicKeysetJson;
         _allowInsecureHttp = allowInsecureHttp;
+        ActivationClient.ConfigureTransportEncryption(transportKeyId, transportPublicKey);
     }
 
     public static string GetFingerprint()
@@ -348,6 +361,20 @@ public static class LicenseGuard
                 nameof(publicKeysetJson),
                 ex);
         }
+    }
+
+    private static void ValidateTransportKeyOrThrow(string? transportKeyId, string? transportPublicKey)
+    {
+        var hasKeyId = !string.IsNullOrWhiteSpace(transportKeyId);
+        var hasPublicKey = !string.IsNullOrWhiteSpace(transportPublicKey);
+        if (hasKeyId != hasPublicKey)
+            throw new ArgumentException("Activation transport key id and public key must be configured together.");
+        if (!hasKeyId)
+            return;
+
+        var rawKey = LicenseToken.DecodeKeysetEntry(transportPublicKey!);
+        if (rawKey.Length != 32)
+            throw new ArgumentException("Activation transport public key must decode to a 32-byte X25519 public key.");
     }
 
     private static HeartbeatResponse? HeartbeatSync(string fp, string licenseToken)

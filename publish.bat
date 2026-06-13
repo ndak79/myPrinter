@@ -10,6 +10,8 @@ echo.
 powershell.exe -NoProfile -File "%~dp0build-installer.ps1" ^
     -ServerUrl "http://103.82.24.37" ^
     -ProductId "prod_smartprinter" ^
+    -TransportKeyId "actenc_prod_c094fac09065_v1" ^
+    -TransportPublicKey "OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM" ^
     -AllowInsecureHttp
 
 if %ERRORLEVEL% neq 0 (
