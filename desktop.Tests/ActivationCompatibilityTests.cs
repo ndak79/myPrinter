@@ -321,6 +321,78 @@ public class ActivationCompatibilityTests
             "a no-heartbeat key must not be invalidated only because trusted time was unavailable for seven days");
     }
 
+    [Fact]
+    public void FingerprintHelper_builds_candidates_for_each_valid_mac()
+    {
+        var fingerprintHelperType = GetActivationType("MyPrinter.Desktop.Activation.FingerprintHelper");
+        var method = fingerprintHelperType.GetMethod(
+            "BuildFingerprintCandidates",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            [typeof(string[]), typeof(string[]), typeof(string[]), typeof(string[])]);
+
+        method.Should().NotBeNull(
+            "startup license recovery must tolerate Windows returning physical network adapters in a different order");
+
+        var candidates = ((IEnumerable<string>)method!.Invoke(null,
+        [
+            new[] { "uuid-a" },
+            new[] { "cpu-a" },
+            new[] { "gpu-a" },
+            new[] { "AA:AA:AA:AA:AA:AA", "BB:BB:BB:BB:BB:BB" },
+        ])!).ToArray();
+
+        candidates.Should().Contain(Sha256Hex("uuid-a|cpu-a|gpu-a|AA:AA:AA:AA:AA:AA"));
+        candidates.Should().Contain(Sha256Hex("uuid-a|cpu-a|gpu-a|BB:BB:BB:BB:BB:BB"));
+        candidates[0].Should().Be(Sha256Hex("uuid-a|cpu-a|gpu-a|AA:AA:AA:AA:AA:AA"),
+            "the first candidate remains the legacy/current-order fingerprint used for new activations");
+    }
+
+    [Fact]
+    public void LicenseGuard_startup_loads_license_with_fingerprint_candidates()
+    {
+        var repoRoot = GetRepoRoot();
+        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs"));
+        var isActivatedBody = ExtractMethodSource(source, "public static bool IsActivated");
+
+        isActivatedBody.Should().Contain("FingerprintHelper.GetFingerprintCandidates()");
+        isActivatedBody.Should().Contain("LicenseStorage.Load(fingerprintCandidates)");
+        isActivatedBody.Should().Contain("fingerprintCandidates.Contains(token.Fingerprint");
+        isActivatedBody.Should().Contain("VerifyToken(token, token.Fingerprint)",
+            "the signed token fingerprint, not a transient current primary fingerprint, should drive verification and heartbeat");
+    }
+
+    [Fact]
+    public void LicenseGuard_does_not_deactivate_when_verified_metadata_save_fails()
+    {
+        var repoRoot = GetRepoRoot();
+        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs"));
+        var verifyBody = ExtractMethodSource(source, "private static bool VerifyToken");
+
+        verifyBody.Should().NotContain("if (!LicenseStorage.TrySave(token))\r\n            return false;");
+        verifyBody.Should().Contain("LicenseStorage.TrySave(token);",
+            "after a token is cryptographically valid, a transient metadata write failure must not reopen activation");
+    }
+
+    [Fact]
+    public void LicenseGuard_uses_last_seen_as_effective_time_floor_for_expiry()
+    {
+        var licenseGuardType = GetActivationType("MyPrinter.Desktop.Activation.LicenseGuard");
+        var selector = licenseGuardType.GetMethod(
+            "SelectEffectiveLicenseTime",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            [typeof(double), typeof(double), typeof(double)]);
+
+        selector.Should().NotBeNull(
+            "an already-seen post-expiry timestamp must prevent an expired license from becoming valid again after a local clock rollback");
+
+        ((double)selector!.Invoke(null, [0d, 1_700_000_000d, 1_700_100_000d])!)
+            .Should().Be(1_700_100_000d);
+        ((double)selector.Invoke(null, [1_700_050_000d, 1_700_000_000d, 1_700_100_000d])!)
+            .Should().Be(1_700_100_000d);
+        ((double)selector.Invoke(null, [1_700_200_000d, 1_700_000_000d, 1_700_100_000d])!)
+            .Should().Be(1_700_200_000d);
+    }
+
     [Theory]
     [InlineData(1_700_000_000, 1_700_000_030, 1_700_000_030)]
     [InlineData(1_700_000_000, 1_700_000_120, 0)]

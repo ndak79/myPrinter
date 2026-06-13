@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -11,19 +13,19 @@ internal static class LicenseStorage
     private static string PersistentPath()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        // ⚠️ Intentional divergence from Python: C# fails hard if LOCALAPPDATA is empty or
+        // Intentional divergence from Python: C# fails hard if LOCALAPPDATA is empty or
         // directory creation fails (throws). Python _persistent_data_dir() falls back to
         // _exe_dir() when LOCALAPPDATA is unavailable or Directory.CreateDirectory fails.
         // If this matters for your deployment (locked-down profiles, containers, SYSTEM service),
         // add a fallback: if (string.IsNullOrEmpty(appData)) appData = AppContext.BaseDirectory;
-        var dir     = Path.Combine(appData, "myPrinter");
+        var dir = Path.Combine(appData, "myPrinter");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "license.dat");
     }
 
     /// <summary>
     /// Best-effort migration of legacy EXE-adjacent license.dat to persistent LOCALAPPDATA dir.
-    /// Matches Python _migrate_legacy_license_file() — LG-02 hardening: MOVE not copy.
+    /// Matches Python _migrate_legacy_license_file() - LG-02 hardening: MOVE not copy.
     /// Copy-without-delete allowed revoked-license rollback: revocation deletes persistent file,
     /// but surviving legacy copy gets re-migrated on next launch, restoring the revoked license.
     /// </summary>
@@ -36,7 +38,7 @@ internal static class LicenseStorage
 
             if (File.Exists(persistent))
             {
-                // Active file exists — delete stale legacy copy so it can never roll back.
+                // Active file exists - delete stale legacy copy so it can never roll back.
                 // Matches Python: os.remove(_LEGACY_LICENSE_FILE) when _LICENSE_FILE exists.
                 try { File.Delete(legacyPath); } catch { }
                 return;
@@ -44,7 +46,7 @@ internal static class LicenseStorage
 
             if (File.Exists(legacyPath))
             {
-                // Move (not copy) — atomic on same drive, deletes source. Matches Python shutil.move().
+                // Move (not copy) - atomic on same drive, deletes source. Matches Python shutil.move().
                 File.Move(legacyPath, persistent, overwrite: false);
             }
         }
@@ -61,15 +63,15 @@ internal static class LicenseStorage
     {
         try
         {
-            var key   = DeriveKey(token.Fingerprint);
+            var key = DeriveKey(token.Fingerprint);
             var nonce = RandomNumberGenerator.GetBytes(12);
-            var json  = JsonSerializer.Serialize(token);
+            var json = JsonSerializer.Serialize(token);
             var plain = Encoding.UTF8.GetBytes(json);
 
             // AES-256-GCM with 16-byte tag (AesGcm.TagByteSizes.MaxSize = 16)
-            using var aes    = new AesGcm(key, AesGcm.TagByteSizes.MaxSize);
-            var cipher       = new byte[plain.Length];
-            var tag          = new byte[AesGcm.TagByteSizes.MaxSize];
+            using var aes = new AesGcm(key, AesGcm.TagByteSizes.MaxSize);
+            var cipher = new byte[plain.Length];
+            var tag = new byte[AesGcm.TagByteSizes.MaxSize];
             aes.Encrypt(nonce, plain, cipher, tag);
 
             // Format: [0x02][nonce 12][cipher][tag 16]
@@ -80,9 +82,9 @@ internal static class LicenseStorage
             tag.CopyTo(blob, 13 + cipher.Length);
 
             var path = PersistentPath();
-            // Use randomized same-dir temp file — matches Python tempfile.mkstemp() hardening.
+            // Use randomized same-dir temp file - matches Python tempfile.mkstemp() hardening.
             // Predictable ".tmp" suffix is vulnerable to local temp-path races/TOCTOU.
-            var tmp  = path + "." + Path.GetRandomFileName() + ".tmp";
+            var tmp = path + "." + Path.GetRandomFileName() + ".tmp";
             File.WriteAllBytes(tmp, blob);
             File.Move(tmp, path, overwrite: true);
             return true;
@@ -90,10 +92,13 @@ internal static class LicenseStorage
         catch { return false; }
     }
 
-    /// <summary>Convenience wrapper — callers that don't care about persistence failure.</summary>
+    /// <summary>Convenience wrapper - callers that don't care about persistence failure.</summary>
     public static void Save(LicenseToken token) => TrySave(token);
 
     public static LicenseToken? Load(string fingerprint)
+        => Load(new[] { fingerprint });
+
+    public static LicenseToken? Load(IEnumerable<string> fingerprints)
     {
         MigrateLegacyFile();
         try
@@ -106,39 +111,60 @@ internal static class LicenseStorage
 
             if (blob[0] == 0x02)
             {
-                // Encrypted format (current) — minimum: 1 + 12 (nonce) + 1 (cipher) + 16 (tag) = 30
+                // Encrypted format (current) - minimum: 1 + 12 (nonce) + 1 (cipher) + 16 (tag) = 30
                 if (blob.Length < 30) return null;
-                var key    = DeriveKey(fingerprint);
-                var nonce  = blob[1..13];
-                var tagLen = AesGcm.TagByteSizes.MaxSize; // 16
-                var cipher = blob[13..(blob.Length - tagLen)];
-                var tag    = blob[(blob.Length - tagLen)..];
 
-                using var aes = new AesGcm(key, tagLen);
-                var plain = new byte[cipher.Length];
-                aes.Decrypt(nonce, cipher, tag, plain);
+                foreach (var fingerprint in fingerprints
+                    .Where(fp => !string.IsNullOrWhiteSpace(fp))
+                    .Distinct(StringComparer.Ordinal))
+                {
+                    var token = TryLoadEncrypted(blob, fingerprint);
+                    if (token != null)
+                        return token;
+                }
 
-                return JsonSerializer.Deserialize<LicenseToken>(plain);
+                return null;
             }
             else
             {
-                // Legacy: plaintext JSON (Python < v2 format) — try to parse and re-encrypt
+                // Legacy: plaintext JSON (Python < v2 format) - try to parse and re-encrypt.
                 var token = JsonSerializer.Deserialize<LicenseToken>(blob);
                 if (token != null)
-                    Save(token); // upgrade to encrypted format using token.Fingerprint as key
-                    // ⚠️ Save() derives encryption key from token.Fingerprint, not from the
-                    // fingerprint parameter passed to Load(). If they differ (fingerprint mismatch),
-                    // the re-encrypted file uses the wrong key and will fail on next load.
-                    // Benign: VerifyToken() will reject it on fingerprint mismatch regardless.
+                {
+                    Save(token); // upgrade to encrypted format using token.Fingerprint as key.
+                }
+
                 return token;
             }
         }
         catch { return null; }
     }
 
+    private static LicenseToken? TryLoadEncrypted(byte[] blob, string fingerprint)
+    {
+        try
+        {
+            var key = DeriveKey(fingerprint);
+            var nonce = blob[1..13];
+            var tagLen = AesGcm.TagByteSizes.MaxSize; // 16
+            var cipher = blob[13..(blob.Length - tagLen)];
+            var tag = blob[(blob.Length - tagLen)..];
+
+            using var aes = new AesGcm(key, tagLen);
+            var plain = new byte[cipher.Length];
+            aes.Decrypt(nonce, cipher, tag, plain);
+
+            return JsonSerializer.Deserialize<LicenseToken>(plain);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static void Delete()
     {
-        // Delete both persistent and legacy paths — matches Python which deletes both
+        // Delete both persistent and legacy paths - matches Python which deletes both
         // _LICENSE_FILE and _LEGACY_LICENSE_FILE on revoke to prevent rollback resurrection.
         try { File.Delete(PersistentPath()); } catch { }
         try { File.Delete(Path.Combine(AppContext.BaseDirectory, "license.dat")); } catch { }

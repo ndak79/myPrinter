@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -56,12 +57,14 @@ public static class LicenseGuard
     public static bool IsActivated()
     {
         EnsureConfigured();
-        var fp = GetFingerprint();
-        var token = LicenseStorage.Load(fp);
+        var fingerprintCandidates = FingerprintHelper.GetFingerprintCandidates();
+        var token = LicenseStorage.Load(fingerprintCandidates);
         if (token == null)
             return false;
+        if (!fingerprintCandidates.Contains(token.Fingerprint, StringComparer.Ordinal))
+            return false;
 
-        return VerifyToken(token, fp);
+        return VerifyToken(token, token.Fingerprint);
     }
 
     public static async Task<(bool Ok, string? Error)> ActivateOnlineAsync(string activationKey)
@@ -94,7 +97,8 @@ public static class LicenseGuard
 
         var ntpTime = NtpClient.GetNtpTime();
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var effectiveTime = ntpTime > 0 ? ntpTime : now;
+        var lastSeen = token.LastSeen;
+        var effectiveTime = SelectEffectiveLicenseTime(ntpTime, now, lastSeen);
         if (token.IsExpired(effectiveTime))
             return (false, "License is already expired.");
 
@@ -125,14 +129,14 @@ public static class LicenseGuard
         try
         {
             var content = File.ReadAllText(licFilePath);
-            var fp = GetFingerprint();
-            var token = ParseOfflineLicenseContent(content, fp, _productId!);
+            var fingerprintCandidates = FingerprintHelper.GetFingerprintCandidates();
+            var token = ParseOfflineLicenseContent(content, fingerprintCandidates, _productId!);
             if (token == null)
                 return Task.FromResult(false);
             if (!token.IsSupportedFormat())
                 return Task.FromResult(false);
 
-            if (!token.FingerprintMatches(fp))
+            if (!fingerprintCandidates.Contains(token.Fingerprint, StringComparer.Ordinal))
                 return Task.FromResult(false);
             if (!token.VerifySignatureWithKeyset(_publicKeysetJson!, _productId!, _serverUrl!))
                 return Task.FromResult(false);
@@ -167,7 +171,8 @@ public static class LicenseGuard
 
         var ntpTime = NtpClient.GetNtpTime();
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var effectiveTime = ntpTime > 0 ? ntpTime : now;
+        var lastSeen = token.LastSeen;
+        var effectiveTime = SelectEffectiveLicenseTime(ntpTime, now, lastSeen);
         var hasCompactToken = !string.IsNullOrWhiteSpace(token.Token);
         // Only compact JWS carries signed heartbeat policy; legacy/local fields stay fail-closed.
         var hasSignedHeartbeatPolicy = hasCompactToken;
@@ -187,7 +192,6 @@ public static class LicenseGuard
             return false;
         }
 
-        var lastSeen = token.LastSeen;
         var clockRolledBack = lastSeen > 0 && now < lastSeen - 86400;
         if (clockRolledBack && ntpTime <= 0)
         {
@@ -236,10 +240,43 @@ public static class LicenseGuard
                 token.LastOnlineCheck = effectiveTime;
         }
 
-        if (!LicenseStorage.TrySave(token))
-            return false;
+        LicenseStorage.TrySave(token);
 
         return true;
+    }
+
+    private static double SelectEffectiveLicenseTime(double trustedTime, double localNow, double lastSeen)
+    {
+        var effectiveTime = trustedTime > 0 ? trustedTime : localNow;
+        return lastSeen > 0 ? Math.Max(effectiveTime, lastSeen) : effectiveTime;
+    }
+
+    private static LicenseToken? ParseOfflineLicenseContent(
+        string content,
+        IReadOnlyList<string> fingerprintCandidates,
+        string productId)
+    {
+        var trimmed = content.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return null;
+
+        if (!LooksLikeCompactJws(trimmed))
+            return JsonSerializer.Deserialize<LicenseToken>(trimmed);
+
+        foreach (var fingerprint in fingerprintCandidates)
+        {
+            try
+            {
+                var token = LicenseToken.FromSignedToken(trimmed, fingerprint, productId);
+                if (token.VerifySignatureWithKeyset(_publicKeysetJson!, productId, _serverUrl!))
+                    return token;
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
     }
 
     private static bool IsOfflineTrustedTimeWindowExpired(
