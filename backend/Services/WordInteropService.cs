@@ -1170,7 +1170,6 @@ public class WordInteropService : IWordInteropService
             // M? 1 l?n
             using var sourceDoc = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import);
             using var targetDoc = new PdfDocument();
-            using var form = XPdfForm.FromFile(sourcePath);
 
             Console.WriteLine($"[CreateSmartDuplexPdf] Source opened. PageCount={sourceDoc.PageCount}");
 
@@ -1203,28 +1202,13 @@ public class WordInteropService : IWordInteropService
 
                 if (needsRotation)
                 {
-                    // Dùng XPdfForm 1 l?n, ch? d?i PageNumber
-                    form.PageNumber = pageNum;
+                    // Preserve the original page dictionary and only adjust /Rotate.
+                    // Redrawing through XPdfForm can rescale or crop pages whose page boxes
+                    // and /Rotate metadata do not match their visual orientation.
+                    var newPage = targetDoc.AddPage(srcPage);
+                    newPage.Rotate = NormalizePdfRotation(newPage.Rotate + 180);
 
-                    var newPage = targetDoc.AddPage();
-                    // BUG FIX (C9): use orientation-adjusted w/h, NOT form.PointWidth/PointHeight.
-                    // form.Point* returns raw MediaBox dimensions which are NOT swapped for
-                    // PDF-level Rotate metadata (90°/270°). w and h are already correctly
-                    // swapped above (lines 1133-1134), so they reflect the visually-effective
-                    // page dimensions. Using the raw form dimensions for a portrait page stored
-                    // as landscape+Rotate90 (common from Word) would create a landscape canvas
-                    // and render garbled content on the physical back face.
-                    newPage.Width  = XUnit.FromPoint(w);
-                    newPage.Height = XUnit.FromPoint(h);
-
-                    using var gfx = XGraphics.FromPdfPage(newPage);
-                    gfx.Save();
-                    gfx.TranslateTransform(w, h);  // pivot at corrected dimensions
-                    gfx.RotateTransform(180);
-                    gfx.DrawImage(form, 0, 0, w, h); // explicit size matches corrected canvas
-                    gfx.Restore();
-
-                    Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum} rotated successfully (w={w:F1}, h={h:F1})");
+                    Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum} rotated via metadata (Rotate={srcPage.Rotate}->{newPage.Rotate})");
                 }
                 else
                 {
@@ -1246,6 +1230,12 @@ public class WordInteropService : IWordInteropService
             Console.WriteLine($"[CreateSmartDuplexPdf ERROR] StackTrace: {ex.StackTrace}");
             throw;
         }
+    }
+
+    private static int NormalizePdfRotation(int degrees)
+    {
+        var normalized = degrees % 360;
+        return normalized < 0 ? normalized + 360 : normalized;
     }
 
     /// <summary>
