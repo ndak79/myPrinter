@@ -65,6 +65,98 @@ assert.equal(result.intrinsic, false, 'PDF /Rotate=90 must make a raw landscape 
 assert.equal(result.userRotated, true, 'user CW90 rotation should add to the PDF intrinsic rotation');
 assert.equal(JSON.stringify(result.calls), JSON.stringify([90, 180]));
 
+const inkResult = vm.runInContext(`
+(() => {
+  function makeImage(width, height, verticalBands) {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = 255;
+    }
+
+    for (let band = 0; band < 8; band++) {
+      const offset = 4 + band * 6;
+      for (let a = 0; a < 3; a++) {
+        for (let b = 5; b < 55; b++) {
+          const x = verticalBands ? offset + a : b;
+          const y = verticalBands ? b : offset + a;
+          const idx = (y * width + x) * 4;
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+        }
+      }
+    }
+    return { data };
+  }
+
+  return {
+    sideways: RotationHelper.inkLandscapeScore(makeImage(80, 80, true), 80, 80),
+    upright: RotationHelper.inkLandscapeScore(makeImage(80, 80, false), 80, 80),
+  };
+})()
+`, context);
+
+assert.equal(inkResult.sideways, 1, 'sideways text bands should be treated as visual landscape');
+assert.equal(inkResult.upright, -1, 'upright text bands should remain portrait');
+
+const asyncResult = await vm.runInContext(`
+(async () => {
+  function makeSidewaysImage(width, height) {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = 255;
+    }
+    for (let band = 0; band < 8; band++) {
+      const x0 = 4 + band * 6;
+      for (let x = x0; x < x0 + 3; x++) {
+        for (let y = 5; y < 55; y++) {
+          const idx = (y * width + x) * 4;
+          data[idx] = 0;
+          data[idx + 1] = 0;
+          data[idx + 2] = 0;
+        }
+      }
+    }
+    return { data };
+  }
+
+  globalThis.OffscreenCanvas = class {
+    constructor(width, height) {
+      this.width = width;
+      this.height = height;
+      this._image = makeSidewaysImage(width, height);
+    }
+    getContext() {
+      return {
+        getImageData: () => this._image,
+      };
+    }
+  };
+
+  const page = {
+    rotate: 0,
+    getViewport({ scale, rotation }) {
+      return rotation % 180 === 0
+        ? { width: 612 * scale, height: 792 * scale }
+        : { width: 792 * scale, height: 612 * scale };
+    },
+    render() {
+      return { promise: Promise.resolve() };
+    },
+  };
+
+  return RotationHelper.detectLandscape(page);
+})()
+`, context);
+
+assert.equal(asyncResult, true, 'portrait page boxes with sideways rendered ink should be visual landscape');
+
 assert.doesNotMatch(
   appJs,
   /getViewport\(\{\s*scale:\s*1\s*,\s*rotation:\s*0\s*\}\)/,

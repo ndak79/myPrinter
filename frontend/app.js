@@ -2937,15 +2937,18 @@ const PrintModule = {
                     // Sequential loop (not Promise.all) — avoids firing all pdfDoc.getPage() at once
                     // on large documents; simpler and safer in a print path.
                     for (const p of pagesToPrint) {
+                        let page = null;
                         try {
-                            const page = await pdfDoc.getPage(p);
-                            if (RotationHelper.isLandscape(page) && !pageRotationsForPrint.has(p)) {
+                            page = await pdfDoc.getPage(p);
+                            if (await RotationHelper.detectLandscape(page) && !pageRotationsForPrint.has(p)) {
                                 pageRotationsForPrint.set(p, 'CCW90');
                             }
                         } catch (err) {
                             // getPage failed — treat as portrait (no CCW90 injected for this page).
                             // Log so the failure is diagnosable; do not abort the whole print.
                             console.warn(`[booklet-together] getPage(${p}) failed, skipping rotation:`, err);
+                        } finally {
+                            page?.cleanup();
                         }
                     }
                 }
@@ -3262,13 +3265,16 @@ const PrintModule = {
                     : Array.from({ length: file.totalPageCount }, (_, idx) => idx + 1);
                 // Sequential loop — avoids firing all pdfDoc.getPage() at once on large documents.
                 for (const p of pagesToPrint) {
+                    let page = null;
                     try {
-                        const page = await pdfDoc.getPage(p);
-                        if (RotationHelper.isLandscape(page) && !pageRotationsForPrint.has(p)) {
+                        page = await pdfDoc.getPage(p);
+                        if (await RotationHelper.detectLandscape(page) && !pageRotationsForPrint.has(p)) {
                             pageRotationsForPrint.set(p, 'CCW90');
                         }
                     } catch (err) {
                         console.warn(`[booklet-together] getPage(${p}) failed, skipping rotation:`, err);
+                    } finally {
+                        page?.cleanup();
                     }
                 }
             }
@@ -4791,6 +4797,86 @@ const RotationHelper = {
         return vp.width > vp.height;
     },
 
+    inkLandscapeScore(imageData, width, height) {
+        const rowInk = new Array(height).fill(0);
+        const colInk = new Array(width).fill(0);
+        const data = imageData.data;
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const i = (y * width + x) * 4;
+                const alpha = data[i + 3];
+                if (alpha === 0) continue;
+                const luminance = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                if (luminance < 220) {
+                    rowInk[y]++;
+                    colInk[x]++;
+                }
+            }
+        }
+
+        const rowMin = Math.max(1, width * 0.01);
+        const colMin = Math.max(1, height * 0.01);
+        const rowRuns = this._inkRuns(rowInk, rowMin);
+        const colRuns = this._inkRuns(colInk, colMin);
+        const rowEnergy = this._projectionEnergy(rowInk);
+        const colEnergy = this._projectionEnergy(colInk);
+
+        if (colRuns >= rowRuns * 1.2 || (colEnergy > 0 && rowEnergy / colEnergy < 0.8)) return 1;
+        if (rowRuns >= colRuns * 1.2 || (rowEnergy > 0 && colEnergy / rowEnergy < 0.8)) return -1;
+        return 0;
+    },
+
+    _inkRuns(values, minInk) {
+        let runs = 0;
+        let inRun = false;
+        for (const value of values) {
+            if (value >= minInk) {
+                if (!inRun) {
+                    runs++;
+                    inRun = true;
+                }
+            } else {
+                inRun = false;
+            }
+        }
+        return runs;
+    },
+
+    _projectionEnergy(values) {
+        let energy = 0;
+        for (let i = 1; i < values.length; i++) {
+            energy += Math.abs(values[i] - values[i - 1]);
+        }
+        return energy;
+    },
+
+    async detectLandscape(page, rotation = null) {
+        if (this.isLandscape(page, rotation)) return true;
+        const visual = await this.detectVisualLandscape(page, rotation);
+        return visual === true;
+    },
+
+    async detectVisualLandscape(page, rotation = null) {
+        const base = this.viewport(page, 1, rotation);
+        const scale = Math.min(0.25, 180 / Math.max(base.width, base.height));
+        if (!Number.isFinite(scale) || scale <= 0) return null;
+
+        const vp = this.viewport(page, scale, rotation);
+        const canvas = typeof OffscreenCanvas !== 'undefined'
+            ? new OffscreenCanvas(Math.max(1, Math.ceil(vp.width)), Math.max(1, Math.ceil(vp.height)))
+            : document.createElement('canvas');
+        canvas.width = Math.max(1, Math.ceil(vp.width));
+        canvas.height = Math.max(1, Math.ceil(vp.height));
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true, alpha: false });
+        if (!ctx) return null;
+
+        await page.render({ canvasContext: ctx, viewport: vp, intent: 'display' }).promise;
+        const score = this.inkLandscapeScore(ctx.getImageData(0, 0, canvas.width, canvas.height), canvas.width, canvas.height);
+        return score > 0 ? true : score < 0 ? false : null;
+    },
+
     // CSS transform for flip cases (only applies to canvas element)
     toCSS(rotation) {
         if (rotation === 'FlipHorizontal') return 'scaleX(-1)';
@@ -5149,9 +5235,14 @@ const PreviewPanelModule = {
         }
         if (missingPages.length > 0) {
             const orientationPromises = missingPages.map(p =>
-                pdfDoc.getPage(p).then(page => {
-                    const rot = fileEntry.pageRotations?.get(p) ?? null;
-                    return { p, isLandscape: RotationHelper.isLandscape(page, rot) };
+                pdfDoc.getPage(p).then(async page => {
+                    try {
+                        const rot = fileEntry.pageRotations?.get(p) ?? null;
+                        const isLandscape = await RotationHelper.detectLandscape(page, rot);
+                        return { p, isLandscape };
+                    } finally {
+                        page.cleanup();
+                    }
                 }).catch(() => ({ p, isLandscape: false }))
             );
             const results = await Promise.all(orientationPromises);
@@ -5179,8 +5270,13 @@ const PreviewPanelModule = {
             const intrinsicPromises = [];
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
                 intrinsicPromises.push(
-                    pdfDoc.getPage(p).then(page => {
-                        return { p, isLandscape: RotationHelper.isLandscape(page) };
+                    pdfDoc.getPage(p).then(async page => {
+                        try {
+                            const isLandscape = await RotationHelper.detectLandscape(page);
+                            return { p, isLandscape };
+                        } finally {
+                            page.cleanup();
+                        }
                     }).catch(() => ({ p, isLandscape: false }))
                 );
             }
