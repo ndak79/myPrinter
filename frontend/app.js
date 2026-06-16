@@ -177,6 +177,7 @@ const AppState = {
             _togetherRotations:      new Set(), // Set<pageNum> — pages auto-rotated by together mode
             _originalOrientationMap: null,      // Map<pageNum, bool> | null — pre-injection snapshot
             _pendingOrientationMap:  null,      // transient: set during async intrinsic detection, committed after guards (F1 fix)
+            _orientationProfile:     null,      // file-level auto-orientation decision; never mutates user rotations
             landscapeMode: 'together',   // 'separate' | 'together' — per-file, default matches current global default
             copies:        1,            // int 1–99 — per-file copy count
             collate:       true,         // bool — per-file collate setting
@@ -266,6 +267,23 @@ function _teardownTogether(fileEntry) {
     fileEntry._togetherRotations.clear();
     fileEntry._originalOrientationMap = null;
     fileEntry._pendingOrientationMap   = null; // discard any in-flight intrinsic detection (F1 fix)
+}
+
+function _autoRotationHidden(fileEntry, pageNum) {
+    return fileEntry?._togetherRotations?.has(pageNum)
+        || (fileEntry?._orientationProfile?.pageRotations?.has(pageNum) && !fileEntry?.pageRotations?.has(pageNum));
+}
+
+function _effectivePageRotation(fileEntry, pageNum) {
+    const userRotation = fileEntry?.pageRotations?.get(pageNum) ?? null;
+    if (userRotation) return userRotation;
+    return fileEntry?._orientationProfile?.pageRotations?.get(pageNum) ?? null;
+}
+
+function _invalidateOrientationProfile(fileEntry) {
+    if (!fileEntry) return;
+    fileEntry._orientationProfile = null;
+    fileEntry._printOrientationMap = null;
 }
 
 // ─── lookAheadOrientation ──────────────────────────────────────────
@@ -2084,7 +2102,7 @@ const ZoomModal = {
         if (!isSel) badge.style.opacity = '0.3';
 
         const canvas = document.createElement('canvas');
-        const rotation = AppState.pageRotations.get(n) ?? null;
+        const rotation = _effectivePageRotation(AppState.activeFile, n);
         const vp       = RotationHelper.viewport(page, 1.2, rotation);
         canvas.width   = vp.width; canvas.height = vp.height;
         canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;';
@@ -2092,7 +2110,7 @@ const ZoomModal = {
 
         // CSS flip only (viewport handles CW/CCW/180)
         canvas.style.transform = RotationHelper.toCSS(rotation);
-        const badgeRotation = AppState.activeFile?._togetherRotations?.has(n) ? null : rotation;
+        const badgeRotation = _autoRotationHidden(AppState.activeFile, n) ? null : rotation;
         RotationHelper.updateBadge(div, badgeRotation);
 
         div.appendChild(header); div.appendChild(badge); div.appendChild(canvas);
@@ -2392,6 +2410,7 @@ const ContextMenu = {
             if (fileEntry._togetherRotations?.has(pageNum)) {
                 fileEntry._togetherRotations.delete(pageNum);
             }
+            _invalidateOrientationProfile(fileEntry);
 
             const fid = fileEntry.id;
             const prefix = `${fid}-${pageNum}-`;
@@ -2887,6 +2906,7 @@ const PrintModule = {
         try {
             for (let i = 0; i < filesToPrint.length; i++) {
                 const file = filesToPrint[i];
+                await this._ensureOrientationProfile(file);
 
                 btn.textContent = filesToPrint.length > 1
                     ? I18nModule.t('print.printing')(i + 1, filesToPrint.length)
@@ -2897,17 +2917,15 @@ const PrintModule = {
                     ? Array.from(sel).sort((a,b) => a-b).join(',')
                     : null;
 
+                const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
+                    ? [...sel]
+                    : Array.from({ length: file.totalPageCount }, (_, idx) => idx + 1);
+
                 // Compute duplexSide for together mode (spec §5.8)
                 let duplexSide = null;  // default: null = no override → backend uses printer default
                 // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for portrait/mixed cases)
                 if (mode !== 'booklet' && file.pdfDoc != null) {
                     let allLandscape = true;
-                    // Check only pages actually being printed (Bug B8 fix):
-                    // previously looped 1..totalPageCount, so unselected portrait pages in a mixed
-                    // doc would keep allLandscape=false even when only landscape pages are selected.
-                    const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
-                        ? [...sel]                                                        // partial selection → check only selected
-                        : Array.from({ length: file.totalPageCount }, (_, i) => i + 1); // all selected → check all
                     for (const p of pagesToCheck) {
                         if (!await this._isPrintLandscapePage(file, p)) {
                             allLandscape = false;
@@ -2921,6 +2939,12 @@ const PrintModule = {
                 // _originalOrientationMap is null (page view, or sheet view before first-render commit).
                 // MUST NOT mutate file.pageRotations — request-local only.
                 let pageRotationsForPrint = new Map(file.pageRotations);
+                if (file._orientationProfile?.action === 'auto-apply') {
+                    for (const p of pagesToCheck) {
+                        const profileRotation = file._orientationProfile.pageRotations.get(p);
+                        if (profileRotation && !pageRotationsForPrint.has(p)) pageRotationsForPrint.set(p, profileRotation);
+                    }
+                }
                 if (mode === 'booklet'
                     && file.landscapeMode === 'together'
                     && file._originalOrientationMap == null
@@ -3222,6 +3246,7 @@ const PrintModule = {
         const btn = document.getElementById('print-btn');
         for (let i = nextIndex; i < files.length; i++) {
             const file   = files[i];
+            await this._ensureOrientationProfile(file);
 
             if (btn) {
                 btn.textContent = I18nModule.t('print.printing')(i + 1, files.length);
@@ -3234,12 +3259,13 @@ const PrintModule = {
                 ? Array.from(sel).sort((a, b) => a - b).join(',')
                 : null;
 
+            const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
+                ? [...sel]
+                : Array.from({ length: file.totalPageCount }, (_, k) => k + 1);
+
             let duplexSide = null;
             if (mode !== 'booklet' && file.pdfDoc != null) {
                 let allLandscape = true;
-                const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
-                    ? [...sel]
-                    : Array.from({ length: file.totalPageCount }, (_, k) => k + 1);
                 for (const p of pagesToCheck) {
                     if (!await this._isPrintLandscapePage(file, p)) { allLandscape = false; break; }
                 }
@@ -3249,6 +3275,12 @@ const PrintModule = {
             // Request-local pageRotations fallback — same pattern as _startPrint.
             // Uses captured `mode` (from modeCode, line 2755), NOT AppState.printMode.
             let pageRotationsForPrint = new Map(file.pageRotations);
+            if (file._orientationProfile?.action === 'auto-apply') {
+                for (const p of pagesToCheck) {
+                    const profileRotation = file._orientationProfile.pageRotations.get(p);
+                    if (profileRotation && !pageRotationsForPrint.has(p)) pageRotationsForPrint.set(p, profileRotation);
+                }
+            }
             if (mode === 'booklet'
                 && file.landscapeMode === 'together'
                 && file._originalOrientationMap == null
@@ -3496,10 +3528,26 @@ const PrintModule = {
         this._updateRecoveryButton();
     },
 
+    async _ensureOrientationProfile(file) {
+        if (!file?.pdfDoc) return null;
+        if (file._orientationProfile) return file._orientationProfile;
+        file._orientationProfile = await OrientationProfileModule.build(
+            file.pdfDoc,
+            file.totalPageCount,
+            file.pageRotations ?? new Map(),
+        );
+        return file._orientationProfile;
+    },
+
     async _isPrintLandscapePage(file, pageNum) {
+        const profile = await this._ensureOrientationProfile(file);
+        if (profile?.orientationMap?.has(pageNum)) {
+            return profile.orientationMap.get(pageNum) === true;
+        }
+
         if (!file._printOrientationMap) file._printOrientationMap = new Map();
-        const rotation = file.pageRotations?.get(pageNum) ?? null;
-        const cacheKey = `${pageNum}:${rotation ?? '0'}`;
+        const rotation = _effectivePageRotation(file, pageNum);
+        const cacheKey = `${pageNum}:${rotation ?? '0'}:${profile?.id ?? 'none'}`;
         if (file._printOrientationMap.has(cacheKey)) {
             return file._printOrientationMap.get(cacheKey);
         }
@@ -4455,7 +4503,7 @@ const HoverPreviewModule = {
         const pCanvas = this._pCanvas();
         if (!preview || !pCanvas) return;
 
-        const rotation = AppState.pageRotations.get(pageNum) ?? null;
+        const rotation = _effectivePageRotation(AppState.activeFile, pageNum);
         const cacheKey = `${pageNum}-${rotation ?? '0'}`;
 
         // Render or use cached (cache key includes rotation)
@@ -4924,6 +4972,123 @@ const RotationHelper = {
     },
 };
 
+const OrientationProfileModule = {
+    MAX_VISUAL_SAMPLES: 8,
+
+    _samplePages(totalPages) {
+        if (totalPages <= this.MAX_VISUAL_SAMPLES) {
+            return Array.from({ length: totalPages }, (_, i) => i + 1);
+        }
+
+        const pages = new Set([1, 2, totalPages]);
+        const interiorCount = this.MAX_VISUAL_SAMPLES - pages.size;
+        const denominator = interiorCount + 2;
+        for (let i = 1; i <= interiorCount; i++) {
+            pages.add(Math.max(1, Math.min(totalPages, Math.floor((totalPages * i) / denominator) + 1)));
+        }
+        return [...pages].sort((a, b) => a - b);
+    },
+
+    _empty(totalPages, orientationMap, reason = 'metadata') {
+        return {
+            id: `none:${reason}:${totalPages}`,
+            action: 'none',
+            rotation: null,
+            confidence: 1,
+            allLandscape: false,
+            orientationMap,
+            pageRotations: new Map(),
+            reason,
+            sampledPages: [],
+        };
+    },
+
+    async build(pdfDoc, totalPages, userRotations = new Map()) {
+        const orientationMap = new Map();
+        if (!pdfDoc || !totalPages) return this._empty(0, orientationMap, 'empty');
+
+        let allMetadataPortrait = true;
+        let allMetadataLandscape = true;
+        for (let p = 1; p <= totalPages; p++) {
+            let page = null;
+            try {
+                page = await pdfDoc.getPage(p);
+                const isLandscape = RotationHelper.isLandscape(page, userRotations.get(p) ?? null);
+                orientationMap.set(p, isLandscape);
+                if (isLandscape) allMetadataPortrait = false;
+                else allMetadataLandscape = false;
+            } catch (err) {
+                console.warn(`[orientation-profile] metadata getPage(${p}) failed:`, err);
+                orientationMap.set(p, false);
+                allMetadataLandscape = false;
+            } finally {
+                page?.cleanup?.();
+            }
+        }
+
+        if (allMetadataLandscape) {
+            return {
+                id: `metadata-landscape:${totalPages}`,
+                action: 'none',
+                rotation: null,
+                confidence: 1,
+                allLandscape: true,
+                orientationMap,
+                pageRotations: new Map(),
+                reason: 'metadata-landscape',
+                sampledPages: [],
+            };
+        }
+
+        if (!allMetadataPortrait || userRotations.size > 0) {
+            return this._empty(totalPages, orientationMap, allMetadataPortrait ? 'user-rotated' : 'metadata-mixed');
+        }
+
+        const sampledPages = this._samplePages(totalPages);
+        const votes = [];
+        for (const p of sampledPages) {
+            let page = null;
+            try {
+                page = await pdfDoc.getPage(p);
+                votes.push(await RotationHelper.detectVisualLandscape(page, null));
+            } catch (err) {
+                console.warn(`[orientation-profile] visual getPage(${p}) failed:`, err);
+                votes.push(null);
+            } finally {
+                page?.cleanup?.();
+            }
+        }
+
+        const uniformSidewaysLandscape = votes.length > 0 && votes.every(v => v === true);
+        if (!uniformSidewaysLandscape) {
+            return {
+                ...this._empty(totalPages, orientationMap, 'visual-mixed-or-ambiguous'),
+                sampledPages,
+                confidence: votes.filter(v => v === true).length / Math.max(1, votes.length),
+            };
+        }
+
+        const profileRotations = new Map();
+        const normalizedOrientationMap = new Map();
+        for (let p = 1; p <= totalPages; p++) {
+            profileRotations.set(p, 'CW90');
+            normalizedOrientationMap.set(p, true);
+        }
+
+        return {
+            id: `sideways-landscape-cw90:${totalPages}:${sampledPages.join(',')}`,
+            action: 'auto-apply',
+            rotation: 'CW90',
+            confidence: 1,
+            allLandscape: true,
+            orientationMap: normalizedOrientationMap,
+            pageRotations: profileRotations,
+            reason: 'uniform-sideways-landscape-in-portrait-boxes',
+            sampledPages,
+        };
+    },
+};
+
 // ═══════════════════════════════════════════════════════════════════
 // PreviewPanelModule — Persistent right-panel PDF preview
 // Replaces the old modal main view.
@@ -5245,6 +5410,18 @@ const PreviewPanelModule = {
         const orientationMap = fileEntry._orientationMap;
         const totalPages = fileEntry.totalPageCount;
         const pdfDoc = fileEntry.pdfDoc;
+        if (!fileEntry._orientationProfile) {
+            fileEntry._orientationProfile = await OrientationProfileModule.build(
+                pdfDoc,
+                totalPages,
+                fileEntry.pageRotations ?? new Map(),
+            );
+        }
+        if (fileEntry._orientationProfile?.orientationMap) {
+            for (const [p, isLandscape] of fileEntry._orientationProfile.orientationMap) {
+                orientationMap.set(p, isLandscape);
+            }
+        }
 
         // Collect pages that are missing from the cache (first load = all; after rotation = 1)
         const missingPages = [];
@@ -5252,15 +5429,14 @@ const PreviewPanelModule = {
             if (!orientationMap.has(p)) missingPages.push(p);
         }
         if (missingPages.length > 0) {
-            const orientationPromises = missingPages.map(p =>
-                pdfDoc.getPage(p).then(page => {
-                    const rot = fileEntry.pageRotations?.get(p) ?? null;
-                    return { p, isLandscape: RotationHelper.isLandscape(page, rot) };
-                }).catch(() => ({ p, isLandscape: false }))
-            );
-            const results = await Promise.all(orientationPromises);
-            for (const { p, isLandscape } of results) {
-                orientationMap.set(p, isLandscape);
+            for (const p of missingPages) {
+                try {
+                    const page = await pdfDoc.getPage(p);
+                    const rot = _effectivePageRotation(fileEntry, p);
+                    orientationMap.set(p, RotationHelper.isLandscape(page, rot));
+                } catch {
+                    orientationMap.set(p, false);
+                }
             }
         }
         // Guard: user may have switched file during async detection
@@ -5280,20 +5456,7 @@ const PreviewPanelModule = {
         //   - all landscape → separate
         //   - all portrait or mixed → together
         if (fileEntry._originalOrientationMap == null) {
-            const intrinsicPromises = [];
-            for (let p = 1; p <= fileEntry.totalPageCount; p++) {
-                intrinsicPromises.push(
-                    pdfDoc.getPage(p).then(page => {
-                        return { p, isLandscape: RotationHelper.isLandscape(page) };
-                    }).catch(() => ({ p, isLandscape: false }))
-                );
-            }
-            const intrinsicResults = await Promise.all(intrinsicPromises);
-            const intrinsicMap = new Map();
-            for (const { p, isLandscape } of intrinsicResults) {
-                intrinsicMap.set(p, isLandscape);
-            }
-            fileEntry._pendingOrientationMap = intrinsicMap;
+            fileEntry._pendingOrientationMap = new Map(fileEntry._orientationProfile?.orientationMap ?? orientationMap);
         }
 
         // Guard after intrinsic detection await
@@ -5687,8 +5850,8 @@ const PreviewPanelModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return;
 
-        const rotation      = fileEntry.pageRotations?.get(pageNum) ?? null;
-        const badgeRotation = fileEntry._togetherRotations?.has(pageNum) ? null : rotation;
+        const rotation      = _effectivePageRotation(fileEntry, pageNum);
+        const badgeRotation = _autoRotationHidden(fileEntry, pageNum) ? null : rotation;
         RotationHelper.updateBadge(el, badgeRotation);
 
         const entry = await this._renderBlobPage(fileId, pageNum, SHEET_SCALE, this._cache);
@@ -5732,7 +5895,7 @@ const PreviewPanelModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return null;
 
-        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotation = _effectivePageRotation(fileEntry, pageNum);
         const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
 
         // Cache hit
@@ -5777,7 +5940,7 @@ const PreviewPanelModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return;
 
-        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotation = _effectivePageRotation(fileEntry, pageNum);
         const scale    = 1.5; // single pass — always full quality
         const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
         const canvas   = el.querySelector('canvas');
@@ -5785,7 +5948,7 @@ const PreviewPanelModule = {
 
         // Apply CSS transform for flip + rotation badge
         canvas.style.transform = RotationHelper.toCSS(rotation);
-        RotationHelper.updateBadge(el, rotation);
+        RotationHelper.updateBadge(el, _autoRotationHidden(fileEntry, pageNum) ? null : rotation);
 
         if (this._cache.has(key)) {
             const { canvas: off } = this._cache.get(key);
@@ -5843,7 +6006,7 @@ const PreviewPanelModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry) return;
 
-        const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotation = _effectivePageRotation(fileEntry, pageNum);
         const rotDeg   = RotationHelper.toDeg(rotation);
         const img      = el.querySelector('img.sheet-page-img');
 
@@ -5885,8 +6048,8 @@ const PreviewPanelModule = {
             card.classList.toggle('selected-for-print', isSel);
             card.classList.toggle('single-sided-print', !!(isSingle && isSel));
             // Update rotation badge
-            const rotation      = activeFile.pageRotations?.get(pageNum) ?? null;
-            const badgeRotation = activeFile._togetherRotations?.has(pageNum) ? null : rotation;
+            const rotation      = _effectivePageRotation(activeFile, pageNum);
+            const badgeRotation = _autoRotationHidden(activeFile, pageNum) ? null : rotation;
             RotationHelper.updateBadge(card, badgeRotation);
         });
     },
@@ -6206,13 +6369,13 @@ const ThumbStripModule = {
         const fileEntry = AppState.files.find(f => f.id === fileId);
         if (!fileEntry?.pdfDoc) return;
 
-        const rotation   = fileEntry.pageRotations?.get(pageNum) ?? null;
+        const rotation   = _effectivePageRotation(fileEntry, pageNum);
         const thumbScale = 0.26;
         const key        = `${fileId}-${pageNum}-${rotation ?? '0'}-${thumbScale}`;
         const img        = el.querySelector('img.thumb-img');
         if (!img) return;
 
-        const badgeRotation = fileEntry._togetherRotations?.has(pageNum) ? null : rotation;
+        const badgeRotation = _autoRotationHidden(fileEntry, pageNum) ? null : rotation;
         RotationHelper.updateBadge(el, badgeRotation);
 
         // Cache hit — just set src (browser re-uses decoded bitmap if URL unchanged)
@@ -6280,8 +6443,8 @@ const ThumbStripModule = {
             el.classList.toggle('selected-for-print', isSel);
             el.classList.toggle('single-sided-print', !!(isSingle && isSel));
             // Update rotation badge
-            const rotation      = entry.pageRotations?.get(pageNum) ?? null;
-            const badgeRotation = entry._togetherRotations?.has(pageNum) ? null : rotation;
+            const rotation      = _effectivePageRotation(entry, pageNum);
+            const badgeRotation = _autoRotationHidden(entry, pageNum) ? null : rotation;
             RotationHelper.updateBadge(el, badgeRotation);
         });
     },
