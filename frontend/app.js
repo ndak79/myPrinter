@@ -2899,10 +2899,8 @@ const PrintModule = {
 
                 // Compute duplexSide for together mode (spec §5.8)
                 let duplexSide = null;  // default: null = no override → backend uses printer default
-                // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for all non-together cases)
-                if (mode !== 'booklet'
-                    && file.landscapeMode === 'together'
-                    && file._originalOrientationMap != null) {
+                // ('LongEdge' is NEVER sent explicitly — null preserves existing behavior for portrait/mixed cases)
+                if (mode !== 'booklet' && file.pdfDoc != null) {
                     let allLandscape = true;
                     // Check only pages actually being printed (Bug B8 fix):
                     // previously looped 1..totalPageCount, so unselected portrait pages in a mixed
@@ -2911,7 +2909,7 @@ const PrintModule = {
                         ? [...sel]                                                        // partial selection → check only selected
                         : Array.from({ length: file.totalPageCount }, (_, i) => i + 1); // all selected → check all
                     for (const p of pagesToCheck) {
-                        if (file._originalOrientationMap.get(p) !== true) {
+                        if (!await this._isPrintLandscapePage(file, p)) {
                             allLandscape = false;
                             break;
                         }
@@ -3237,15 +3235,13 @@ const PrintModule = {
                 : null;
 
             let duplexSide = null;
-            if (mode !== 'booklet'
-                && file.landscapeMode === 'together'
-                && file._originalOrientationMap != null) {
+            if (mode !== 'booklet' && file.pdfDoc != null) {
                 let allLandscape = true;
                 const pagesToCheck = (sel.size > 0 && sel.size < file.totalPageCount)
                     ? [...sel]
                     : Array.from({ length: file.totalPageCount }, (_, k) => k + 1);
                 for (const p of pagesToCheck) {
-                    if (file._originalOrientationMap.get(p) !== true) { allLandscape = false; break; }
+                    if (!await this._isPrintLandscapePage(file, p)) { allLandscape = false; break; }
                 }
                 if (allLandscape) duplexSide = 'ShortEdge';
             }
@@ -3498,6 +3494,28 @@ const PrintModule = {
         document.getElementById('flip-modal').classList.remove('hidden');
         Phase1RecoveryModule.syncFromJob();
         this._updateRecoveryButton();
+    },
+
+    async _isPrintLandscapePage(file, pageNum) {
+        if (!file._printOrientationMap) file._printOrientationMap = new Map();
+        const rotation = file.pageRotations?.get(pageNum) ?? null;
+        const cacheKey = `${pageNum}:${rotation ?? '0'}`;
+        if (file._printOrientationMap.has(cacheKey)) {
+            return file._printOrientationMap.get(cacheKey);
+        }
+
+        let page = null;
+        try {
+            page = await file.pdfDoc.getPage(pageNum);
+            const isLandscape = await RotationHelper.detectLandscape(page, rotation);
+            file._printOrientationMap.set(cacheKey, isLandscape);
+            return isLandscape;
+        } catch (err) {
+            console.warn(`[print-orientation] getPage(${pageNum}) failed, treating as portrait:`, err);
+            return false;
+        } finally {
+            page?.cleanup();
+        }
     },
 };
 
@@ -5235,14 +5253,9 @@ const PreviewPanelModule = {
         }
         if (missingPages.length > 0) {
             const orientationPromises = missingPages.map(p =>
-                pdfDoc.getPage(p).then(async page => {
-                    try {
-                        const rot = fileEntry.pageRotations?.get(p) ?? null;
-                        const isLandscape = await RotationHelper.detectLandscape(page, rot);
-                        return { p, isLandscape };
-                    } finally {
-                        page.cleanup();
-                    }
+                pdfDoc.getPage(p).then(page => {
+                    const rot = fileEntry.pageRotations?.get(p) ?? null;
+                    return { p, isLandscape: RotationHelper.isLandscape(page, rot) };
                 }).catch(() => ({ p, isLandscape: false }))
             );
             const results = await Promise.all(orientationPromises);
@@ -5270,13 +5283,8 @@ const PreviewPanelModule = {
             const intrinsicPromises = [];
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
                 intrinsicPromises.push(
-                    pdfDoc.getPage(p).then(async page => {
-                        try {
-                            const isLandscape = await RotationHelper.detectLandscape(page);
-                            return { p, isLandscape };
-                        } finally {
-                            page.cleanup();
-                        }
+                    pdfDoc.getPage(p).then(page => {
+                        return { p, isLandscape: RotationHelper.isLandscape(page) };
                     }).catch(() => ({ p, isLandscape: false }))
                 );
             }

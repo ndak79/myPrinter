@@ -157,6 +157,33 @@ const asyncResult = await vm.runInContext(`
 
 assert.equal(asyncResult, true, 'portrait page boxes with sideways rendered ink should be visual landscape');
 
+const sheetRenderStart = appJs.indexOf('async _renderSheetView(fileEntry)');
+const sheetRenderEnd = appJs.indexOf('\n    // Render a page to blob URL', sheetRenderStart);
+const sheetRenderBlock = sheetRenderStart >= 0 && sheetRenderEnd > sheetRenderStart
+  ? appJs.slice(sheetRenderStart, sheetRenderEnd)
+  : '';
+assert.ok(sheetRenderBlock.length > 0, 'test must locate _renderSheetView');
+assert.doesNotMatch(
+  sheetRenderBlock,
+  /detectLandscape\(/,
+  'sheet preview orientation detection must stay metadata-only; visual detection renders pages and belongs in print path',
+);
+
+const startPrintBlock = appJs.match(/async _startPrint\(\)\s*\{[\s\S]*?\n    async _continuePrint/)?.[0] ?? '';
+assert.ok(startPrintBlock.length > 0, 'test must locate _startPrint');
+const duplexSideStart = startPrintBlock.indexOf('// Compute duplexSide');
+const duplexSideEnd = startPrintBlock.indexOf('// Build request-local pageRotations', duplexSideStart);
+const duplexSideBlock = duplexSideStart >= 0 && duplexSideEnd > duplexSideStart
+  ? startPrintBlock.slice(duplexSideStart, duplexSideEnd)
+  : '';
+assert.ok(duplexSideBlock.length > 0, 'test must locate duplexSide block');
+assert.match(duplexSideBlock, /_isPrintLandscapePage\(file, p\)/);
+assert.doesNotMatch(
+  duplexSideBlock,
+  /file\.landscapeMode === 'together'/,
+  'duplex side must be based on printable page orientation, not the sheet-preview landscapeMode',
+);
+
 assert.doesNotMatch(
   appJs,
   /getViewport\(\{\s*scale:\s*1\s*,\s*rotation:\s*0\s*\}\)/,
