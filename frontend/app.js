@@ -2085,8 +2085,7 @@ const ZoomModal = {
 
         const canvas = document.createElement('canvas');
         const rotation = AppState.pageRotations.get(n) ?? null;
-        const rotDeg   = RotationHelper.toDeg(rotation);
-        const vp       = page.getViewport({ scale: 1.2, rotation: rotDeg });
+        const vp       = RotationHelper.viewport(page, 1.2, rotation);
         canvas.width   = vp.width; canvas.height = vp.height;
         canvas.style.cssText = 'width:100%;height:auto;display:block;border-radius:6px;';
         page.render({ canvasContext: canvas.getContext('2d'), viewport: vp });
@@ -2940,8 +2939,7 @@ const PrintModule = {
                     for (const p of pagesToPrint) {
                         try {
                             const page = await pdfDoc.getPage(p);
-                            const vp = page.getViewport({ scale: 1, rotation: 0 });
-                            if (vp.width > vp.height && !pageRotationsForPrint.has(p)) {
+                            if (RotationHelper.isLandscape(page) && !pageRotationsForPrint.has(p)) {
                                 pageRotationsForPrint.set(p, 'CCW90');
                             }
                         } catch (err) {
@@ -3266,8 +3264,7 @@ const PrintModule = {
                 for (const p of pagesToPrint) {
                     try {
                         const page = await pdfDoc.getPage(p);
-                        const vp = page.getViewport({ scale: 1, rotation: 0 });
-                        if (vp.width > vp.height && !pageRotationsForPrint.has(p)) {
+                        if (RotationHelper.isLandscape(page) && !pageRotationsForPrint.has(p)) {
                             pageRotationsForPrint.set(p, 'CCW90');
                         }
                     } catch (err) {
@@ -4435,16 +4432,15 @@ const HoverPreviewModule = {
         if (!preview || !pCanvas) return;
 
         const rotation = AppState.pageRotations.get(pageNum) ?? null;
-        const rotDeg   = RotationHelper.toDeg(rotation);
         const cacheKey = `${pageNum}-${rotation ?? '0'}`;
 
         // Render or use cached (cache key includes rotation)
         if (!this._cache.has(cacheKey)) {
             try {
                 const page     = await AppState.currentPdfDoc.getPage(pageNum);
-                const viewport = page.getViewport({ scale: 1.0, rotation: rotDeg });
+                const viewport = RotationHelper.viewport(page, 1.0, rotation);
                 const scale    = Math.min(this.PREVIEW_W / viewport.width, this.PREVIEW_H / viewport.height);
-                const vp2      = page.getViewport({ scale, rotation: rotDeg });
+                const vp2      = RotationHelper.viewport(page, scale, rotation);
                 const off      = document.createElement('canvas');
                 off.width      = vp2.width;
                 off.height     = vp2.height;
@@ -4775,6 +4771,24 @@ const RotationHelper = {
     // Flips are handled via CSS since pdf.js doesn't support them natively
     toDeg(rotation) {
         return { CW90: 90, CCW90: 270, Rotate180: 180 }[rotation] ?? 0;
+    },
+
+    intrinsicDeg(page) {
+        const deg = Number(page?.rotate ?? 0);
+        return Number.isFinite(deg) ? ((deg % 360) + 360) % 360 : 0;
+    },
+
+    effectiveDeg(page, rotation) {
+        return (this.intrinsicDeg(page) + this.toDeg(rotation)) % 360;
+    },
+
+    viewport(page, scale, rotation = null) {
+        return page.getViewport({ scale, rotation: this.effectiveDeg(page, rotation) });
+    },
+
+    isLandscape(page, rotation = null) {
+        const vp = this.viewport(page, 1, rotation);
+        return vp.width > vp.height;
     },
 
     // CSS transform for flip cases (only applies to canvas element)
@@ -5137,9 +5151,7 @@ const PreviewPanelModule = {
             const orientationPromises = missingPages.map(p =>
                 pdfDoc.getPage(p).then(page => {
                     const rot = fileEntry.pageRotations?.get(p) ?? null;
-                    const rotDeg = rot ? ({ CW90: 90, CCW90: 270, Rotate180: 180, FlipH: 0, FlipV: 0 }[rot] ?? 0) : 0;
-                    const vp = page.getViewport({ scale: 1, rotation: rotDeg });
-                    return { p, isLandscape: vp.width > vp.height };
+                    return { p, isLandscape: RotationHelper.isLandscape(page, rot) };
                 }).catch(() => ({ p, isLandscape: false }))
             );
             const results = await Promise.all(orientationPromises);
@@ -5168,8 +5180,7 @@ const PreviewPanelModule = {
             for (let p = 1; p <= fileEntry.totalPageCount; p++) {
                 intrinsicPromises.push(
                     pdfDoc.getPage(p).then(page => {
-                        const vp = page.getViewport({ scale: 1, rotation: 0 });
-                        return { p, isLandscape: vp.width > vp.height };
+                        return { p, isLandscape: RotationHelper.isLandscape(page) };
                     }).catch(() => ({ p, isLandscape: false }))
                 );
             }
@@ -5618,7 +5629,6 @@ const PreviewPanelModule = {
         if (!fileEntry?.pdfDoc) return null;
 
         const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
-        const rotDeg   = RotationHelper.toDeg(rotation);
         const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
 
         // Cache hit
@@ -5630,7 +5640,7 @@ const PreviewPanelModule = {
         if (existing) { try { existing.cancel(); } catch(_){} }
 
         const page = await fileEntry.pdfDoc.getPage(pageNum);
-        const vp   = page.getViewport({ scale, rotation: rotDeg });
+        const vp   = RotationHelper.viewport(page, scale, rotation);
         // OffscreenCanvas required for convertToBlob() — HTMLCanvasElement only has toBlob()
         const off  = new OffscreenCanvas(vp.width, vp.height);
 
@@ -5664,7 +5674,6 @@ const PreviewPanelModule = {
         if (!fileEntry?.pdfDoc) return;
 
         const rotation = fileEntry.pageRotations?.get(pageNum) ?? null;
-        const rotDeg   = RotationHelper.toDeg(rotation);
         const scale    = 1.5; // single pass — always full quality
         const key      = `${fileId}-${pageNum}-${rotation ?? '0'}-${scale}`;
         const canvas   = el.querySelector('canvas');
@@ -5690,7 +5699,7 @@ const PreviewPanelModule = {
         if (existing) { try { existing.cancel(); } catch(_){} }
 
         const page = await fileEntry.pdfDoc.getPage(pageNum);
-        const vp   = page.getViewport({ scale, rotation: rotDeg });
+        const vp   = RotationHelper.viewport(page, scale, rotation);
         const off  = CanvasPool.acquire();
         off.width  = vp.width;
         off.height = vp.height;
