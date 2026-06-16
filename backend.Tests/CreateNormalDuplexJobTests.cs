@@ -135,6 +135,21 @@ public class CreateNormalDuplexJobTests
     }
 
     [Fact]
+    public void ManualDuplex_ManualFlipDirShortEdge_OverridesPortraitMetadata()
+    {
+        SetupManualDuplexMocks(isLandscape: false, pageCount: 2);
+
+        var result = _sut.CreateNormalDuplexJob(
+            FakePdfPath,
+            FakePrinter,
+            isDuplexPrinter: false,
+            manualFlipDir: "ShortEdge");
+
+        result.Instruction.Should().NotBeNull();
+        result.Instruction!.Direction.Should().Be(FlipDirection.ShortEdge);
+    }
+
+    [Fact]
     public void ManualDuplex_2Pages_Phase1AndPhase2Correct()
     {
         SetupManualDuplexMocks(isLandscape: false, pageCount: 2);

@@ -10,7 +10,7 @@ public interface IWordInteropService
     void CreatePdfSubset(string sourcePath, string targetPath, int[] pageNumbers, out HashSet<int> insertedBlankIndices);
     string ProcessMixedOrientation(string sourcePath, int[]? singleSidedPages, out List<ManualDuplexPageInfo> pageInfos, HashSet<int>? insertedBlankIndices = null);
     string ProcessMixedOrientation(string sourcePath, int[] singleSidedPages);
-    string CreateSmartDuplexPdf(string sourcePath, int[] pageNumbers);
+    string CreateSmartDuplexPdf(string sourcePath, int[] pageNumbers, FlipDirection? flipDirectionOverride = null);
     void PrintPdf(string pdfPath, string printerName, string? pageRange = null, string? duplexSide = null);
     void ConvertImageToPdf(string imagePath, string outputPdfPath);
     void ConvertToPdf(string inputPath, string outputPath);

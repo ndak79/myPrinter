@@ -1158,7 +1158,7 @@ public class WordInteropService : IWordInteropService
     /// and place straight back" mechanic: the paper feed always produces a 180-degree
     /// inversion regardless of page orientation.
     /// </summary>
-    public string CreateSmartDuplexPdf(string sourcePath, int[] pageNumbers)
+    public string CreateSmartDuplexPdf(string sourcePath, int[] pageNumbers, FlipDirection? flipDirectionOverride = null)
     {
         var outputPath = Path.Combine(Path.GetTempPath(), $"smart_duplex_{Guid.NewGuid()}.pdf");
 
@@ -1192,9 +1192,14 @@ public class WordInteropService : IWordInteropService
                     (w, h) = (h, w);
 
                 bool isLandscape = w > h;
-                bool needsRotation = !isLandscape; // Portrait -> Rotate 180 (Long Edge flip); Landscape -> Rotate 0 (Short Edge flip)
+                bool needsRotation = flipDirectionOverride switch
+                {
+                    FlipDirection.ShortEdge => false,
+                    FlipDirection.LongEdge => true,
+                    _ => !isLandscape
+                };
 
-                Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum}: L={isLandscape}, Rotate={needsRotation}");
+                Console.WriteLine($"[CreateSmartDuplexPdf] Page {pageNum}: L={isLandscape}, FlipOverride={flipDirectionOverride?.ToString() ?? "auto"}, Rotate={needsRotation}");
 
                 if (needsRotation)
                 {

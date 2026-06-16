@@ -89,7 +89,7 @@ public class ExecutePrintJobTests
 
         _sut.ExecutePrintJob(job, firstPhase: true);
 
-        _mockWord.Verify(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()), Times.Never);
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()), Times.Never);
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class ExecutePrintJobTests
     [Fact]
     public void ExecutePrintJob_ManualDuplex_Phase2_CallsCreateSmartDuplexPdf()
     {
-        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
                  .Returns(@"C:\fake\rotated.pdf");
 
         var job = new PrintJobState
@@ -145,13 +145,63 @@ public class ExecutePrintJobTests
 
         _sut.ExecutePrintJob(job, firstPhase: false);
 
-        _mockWord.Verify(w => w.CreateSmartDuplexPdf(@"C:\fake\processed.pdf", new[] { 4, 2 }), Times.Once);
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(@"C:\fake\processed.pdf", new[] { 4, 2 }, null), Times.Once);
+    }
+
+    [Fact]
+    public void ExecutePrintJob_ManualDuplex_Phase2_PassesShortEdgeFlipDirection()
+    {
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
+                 .Returns(@"C:\fake\rotated.pdf");
+
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            OddPages = new[] { 1, 3 },
+            RemainingPages = new[] { 4, 2 },
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            Instruction = new FlipInstruction { Direction = FlipDirection.ShortEdge }
+        };
+
+        _sut.ExecutePrintJob(job, firstPhase: false);
+
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(
+            @"C:\fake\processed.pdf",
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 4, 2 })),
+            FlipDirection.ShortEdge), Times.Once);
+    }
+
+    [Fact]
+    public void ExecutePrintJob_ManualDuplex_Phase2_DoesNotForceLongEdgeOverride()
+    {
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
+                 .Returns(@"C:\fake\rotated.pdf");
+
+        var job = new PrintJobState
+        {
+            IsManualDuplex = true,
+            WaitingForFlip = true,
+            OddPages = new[] { 1, 3 },
+            RemainingPages = new[] { 4, 2 },
+            TempPdfPath = @"C:\fake\processed.pdf",
+            PrinterName = "TestPrinter",
+            Instruction = new FlipInstruction { Direction = FlipDirection.LongEdge }
+        };
+
+        _sut.ExecutePrintJob(job, firstPhase: false);
+
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(
+            @"C:\fake\processed.pdf",
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 4, 2 })),
+            null), Times.Once);
     }
 
     [Fact]
     public void ExecutePrintJob_ManualDuplex_Phase2_PrintsRotatedPdf()
     {
-        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
                  .Returns(@"C:\fake\rotated.pdf");
 
         var job = new PrintJobState
@@ -172,7 +222,7 @@ public class ExecutePrintJobTests
     [Fact]
     public void ExecutePrintJob_ManualDuplex_Phase2_MultipleCopies_PrintsOneContinuousBackPass()
     {
-        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
                  .Returns(@"C:\fake\rotated.pdf");
 
         var job = new PrintJobState
@@ -190,7 +240,8 @@ public class ExecutePrintJobTests
 
         _mockWord.Verify(w => w.CreateSmartDuplexPdf(
             @"C:\fake\processed.pdf",
-            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 4, 2, 4, 2 }))), Times.Once);
+            It.Is<int[]>(pages => pages.SequenceEqual(new[] { 4, 2, 4, 2 })),
+            null), Times.Once);
         _mockWord.Verify(w => w.PrintPdf(@"C:\fake\rotated.pdf", "TestPrinter", null), Times.Once);
     }
 
@@ -358,13 +409,13 @@ public class ExecutePrintJobTests
         job.RecoverySheetIndices.Should().BeEquivalentTo(new[] { 1, 3 }, opts => opts.WithStrictOrdering());
         job.RecoveryBackPages.Should().BeEquivalentTo(new[] { 6, 2 }, opts => opts.WithStrictOrdering());
         _mockWord.Verify(w => w.PrintPdf(@"C:\fake\processed.pdf", "TestPrinter", "1,5"), Times.Once);
-        _mockWord.Verify(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()), Times.Never);
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()), Times.Never);
     }
 
     [Fact]
     public void ContinueManualDuplexBackSheetRecovery_PrintsStoredBackPagesAndClearsRecoveryState()
     {
-        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
                  .Returns(@"C:\fake\back-recovery.pdf");
 
         var job = new PrintJobState
@@ -385,14 +436,14 @@ public class ExecutePrintJobTests
         job.WaitingForRecoveryFlip.Should().BeFalse();
         job.RecoverySheetIndices.Should().BeEmpty();
         job.RecoveryBackPages.Should().BeEmpty();
-        _mockWord.Verify(w => w.CreateSmartDuplexPdf(@"C:\fake\processed.pdf", new[] { 6, 2 }), Times.Once);
+        _mockWord.Verify(w => w.CreateSmartDuplexPdf(@"C:\fake\processed.pdf", new[] { 6, 2 }, null), Times.Once);
         _mockWord.Verify(w => w.PrintPdf(@"C:\fake\back-recovery.pdf", "TestPrinter", null), Times.Once);
     }
 
     [Fact]
     public void ContinueManualDuplexBackSheetRecovery_WhenBackPrintFails_KeepsRecoveryStateForRetry()
     {
-        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>()))
+        _mockWord.Setup(w => w.CreateSmartDuplexPdf(It.IsAny<string>(), It.IsAny<int[]>(), It.IsAny<FlipDirection?>()))
                  .Returns(@"C:\fake\back-recovery.pdf");
         _mockWord.Setup(w => w.PrintPdf(@"C:\fake\back-recovery.pdf", "TestPrinter", null, null))
                  .Throws(new InvalidOperationException("printer failed"));

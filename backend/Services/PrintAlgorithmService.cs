@@ -838,11 +838,15 @@ public class PrintAlgorithmService
                 var backPages = RepeatPagesForCopies(jobState.RemainingPages, jobState.Copies);
                 Console.WriteLine($"[ExecutePrintJob] Second phase pages: {string.Join(",", backPages)}");
 
-                // CreateSmartDuplexPdf BÂY GIỜ chỉ xoay trang theo orientation,
-                // KHÔNG tự OrderByDescending nữa – thứ tự đã được ManualDuplexPlan xử lý đúng.
+                // CreateSmartDuplexPdf keeps per-page orientation behavior by default.
+                // When the frontend detected visually-landscape pages stored in portrait
+                // boxes, pass ShortEdge so the back pass does not apply portrait 180° rotation.
                 var rotatedPdfPath = _wordService.CreateSmartDuplexPdf(
                     jobState.TempPdfPath,
-                    backPages
+                    backPages,
+                    jobState.Instruction?.Direction == FlipDirection.ShortEdge
+                        ? FlipDirection.ShortEdge
+                        : null
                 );
 
                 // Track before printing so crash/restart during sleep doesn't orphan the file
