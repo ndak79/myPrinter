@@ -11,3 +11,5 @@ assert.match(appJs, /_restorePendingSheetScroll\(fileId\)/);
 assert.match(appJs, /const savedSheetScrollTop = fileEntry\._scrollPos\?\.sheet \?\? 0;/);
 assert.match(appJs, /this\._scheduleSheetScrollRestore\(fileEntry\.id, savedSheetScrollTop\);/);
 assert.match(appJs, /img\.addEventListener\('load', \(\) => this\._restorePendingSheetScroll\(fileId\), \{ once: true \}\);/);
+assert.doesNotMatch(appJs, /this\._scrollAndBlinkEjected\(n\);/);
+assert.doesNotMatch(appJs, /_scrollAndBlinkEjected\(pageNum\)\s*\{[\s\S]*?scrollIntoView/);

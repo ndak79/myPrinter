@@ -2310,7 +2310,6 @@ const ContextMenu = {
                         PreviewPanelModule.onStateChanged();
                     }
                     PrintModule.updateButton();
-                    this._scrollAndBlinkEjected(n);
                 }
                 return;
             case 'reselect-page':
@@ -2435,21 +2434,6 @@ const ContextMenu = {
             else delete thumb.dataset.rotation;
         }
         ZoomModal._updateModalStyles();
-    },
-
-    _scrollAndBlinkEjected(pageNum) {
-        setTimeout(function() {
-            const card = document.querySelector('.ejected-card[data-page="' + pageNum + '"]');
-            if (!card) return;
-            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            const allCards = document.querySelectorAll('.ejected-card');
-            if (allCards.length <= 1) return;
-            let count = 0;
-            const iv = setInterval(function() {
-                card.style.outline = (count % 2 === 0) ? '2px solid rgba(239,68,68,0.75)' : 'none';
-                if (++count >= 12) { clearInterval(iv); card.style.outline = ''; }
-            }, 280);
-        }, 150);
     },
 
 };
