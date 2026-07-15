@@ -5116,10 +5116,19 @@ const PreviewPanelModule = {
     _modeJustToggled: false,       // one-shot flag — set by toggle handler, cleared by every render path
     _sheetRenderGen: 0,            // 0 = no pending async sheet rebuild; non-zero = active rebuild token
     _nextSheetRenderGen: 0,        // monotonically increasing; each full-rebuild gets a unique token
+    _pendingSheetScrollRestore: null,
 
     init() {
         this._container = document.getElementById('preview-panel');
         this._container?.addEventListener('scroll', () => {
+            const pendingRestore = this._pendingSheetScrollRestore;
+            if (pendingRestore
+                && pendingRestore.fileId === this._currentFileId
+                && pendingRestore.lastApplied !== null
+                && Math.abs(this._container.scrollTop - pendingRestore.lastApplied) > 1) {
+                this._pendingSheetScrollRestore = null;
+            }
+
             // Track velocity for smart rendering
             const now = performance.now();
             const scrollY = this._container.scrollTop;
@@ -5150,6 +5159,34 @@ const PreviewPanelModule = {
                 this._unmountOffScreen();
             }, 200);
         }, { passive: true });
+    },
+
+    _scheduleSheetScrollRestore(fileId, scrollTop) {
+        this._pendingSheetScrollRestore = {
+            fileId,
+            scrollTop,
+            lastApplied: null,
+        };
+        this._restorePendingSheetScroll(fileId);
+    },
+
+    _restorePendingSheetScroll(fileId) {
+        const pendingRestore = this._pendingSheetScrollRestore;
+        if (!pendingRestore || pendingRestore.fileId !== fileId || this._viewMode !== 'sheet' || !this._container) return;
+
+        requestAnimationFrame(() => {
+            const pending = this._pendingSheetScrollRestore;
+            if (!pending || pending !== pendingRestore || this._currentFileId !== fileId || this._viewMode !== 'sheet') return;
+
+            const maxScrollTop = Math.max(0, this._container.scrollHeight - this._container.clientHeight);
+            const restoredScrollTop = Math.min(pending.scrollTop, maxScrollTop);
+            pending.lastApplied = restoredScrollTop;
+            this._container.scrollTop = restoredScrollTop;
+
+            if (maxScrollTop >= pending.scrollTop) {
+                this._pendingSheetScrollRestore = null;
+            }
+        });
     },
 
     _getOrCreatePageRoot(fileEntry) {
@@ -5377,6 +5414,7 @@ const PreviewPanelModule = {
 
         const sheetRoot = this._getOrCreateSheetRoot(fileEntry);
         sheetRoot.classList.remove('preview-file-root--hidden');
+        const savedSheetScrollTop = fileEntry._scrollPos?.sheet ?? 0;
         sheetRoot.innerHTML = ''; // layout must rebuild — fingerprint mismatch or first load
 
         // Clear stale _pageEls entries for this file IMMEDIATELY after innerHTML = ''.
@@ -5786,10 +5824,8 @@ const PreviewPanelModule = {
 
         if (fileEntry._scrollPos === null) {
             fileEntry._scrollPos = { page: 0, sheet: 0, thumb: 0 };
-            this._container.scrollTop = 0;
-        } else {
-            this._container.scrollTop = fileEntry._scrollPos.sheet;
         }
+        this._scheduleSheetScrollRestore(fileEntry.id, savedSheetScrollTop);
         this._modeJustToggled = false;
         this._sheetRenderGen = 0;
         requestAnimationFrame(() => this._renderVisible());
@@ -5862,6 +5898,11 @@ const PreviewPanelModule = {
 
         img.style.transform = ''; // clear any phase-1 CSS hint
         img.src = entry.url;
+        if (img.complete) {
+            this._restorePendingSheetScroll(fileId);
+        } else {
+            img.addEventListener('load', () => this._restorePendingSheetScroll(fileId), { once: true });
+        }
         el.classList.add('rendered');
     },
 
