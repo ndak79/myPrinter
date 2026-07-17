@@ -56,6 +56,17 @@ public class ExecutePrintJobTests
     //  MANUAL DUPLEX - PHASE 1
     // ==========================================
 
+    [Theory]
+    [InlineData(1, 10, 5_100)]
+    [InlineData(5, 20, 12_750)]
+    [InlineData(1, 10_000, 4_000)]
+    [InlineData(1_000, 1, 120_000)]
+    public void CalculateManualDuplexEjectDelayMs_ReducesEstimatedWaitByFifteenPercent(int sheets, int ppm, int expectedDelayMs)
+    {
+        PrintAlgorithmService.CalculateManualDuplexEjectDelayMs(sheets, ppm)
+            .Should().Be(expectedDelayMs);
+    }
+
     [Fact]
     public void ExecutePrintJob_ManualDuplex_Phase1_PrintsOddPages()
     {

@@ -117,7 +117,8 @@ const I18nModule = {
 
     _updateToggleBtn() {
         const btn = document.getElementById('lang-toggle-btn');
-        if (btn) btn.textContent = `🌐 ${this._lang.toUpperCase()}`;
+        const targetLang = this._lang === 'vi' ? 'EN' : 'VI';
+        if (btn) btn.textContent = targetLang;
     },
 };
 

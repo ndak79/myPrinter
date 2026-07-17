@@ -13,6 +13,10 @@ namespace PrinterApp.Services;
 
 public class PrintAlgorithmService
 {
+    private const double ManualDuplexEjectDelayMultiplier = 0.85;
+    private const int MinimumManualDuplexEjectDelayMs = 4_000;
+    private const int MaximumManualDuplexEjectDelayMs = 120_000;
+
     private readonly IWordInteropService _wordService;
 
     public PrintAlgorithmService(IWordInteropService wordService)
@@ -738,6 +742,15 @@ public class PrintAlgorithmService
         return repeated;
     }
 
+    internal static int CalculateManualDuplexEjectDelayMs(int sheets, int ppm)
+    {
+        int safeSheets = Math.Max(1, sheets);
+        int safePpm = Math.Max(1, ppm);
+        int estimatedPrintMs = (int)Math.Ceiling(safeSheets / (double)safePpm * 60_000);
+        int adjustedEstimateMs = (int)Math.Ceiling(estimatedPrintMs * ManualDuplexEjectDelayMultiplier);
+        return Math.Clamp(adjustedEstimateMs, MinimumManualDuplexEjectDelayMs, MaximumManualDuplexEjectDelayMs);
+    }
+
     private string GenerateFlipInstructionText(FlipDirection direction, int pageCount)
     {
         // With the new algorithm, user doesn't need to rotate paper - just put it back straight
@@ -809,13 +822,12 @@ public class PrintAlgorithmService
                 }
 
                 // Wait for Phase-1 sheets to physically eject before showing the flip modal.
-                // Delay = ceil(sheets / ppm) * 60_000ms, clamped to [4s, 120s].
+                // The printer-speed heuristic is calibrated to 85%, clamped to [4s, 120s].
                 // PpmEstimate comes from WMI / name lookup / port heuristic (see EstimatePpm).
                 int phase1Sheets = Math.Max(1, jobState.OddPages.Length) * Math.Max(1, jobState.Copies);
                 int ppm = Math.Max(1, jobState.PpmEstimate);  // guard against 0
-                int estimatedPrintMs = (int)Math.Ceiling(phase1Sheets / (double)ppm * 60_000);
-                int delayMs = Math.Clamp(estimatedPrintMs, 4_000, 120_000);
-                Console.WriteLine($"[ExecutePrintJob] Phase 1 done: {phase1Sheets} sheet(s), {ppm} ppm -> delay {delayMs}ms");
+                int delayMs = CalculateManualDuplexEjectDelayMs(phase1Sheets, ppm);
+                Console.WriteLine($"[ExecutePrintJob] Phase 1 done: {phase1Sheets} sheet(s), {ppm} ppm -> adjusted delay {delayMs}ms");
                 System.Threading.Thread.Sleep(delayMs);
                 Console.WriteLine("[ExecutePrintJob] Eject delay done. Showing flip modal.");
             }
