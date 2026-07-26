@@ -5768,6 +5768,9 @@ const PreviewPanelModule = {
             header.textContent = I18nModule.t('sheet.noprint');
             ejectedCol.appendChild(header);
 
+            const ejectedPagesScroll = document.createElement('div');
+            ejectedPagesScroll.className = 'ejected-pages-scroll';
+
             deselectedPages.forEach(pageNum => {
                 const card = document.createElement('div');
                 card.className = 'ejected-card';
@@ -5797,8 +5800,10 @@ const PreviewPanelModule = {
 
                 const key = `${fileEntry.id}-${pageNum}`;
                 this._pageEls.set(key, card);
-                ejectedCol.appendChild(card);
+                ejectedPagesScroll.appendChild(card);
             });
+
+            ejectedCol.appendChild(ejectedPagesScroll);
         }
 
         // Vertical separator between sheets and ejected columns

@@ -3400,6 +3400,10 @@ kbd {
   gap:              12px;
   padding-top:      4px;
   padding-left:     16px;
+  position:         sticky;
+  top:              0;
+  align-self:       flex-start;
+  max-height:       calc(100dvh - 48px);
 }
 
 /* Fix: author display:flex defeats UA [hidden]{display:none} — must override explicitly */
@@ -3424,6 +3428,17 @@ kbd {
   text-align:       center;
   padding:          0 4px 8px;
   border-bottom:    none;
+}
+
+.ejected-pages-scroll {
+  display:             flex;
+  flex-direction:      column;
+  gap:                 12px;
+  max-height:          calc(100dvh - 96px);
+  min-height:          0;
+  overflow-y:          auto;
+  overscroll-behavior: contain;
+  scrollbar-width:     thin;
 }
 
 .ejected-card {
