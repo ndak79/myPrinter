@@ -297,12 +297,14 @@ public static class BackendStartup
 
         app.MapGet("/api/print/recovery-context", (FileSessionService sessions) =>
         {
-            var job = sessions.GetLatestRecoverableJob();
+            var jobs = sessions.GetRecoverableJobs();
+            var job = jobs.LastOrDefault();
             return Results.Ok(new PrintResponse
             {
                 Success = true,
                 Message = job == null ? "No recoverable print job." : "Recoverable print job found.",
-                JobState = job
+                JobState = job,
+                JobStates = jobs
             });
         });
 

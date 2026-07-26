@@ -70,11 +70,13 @@ public static class LicenseGuard
     public static bool IsActivated()
     {
         EnsureConfigured();
-        var fingerprintCandidates = FingerprintHelper.GetFingerprintCandidates();
-        var token = LicenseStorage.Load(fingerprintCandidates);
+        var token = LicenseStorage.Load();
+        if (token == null && !LicenseStorage.HasMachineLicense())
+        {
+            var fingerprintCandidates = FingerprintHelper.GetFingerprintCandidates();
+            token = LicenseStorage.MigrateLegacy(fingerprintCandidates);
+        }
         if (token == null)
-            return false;
-        if (!fingerprintCandidates.Contains(token.Fingerprint, StringComparer.Ordinal))
             return false;
 
         return VerifyToken(token, token.Fingerprint);

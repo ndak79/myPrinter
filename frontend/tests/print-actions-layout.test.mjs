@@ -13,6 +13,7 @@ const continuePrintBlock = appJs.match(/async _continuePrint\(\)\s*\{[\s\S]*?\n 
 
 assert.match(indexHtml, /<div class="print-actions"[^>]*>/);
 assert.match(indexHtml, /<div class="print-actions"[\s\S]*id="recovery-btn"[\s\S]*id="print-btn"[\s\S]*<\/div>/);
+assert.match(indexHtml, /id="recovery-job-select"/);
 assert.doesNotMatch(indexHtml, /id="complete-print-btn"/);
 assert.doesNotMatch(indexHtml, /id="recovery-btn"[^>]*(hidden|class="[^"]*\bhidden\b)/);
 assert.match(stylesCss, /\.print-actions\s*{[\s\S]*display:\s*flex;/);
@@ -45,7 +46,10 @@ assert.doesNotMatch(enJs, /autoTimer:/);
 assert.doesNotMatch(appJs, /Phase2RecoveryModule\.openCheck\(\)/);
 assert.doesNotMatch(appJs, /phase2-recovery-good'\)\?\.addEventListener/);
 assert.doesNotMatch(appJs, /_completionReady/);
-assert.match(appJs, /btn\.dataset\.mode = 'phase2-review';[\s\S]*btn\.textContent = I18nModule\.t\('print\.cancel'\);/);
+assert.doesNotMatch(continuePrintBlock, /dataset\.mode = 'phase2-review'/);
+assert.match(continuePrintBlock, /this\._setPrintButtonIdle\(btn\)/);
+assert.match(appJs, /jobStates \|\| result\.JobStates/);
+assert.match(appJs, /AppState\.recoveryJobs\.find/);
 assert.match(appJs, /async refreshRecoveryContext\(/);
 assert.match(appJs, /\/print\/recovery-context/);
 assert.match(appJs, /AppState\.recoveryContext/);

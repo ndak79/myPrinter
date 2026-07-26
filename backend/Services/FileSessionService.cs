@@ -56,12 +56,13 @@ public sealed class FileSessionService : IDisposable
         => _jobs.TryGetValue(jobId, out var j) ? j : null;
 
     public PrintJobState? GetLatestRecoverableJob()
-    {
-        return _jobs.Values
+        => GetRecoverableJobs().LastOrDefault();
+
+    public IReadOnlyList<PrintJobState> GetRecoverableJobs()
+        => _jobs.Values
             .Where(IsRecoverable)
-            .OrderByDescending(j => j.CreatedAt)
-            .FirstOrDefault();
-    }
+            .OrderBy(j => j.CreatedAt)
+            .ToArray();
 
     /// <summary>
     /// Atomically removes and returns a job, without deleting its temp file.

@@ -109,6 +109,7 @@ window.EN_STRINGS = {
     availablePhase1: 'Recover before flipping paper',
     availablePhase2: 'Recover after back-side printing',
     noContext: 'No print job is available for recovery.',
+    selectJob: 'Select a print job to recover',
     title: 'Recover after paper jam',
     intro: 'Select sheets that jammed, tore, or did not leave the printer. The app will reprint the front side of those sheets so you can replace them before flipping the stack.',
     rangePlaceholder: 'Example: 5-7, 10',

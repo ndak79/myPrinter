@@ -129,6 +129,7 @@ const AppState = {
     selectedPrinter:       null,
     currentJob:            null,
     recoveryContext:       null,
+    recoveryJobs:          [],
     pendingPrintQueue:     null,  // B17-FE-2 fix: queue of remaining files after a manual-flip pause
     pendingManualBatch:    null,
     pendingManualReviewQueue: null,
@@ -2688,7 +2689,9 @@ const PrintModule = {
         try {
             const res = await fetch(`${API_BASE}/print/recovery-context`);
             const result = await res.json();
-            const recovered = result.jobState || result.JobState || null;
+            const jobs = result.jobStates || result.JobStates || [];
+            AppState.recoveryJobs = Array.isArray(jobs) ? jobs : [];
+            const recovered = result.jobState || result.JobState || AppState.recoveryJobs.at(-1) || null;
             this._setRecoveryContext(recovered);
             return recovered;
         } catch {
@@ -2773,7 +2776,9 @@ const PrintModule = {
         });
         document.getElementById('flip-cancel-print-btn')?.addEventListener('click', () => this._cancelCurrentPrintJob());
         document.getElementById('recovery-btn')?.addEventListener('click', () => {
-            const job = this._recoverableJob();
+            const selectedId = document.getElementById('recovery-job-select')?.value;
+            const job = AppState.recoveryJobs.find(item => this._jobId(item) === selectedId)
+                || this._recoverableJob();
             if (!job) {
                 showToast(I18nModule.t('recovery.noContext'), 'info');
                 return;
@@ -2805,6 +2810,17 @@ const PrintModule = {
 
     _updateRecoveryButton() {
         const recoveryBtn = document.getElementById('recovery-btn');
+        const recoverySelect = document.getElementById('recovery-job-select');
+        if (recoverySelect) {
+            recoverySelect.replaceChildren();
+            for (const [index, job] of AppState.recoveryJobs.entries()) {
+                const option = document.createElement('option');
+                option.value = this._jobId(job) || '';
+                option.textContent = `#${index + 1}`;
+                recoverySelect.appendChild(option);
+            }
+            recoverySelect.classList.toggle('hidden', AppState.recoveryJobs.length < 2);
+        }
         const phase = this._activeRecoveryPhase();
         if (recoveryBtn) {
             recoveryBtn.disabled = !phase;
@@ -3118,23 +3134,17 @@ const PrintModule = {
                 }
 
                 AppState.pendingManualBatch = null;
-                const completedById = new Map(completedJobs.map(job => [this._jobId(job), job]));
-                const reviewJobs = manualBatch.jobs
-                    .map(job => completedById.get(this._jobId(job)))
-                    .filter(Boolean);
-                AppState.pendingManualReviewQueue = reviewJobs.slice(1);
-                AppState.currentJob = reviewJobs[0] || null;
-                if (AppState.currentJob) this._setRecoveryContext(AppState.currentJob);
-
-                const btn = document.getElementById('print-btn');
-                if (btn && AppState.currentJob) {
-                    btn.dataset.mode = 'phase2-review';
-                    btn.classList.add('cancellable');
-                    btn.textContent = I18nModule.t('print.cancel');
-                    btn.disabled = false;
-                    btn.style.opacity = '1';
+                AppState.pendingManualReviewQueue = null;
+                for (const job of completedJobs) {
+                    if (job._historyEntry) HistoryModule.add(job._historyEntry);
                 }
-                this._updateRecoveryButton();
+                AppState.currentJob = null;
+                this._setPrintButtonIdle(document.getElementById('print-btn'));
+                await this.refreshRecoveryContext();
+                const queue = AppState.pendingPrintQueue;
+                AppState.pendingPrintQueue = null;
+                if (queue && queue.nextIndex < queue.files.length) await this._resumePrintQueue(queue);
+                PrintModule.updateButton();
                 showToast(I18nModule.t('phase2Recovery.backSent'), 'info');
                 return;
             }
@@ -3153,17 +3163,14 @@ const PrintModule = {
             if (result.success) {
                 if (result.jobState?.backPassSent || result.jobState?.BackPassSent) {
                     const histEntry = AppState.currentJob?._historyEntry;
-                    AppState.currentJob = result.jobState;
-                    AppState.currentJob._historyEntry = histEntry;
-                    this._setRecoveryContext(result.jobState);
-                    if (btn) {
-                        btn.dataset.mode = 'phase2-review';
-                        btn.classList.add('cancellable');
-                        btn.textContent = I18nModule.t('print.cancel');
-                        btn.disabled = false;
-                        btn.style.opacity = '1';
-                    }
-                    this._updateRecoveryButton();
+                    if (histEntry) HistoryModule.add(histEntry);
+                    AppState.currentJob = null;
+                    this._setPrintButtonIdle(btn);
+                    await this.refreshRecoveryContext();
+                    const queue = AppState.pendingPrintQueue;
+                    AppState.pendingPrintQueue = null;
+                    if (queue && queue.nextIndex < queue.files.length) await this._resumePrintQueue(queue);
+                    PrintModule.updateButton();
                     showToast(I18nModule.t('phase2Recovery.backSent'), 'info');
                     return;
                 }

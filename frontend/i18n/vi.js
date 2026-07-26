@@ -122,6 +122,7 @@ window.VI_STRINGS = {
     availablePhase1: 'Cứu lỗi trước khi lật giấy',
     availablePhase2: 'Cứu lỗi sau khi in mặt sau',
     noContext: 'Chưa có lệnh in nào có thể cứu lỗi.',
+    selectJob: 'Chọn lệnh in cần khôi phục',
     title: 'Khôi phục sau kẹt giấy',
     intro: 'Chọn các tờ bị kẹt, bị rách hoặc chưa ra khỏi máy. Ứng dụng sẽ in lại mặt trước của các tờ đó để bạn thay vào xấp giấy trước khi lật.',
     rangePlaceholder: 'Ví dụ: 5-7, 10',

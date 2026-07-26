@@ -10,6 +10,7 @@ namespace MyPrinter.Desktop.Activation;
 
 internal static class LicenseStorage
 {
+    private static readonly MachineLicenseStore MachineStore = MachineLicenseStore.CreateDefault();
     private static string PersistentPath()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -61,44 +62,33 @@ internal static class LicenseStorage
 
     public static bool TrySave(LicenseToken token)
     {
-        try
-        {
-            var key = DeriveKey(token.Fingerprint);
-            var nonce = RandomNumberGenerator.GetBytes(12);
-            var json = JsonSerializer.Serialize(token);
-            var plain = Encoding.UTF8.GetBytes(json);
-
-            // AES-256-GCM with 16-byte tag (AesGcm.TagByteSizes.MaxSize = 16)
-            using var aes = new AesGcm(key, AesGcm.TagByteSizes.MaxSize);
-            var cipher = new byte[plain.Length];
-            var tag = new byte[AesGcm.TagByteSizes.MaxSize];
-            aes.Encrypt(nonce, plain, cipher, tag);
-
-            // Format: [0x02][nonce 12][cipher][tag 16]
-            var blob = new byte[1 + 12 + cipher.Length + tag.Length];
-            blob[0] = 0x02;
-            nonce.CopyTo(blob, 1);
-            cipher.CopyTo(blob, 13);
-            tag.CopyTo(blob, 13 + cipher.Length);
-
-            var path = PersistentPath();
-            // Use randomized same-dir temp file - matches Python tempfile.mkstemp() hardening.
-            // Predictable ".tmp" suffix is vulnerable to local temp-path races/TOCTOU.
-            var tmp = path + "." + Path.GetRandomFileName() + ".tmp";
-            File.WriteAllBytes(tmp, blob);
-            File.Move(tmp, path, overwrite: true);
-            return true;
-        }
-        catch { return false; }
+        return MachineStore.TrySave(token);
     }
 
     /// <summary>Convenience wrapper - callers that don't care about persistence failure.</summary>
     public static void Save(LicenseToken token) => TrySave(token);
 
-    public static LicenseToken? Load(string fingerprint)
-        => Load(new[] { fingerprint });
+    public static LicenseToken? Load() => MachineStore.Load();
 
-    public static LicenseToken? Load(IEnumerable<string> fingerprints)
+    public static bool HasMachineLicense() => MachineStore.Exists();
+
+    public static LicenseToken? MigrateLegacy(IEnumerable<string> fingerprints)
+    {
+        if (MachineStore.Exists())
+            return null;
+
+        var token = LoadLegacy(fingerprints);
+        if (token == null || !MachineStore.TrySave(token))
+            return null;
+
+        DeleteLegacyFiles();
+        return token;
+    }
+
+    public static LicenseToken? Load(string fingerprint)
+        => LoadLegacy(new[] { fingerprint });
+
+    private static LicenseToken? LoadLegacy(IEnumerable<string> fingerprints)
     {
         MigrateLegacyFile();
         try
@@ -129,11 +119,6 @@ internal static class LicenseStorage
             {
                 // Legacy: plaintext JSON (Python < v2 format) - try to parse and re-encrypt.
                 var token = JsonSerializer.Deserialize<LicenseToken>(blob);
-                if (token != null)
-                {
-                    Save(token); // upgrade to encrypted format using token.Fingerprint as key.
-                }
-
                 return token;
             }
         }
@@ -163,6 +148,12 @@ internal static class LicenseStorage
     }
 
     public static void Delete()
+    {
+        MachineStore.Delete();
+        DeleteLegacyFiles();
+    }
+
+    private static void DeleteLegacyFiles()
     {
         // Delete both persistent and legacy paths - matches Python which deletes both
         // _LICENSE_FILE and _LEGACY_LICENSE_FILE on revoke to prevent rollback resurrection.

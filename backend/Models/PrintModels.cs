@@ -177,6 +177,7 @@ namespace PrinterApp.Models
         public bool Success { get; set; }
         public string? Message { get; set; }
         public PrintJobState? JobState { get; set; }
+        public IReadOnlyList<PrintJobState> JobStates { get; set; } = Array.Empty<PrintJobState>();
     }
 
     public class Phase1RecoveryRequest

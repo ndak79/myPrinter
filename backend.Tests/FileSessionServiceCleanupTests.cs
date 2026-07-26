@@ -233,4 +233,16 @@ public class FileSessionServiceCleanupTests : IDisposable
             "claiming a job only protects the in-memory continue request; persisted recovery context must survive until success, cancel, or cleanup");
         restored!.JobId.Should().Be(job.JobId);
     }
+
+    [Fact]
+    public void GetRecoverableJobs_ReturnsEveryLiveJobInCreationOrder()
+    {
+        var first = MakeExpiredJob(CreateTempFile(), TimeSpan.FromMinutes(20));
+        var second = MakeExpiredJob(CreateTempFile(), TimeSpan.FromMinutes(10));
+        _sut.AddJob(first.JobId, first);
+        _sut.AddJob(second.JobId, second);
+
+        _sut.GetRecoverableJobs().Select(job => job.JobId)
+            .Should().Equal(first.JobId, second.JobId);
+    }
 }

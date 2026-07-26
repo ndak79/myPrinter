@@ -460,15 +460,16 @@ public class ActivationCompatibilityTests
     }
 
     [Fact]
-    public void LicenseGuard_startup_loads_license_with_fingerprint_candidates()
+    public void LicenseGuard_startup_uses_machine_license_before_legacy_fingerprint_migration()
     {
         var repoRoot = GetRepoRoot();
         var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Activation", "LicenseGuard.cs"));
         var isActivatedBody = ExtractMethodSource(source, "public static bool IsActivated");
 
-        isActivatedBody.Should().Contain("FingerprintHelper.GetFingerprintCandidates()");
-        isActivatedBody.Should().Contain("LicenseStorage.Load(fingerprintCandidates)");
-        isActivatedBody.Should().Contain("fingerprintCandidates.Contains(token.Fingerprint");
+        isActivatedBody.Should().Contain("var token = LicenseStorage.Load();");
+        isActivatedBody.Should().Contain("!LicenseStorage.HasMachineLicense()");
+        isActivatedBody.Should().Contain("LicenseStorage.MigrateLegacy(fingerprintCandidates)");
+        isActivatedBody.Should().NotContain("fingerprintCandidates.Contains(token.Fingerprint");
         isActivatedBody.Should().Contain("VerifyToken(token, token.Fingerprint)",
             "the signed token fingerprint, not a transient current primary fingerprint, should drive verification and heartbeat");
     }
