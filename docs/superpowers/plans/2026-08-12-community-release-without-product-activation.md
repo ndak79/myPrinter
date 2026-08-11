@@ -4,7 +4,7 @@
 
 **Goal:** Remove product activation/licensing from Smart Printer and publish an accurate, community-ready README and MIT license without changing printing behavior.
 
-**Architecture:** Keep the existing WinForms host, embedded ASP.NET backend, WebView2 frontend, printer/printing services, and single-instance coordination. Delete the activation subsystem and simplify its consumers and packaging boundary so desktop startup depends only on local application code and backend readiness.
+**Architecture:** Keep the existing WinForms host, embedded ASP.NET backend, WebView2 frontend, printer/printing services, and mutex-only single-instance protection. Delete product activation and the cross-process window-activation channel, then simplify consumers and packaging so desktop startup depends only on local application code and backend readiness.
 
 **Tech Stack:** C# / .NET 10 Windows Forms, ASP.NET Core, WebView2, xUnit, PowerShell, Inno Setup, vanilla JavaScript frontend.
 
@@ -13,7 +13,7 @@
 - Work only on `manual-duplex`, created from the current `master` HEAD.
 - Preserve pre-existing dirty build/test artefacts; stage only files belonging to this change.
 - Remove product activation/licensing, but keep the open-source MIT license.
-- Preserve all printing, preview, conversion, recovery, tray, startup, single-instance, and localization behavior.
+- Preserve all printing, preview, conversion, recovery, tray, startup, mutex-based single-instance, and localization behavior; remove cross-process window signaling.
 - Run GitNexus impact analysis before editing existing symbols and `gitnexus detect-changes` before committing.
 
 ### Task 1: Add failing community-boundary tests
@@ -105,31 +105,31 @@ Expected: FAIL because the current startup, project, and installer still contain
 
 **Interfaces:**
 - Consumes: `WindowsStartupService`, `SingleInstanceCoordinator`, `BackendStartup`, `MainForm`.
-- Produces: startup that reaches the main application without product activation, while preserving external single-instance window signaling.
+- Produces: startup that reaches the main application without product activation or cross-process window signaling.
 
-- [ ] **Step 1: Run GitNexus impact for `Program.Main`, `Program.LoadActivationConfig`, `MainForm.SetupRuntimeLicenseMonitor`, and `MainForm.ShowFromExternalActivation`**
+- [ ] **Step 1: Run GitNexus impact for `Program.Main`, `Program.LoadActivationConfig`, `MainForm.SetupRuntimeLicenseMonitor`, `MainForm.ShowFromExternalActivation`, `SingleInstanceCoordinator.StartActivationListener`, and `SingleInstanceCoordinator.SignalExistingInstance`**
 
-Run: `gitnexus impact -r myPrinter -f desktop/Program.cs --depth 3 --include-tests Program.Main`, `gitnexus impact -r myPrinter -f desktop/Program.cs --depth 3 --include-tests LoadActivationConfig`, `gitnexus impact -r myPrinter -f desktop/MainForm.cs --depth 3 --include-tests SetupRuntimeLicenseMonitor`, and `gitnexus impact -r myPrinter -f desktop/MainForm.cs --depth 3 --include-tests ShowFromExternalActivation`.
+Run: `gitnexus impact -r myPrinter -f desktop/Program.cs --depth 3 --include-tests Program.Main`, `gitnexus impact -r myPrinter -f desktop/Program.cs --depth 3 --include-tests LoadActivationConfig`, `gitnexus impact -r myPrinter -f desktop/MainForm.cs --depth 3 --include-tests SetupRuntimeLicenseMonitor`, `gitnexus impact -r myPrinter -f desktop/MainForm.cs --depth 3 --include-tests ShowFromExternalActivation`, `gitnexus impact -r myPrinter -f desktop/SingleInstanceCoordinator.cs --depth 3 --include-tests StartActivationListener`, and `gitnexus impact -r myPrinter -f desktop/SingleInstanceCoordinator.cs --depth 3 --include-tests SignalExistingInstance`.
 
-Expected: direct callers are limited to desktop startup/tests; the external activation callback is retained, while the product-gate helpers are removed.
+Expected: direct callers are limited to desktop startup/tests; product-gate helpers and the external window-activation channel are removed.
 
 - [ ] **Step 2: Remove the startup gate and dead configuration helpers**
 
-Delete the `MyPrinter.Desktop.Activation` import, pinned transport constants, activation `try/catch`, `LoadPublicKeysetJson`, `LoadActivationConfig`, `ValidateTransportConfig`, and activation-specific imports from `Program.cs`. Keep the existing worker-mode, single-instance, auto-start, backend, readiness, main-form, listener, and shutdown code.
+Delete the `MyPrinter.Desktop.Activation` import, pinned transport constants, activation `try/catch`, `LoadPublicKeysetJson`, `LoadActivationConfig`, `ValidateTransportConfig`, and activation-specific imports from `Program.cs`. Keep the existing worker-mode, mutex-only single-instance, auto-start, backend, readiness, main-form, and shutdown code; remove the listener and secondary-launch signal.
 
-- [ ] **Step 3: Remove runtime license monitoring without changing window signaling**
+- [ ] **Step 3: Remove runtime license monitoring and window signaling**
 
-Delete the runtime monitor fields, setup call, stop call, reactivation handler, and product-dialog branch from `MainForm.cs`. Keep `ShowFromExternalActivation`, but after marshaling it should call `ShowWindow()` and `SetForegroundWindow(Handle)` directly.
+Delete the runtime monitor fields, setup call, stop call, reactivation handler, product-dialog branch, and `ShowFromExternalActivation` callback from `MainForm.cs`. Remove the now-unused foreground-window P/Invoke.
 
 - [ ] **Step 4: Update the single-instance source test**
 
-Remove the assertion that compares startup against `LoadActivationConfig()`. Keep assertions for secondary launch routing, auto-start ordering, handle creation, listener registration, and exception handling.
+Replace assertions for secondary launch routing, listener registration, and exception handling with assertions that a secondary launch exits after the mutex check and that no window-activation channel is exposed. Keep auto-start ordering and handle creation checks.
 
 - [ ] **Step 5: Run the focused startup tests**
 
 Run: `dotnet test desktop.Tests/desktop.Tests.csproj -c Debug --filter "FullyQualifiedName~SingleInstanceCoordinatorTests|FullyQualifiedName~CommunityBuildTests" --logger "console;verbosity=minimal"`
 
-Expected: PASS after the startup consumers are simplified, with no activation gate required.
+Expected: PASS after the startup consumers are simplified, with no product or window-activation channel required.
 
 ### Task 3: Delete activation implementation, assets, tests, and packages
 
@@ -162,7 +162,7 @@ Remove `BouncyCastle.Cryptography`, `NSec.Cryptography`, desktop-only `System.Ma
 
 - [ ] **Step 2: Delete the activation implementation and focused tests**
 
-Delete the files listed above. Do not delete the unrelated `SingleInstanceCoordinator` or `WindowsStartupService` code.
+Delete the files listed above. Keep `WindowsStartupService`; retain only the mutex portion of `SingleInstanceCoordinator` and remove its window-activation channel.
 
 - [ ] **Step 3: Run the full .NET test suites**
 

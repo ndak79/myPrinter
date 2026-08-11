@@ -8,7 +8,7 @@ Smart Printer starts automatically when the current Windows user signs in, defau
 
 The desktop app owns this feature. A new `WindowsStartupService` manages one per-user Task Scheduler entry named `SmartPrinterAutoStart` through `schtasks.exe`. Task Scheduler is preferred over Registry `Run` or Startup-folder shortcuts because the app manifest requests administrator privileges, and the task can be created with highest privileges to avoid repeated login-time UAC prompts.
 
-`Program.Main` reads a `--start-hidden` command-line switch and passes it to `MainForm`. `MainForm` suppresses only the first automatic show when that switch is present; later tray clicks, double-clicks, and secondary-instance activation still show the window normally.
+`Program.Main` reads a `--start-hidden` command-line switch and passes it to `MainForm`. `MainForm` suppresses only the first automatic show when that switch is present; later tray clicks and double-clicks show the window normally. A secondary launch exits after detecting the existing single-instance mutex and never changes the existing window.
 
 ## Tray UX
 
