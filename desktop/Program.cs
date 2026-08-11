@@ -1,11 +1,8 @@
 using Microsoft.AspNetCore.Builder;
-using MyPrinter.Desktop.Activation;
 using PrinterApp.Services.WordConversion;
 using System;
-using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -13,9 +10,6 @@ namespace MyPrinter.Desktop;
 
 static class Program
 {
-    private const string ExpectedTransportKeyId = "actenc_prod_c094fac09065_v1";
-    private const string ExpectedTransportPublicKey = "OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM";
-
     public static int BackendPort { get; private set; } = 8787;
     public static WebApplication? BackendApp { get; private set; }
 
@@ -36,34 +30,6 @@ static class Program
         if (!singleInstance.IsPrimary)
         {
             singleInstance.SignalExistingInstance();
-            return;
-        }
-
-        try
-        {
-            var (serverUrl, productId, allowInsecure, transportKeyId, transportPublicKey) = LoadActivationConfig();
-            var publicKeysetJson = LoadPublicKeysetJson(productId);
-            LicenseGuard.Configure(serverUrl, productId, publicKeysetJson, allowInsecure, transportKeyId, transportPublicKey);
-
-            if (!LicenseGuard.IsActivated())
-            {
-                using var activationForm = new ActivationForm();
-                if (activationForm.ShowDialog() != DialogResult.OK || !activationForm.Activated)
-                    return;
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                $"Startup error:\n{ex.Message}\n\n" +
-                "Possible causes:\n" +
-                "- smartprinter.appsettings.json is missing or invalid\n" +
-                "- Public keyset file is missing or malformed\n" +
-                "- Hardware fingerprint could not be collected\n\n" +
-                "Please contact support.",
-                "smartPrinter startup error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
             return;
         }
 
@@ -166,86 +132,4 @@ static class Program
         return false;
     }
 
-    private static string LoadPublicKeysetJson(string productId)
-    {
-        var fileName = $"license_keyset_{productId}.json";
-        var path = Path.Combine(AppContext.BaseDirectory, fileName);
-        if (!File.Exists(path))
-        {
-            path = Path.Combine(AppContext.BaseDirectory, "Activation", fileName);
-        }
-        if (!File.Exists(path))
-            throw new FileNotFoundException(
-                $"Public keyset '{fileName}' not found in the application directory.",
-                path);
-
-        return File.ReadAllText(path);
-    }
-
-    private static (
-        string ServerUrl,
-        string ProductId,
-        bool AllowInsecureHttp,
-        string? TransportKeyId,
-        string? TransportPublicKey) LoadActivationConfig()
-    {
-        var path = Path.Combine(AppContext.BaseDirectory, "smartprinter.appsettings.json");
-        if (!File.Exists(path))
-            throw new FileNotFoundException(
-                "smartprinter.appsettings.json not found. Create it with Activation.ServerUrl set to your activation server URL.",
-                path);
-
-        var json = File.ReadAllText(path);
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("Activation", out var act))
-            throw new InvalidOperationException("smartprinter.appsettings.json is missing the 'Activation' section.");
-
-        var url = act.TryGetProperty("ServerUrl", out var u) ? u.GetString() ?? "" : "";
-        if (string.IsNullOrWhiteSpace(url) || url.Contains("your-activation-server"))
-            throw new InvalidOperationException(
-                "Activation.ServerUrl in smartprinter.appsettings.json is not configured. " +
-                "Replace the placeholder with the real server URL.");
-
-        var productId = act.TryGetProperty("ProductId", out var p) ? p.GetString() ?? "" : "";
-        if (string.IsNullOrWhiteSpace(productId))
-            throw new InvalidOperationException(
-                "Activation.ProductId in smartprinter.appsettings.json is not configured. " +
-                "Set it to the registered product ID, for example 'prod_smartprinter'.");
-
-        var allowInsecure = act.TryGetProperty("AllowInsecureHttp", out var a) && a.GetBoolean();
-        var transportKeyId = act.TryGetProperty("TransportKeyId", out var tk) ? tk.GetString()?.Trim() : null;
-        var transportPublicKey = act.TryGetProperty("TransportPublicKey", out var tp) ? tp.GetString()?.Trim() : null;
-
-        ValidateTransportConfig(url, allowInsecure, transportKeyId, transportPublicKey);
-        return (url, productId, allowInsecure, transportKeyId, transportPublicKey);
-    }
-
-    private static void ValidateTransportConfig(
-        string serverUrl,
-        bool allowInsecureHttp,
-        string? transportKeyId,
-        string? transportPublicKey)
-    {
-        var uri = new Uri(serverUrl, UriKind.Absolute);
-        var isLocal = uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
-            || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            || uri.Host.Equals("::1", StringComparison.OrdinalIgnoreCase);
-        var requiresTransport = uri.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-            && !isLocal
-            && allowInsecureHttp;
-
-        var hasKeyId = !string.IsNullOrWhiteSpace(transportKeyId);
-        var hasPublicKey = !string.IsNullOrWhiteSpace(transportPublicKey);
-        if (requiresTransport && (!hasKeyId || !hasPublicKey))
-            throw new InvalidOperationException("Non-local HTTP activation requires Activation.TransportKeyId and Activation.TransportPublicKey.");
-        if (hasKeyId != hasPublicKey)
-            throw new InvalidOperationException("Activation.TransportKeyId and Activation.TransportPublicKey must be configured together.");
-        if (!hasKeyId)
-            return;
-
-        if (!string.Equals(transportKeyId, ExpectedTransportKeyId, StringComparison.Ordinal))
-            throw new InvalidOperationException("Activation.TransportKeyId does not match the pinned ACTIVSYS transport key.");
-        if (!string.Equals(transportPublicKey, ExpectedTransportPublicKey, StringComparison.Ordinal))
-            throw new InvalidOperationException("Activation.TransportPublicKey does not match the pinned ACTIVSYS transport key.");
-    }
 }

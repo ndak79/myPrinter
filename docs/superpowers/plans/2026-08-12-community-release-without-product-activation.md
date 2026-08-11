@@ -52,7 +52,8 @@ public class CommunityBuildTests
     [Fact]
     public void Desktop_project_has_no_product_activation_assets_or_packages()
     {
-        Directory.Exists(RepoPath("desktop", "Activation")).Should().BeFalse();
+        if (Directory.Exists(RepoPath("desktop", "Activation")))
+            Directory.GetFileSystemEntries(RepoPath("desktop", "Activation")).Should().BeEmpty();
         File.Exists(RepoPath("desktop", "ActivationForm.cs")).Should().BeFalse();
         File.Exists(RepoPath("desktop", "ActivationForm.Designer.cs")).Should().BeFalse();
         File.Exists(RepoPath("desktop", "RuntimeLicenseMonitor.cs")).Should().BeFalse();
@@ -177,6 +178,7 @@ Expected: PASS with no activation projects, types, or package restores required.
 - Delete: `desktop/smartprinter.appsettings.json`
 - Delete: `docs/superpowers/plans/2026-04-11-activation-system.md`
 - Delete: `docs/superpowers/specs/2026-07-26-machine-license-and-nonblocking-print-recovery-design.md`
+- Create: `docs/superpowers/specs/2026-07-26-nonblocking-print-recovery-design.md`
 - Modify: `docs/superpowers/specs/2026-06-06-windows-auto-start-tray-design.md`
 
 **Interfaces:**
@@ -191,9 +193,9 @@ Keep version selection, safe repository path resolution, .NET SDK selection, opt
 
 Delete the `KeysetFileName` macro and remove `smartprinter.appsettings.json` and `Activation\...` from `[Files]`. Keep the executable, backend `appsettings.json`, frontend, icons, shortcuts, and launch behavior.
 
-- [ ] **Step 3: Remove stale private activation documentation**
+- [ ] **Step 3: Remove stale private activation documentation and preserve recovery guidance**
 
-Delete the activation implementation plan and mixed machine-license spec because they document removed internals and server details. Remove the remaining sentence that says auto-start occurs after activation/config checks; describe it as occurring after normal startup checks.
+Delete the activation implementation plan and the mixed machine-license spec because they document removed internals and server details. Preserve its independent manual-duplex recovery guidance in `docs/superpowers/specs/2026-07-26-nonblocking-print-recovery-design.md`. Remove the remaining sentence that says auto-start occurs after activation/config checks; describe it as occurring after normal startup checks.
 
 - [ ] **Step 4: Validate packaging source statically**
 

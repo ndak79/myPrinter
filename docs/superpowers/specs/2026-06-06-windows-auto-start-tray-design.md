@@ -16,7 +16,7 @@ The tray menu adds a checked item labelled `Start with Windows`. It reflects the
 
 ## Default Behavior
 
-On normal startup, after activation/config checks have succeeded, the app ensures the scheduled task exists unless the user has explicitly turned the tray option off. The task launches the current executable with `--start-hidden`, so Windows login starts Smart Printer in the tray without displaying the main window or the startup balloon tip.
+On normal startup, after the desktop host has initialized, the app ensures the scheduled task exists unless the user has explicitly turned the tray option off. The task launches the current executable with `--start-hidden`, so Windows login starts Smart Printer in the tray without displaying the main window or the startup balloon tip.
 
 When the user turns auto-start off, the desktop app writes a small opt-out preference under the current user's application data folder. That prevents the next manual launch from immediately recreating the scheduled task.
 

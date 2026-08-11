@@ -63,7 +63,7 @@ Expected: pass.
 
 **Files:**
 - Modify: `desktop/MainForm.cs`
-- Test: `desktop.Tests/ActivationCompatibilityTests.cs`
+- Test: `desktop.Tests/WindowsStartupServiceTests.cs`
 
 - [ ] **Step 1: Write failing tests**
 
@@ -71,7 +71,7 @@ Add compatibility checks that the tray menu contains `Start with Windows`, uses 
 
 - [ ] **Step 2: Run red tests**
 
-Run: `dotnet test desktop.Tests/desktop.Tests.csproj --filter ActivationCompatibilityTests`
+Run: `dotnet test desktop.Tests/desktop.Tests.csproj --filter WindowsStartupServiceTests`
 Expected: fail until the tray item is added.
 
 - [ ] **Step 3: Implement tray menu item**
@@ -80,7 +80,7 @@ Add a checked tray menu item between Hide and Exit. Initialize it from `IsEnable
 
 - [ ] **Step 4: Run green tests**
 
-Run: `dotnet test desktop.Tests/desktop.Tests.csproj --filter ActivationCompatibilityTests`
+Run: `dotnet test desktop.Tests/desktop.Tests.csproj --filter WindowsStartupServiceTests`
 Expected: pass.
 
 ### Task 4: Verification and Git

@@ -1,9 +1,0 @@
-{
-  "Activation": {
-    "ServerUrl": "http://103.82.24.37",
-    "ProductId": "prod_smartprinter",
-    "AllowInsecureHttp": true,
-    "TransportKeyId": "actenc_prod_c094fac09065_v1",
-    "TransportPublicKey": "OPTPpTm_-MhYRoRKCYyLTPZLxqQxYxZtnP49VcaIxjM"
-  }
-}

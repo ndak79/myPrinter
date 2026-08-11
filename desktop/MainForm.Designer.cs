@@ -8,7 +8,6 @@ partial class MainForm
     {
         if (disposing)
         {
-            _runtimeLicenseMonitor?.Dispose();
             _webView?.Dispose();
             if (_trayIcon != null)
                 _trayIcon.Visible = false;

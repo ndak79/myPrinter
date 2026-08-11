@@ -23,8 +23,6 @@ public class SingleInstanceCoordinatorTests
         program.Should().Contain("catch (ObjectDisposedException)");
         program.Should().Contain("using var mainForm = new MainForm(startHidden);");
 
-        program.IndexOf("if (!singleInstance.IsPrimary)", StringComparison.Ordinal)
-            .Should().BeLessThan(program.IndexOf("LoadActivationConfig()", StringComparison.Ordinal));
         program.IndexOf("WindowsStartupService.Default.EnsureEnabledByDefault();", StringComparison.Ordinal)
             .Should().BeLessThan(program.IndexOf("using var mainForm = new MainForm(startHidden);", StringComparison.Ordinal));
         program.IndexOf("_ = mainForm.Handle;", StringComparison.Ordinal)

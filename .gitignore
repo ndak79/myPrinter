@@ -5,6 +5,8 @@ backend.Tests/bin/
 backend.Tests/obj/
 desktop/bin/
 desktop/obj/
+desktop.Tests/bin/
+desktop.Tests/obj/
 
 # Log files
 backend/*.log

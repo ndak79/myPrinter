@@ -2,25 +2,18 @@
 using Microsoft.Web.WebView2.WinForms;
 using System.Runtime.InteropServices;
 
-using MyPrinter.Desktop.Activation;
-
 namespace MyPrinter.Desktop;
 
 public partial class MainForm : Form
 {
-    private static readonly TimeSpan RuntimeLicenseCheckInterval = TimeSpan.FromMinutes(1);
-
     private WebView2 _webView = null!;
     private NotifyIcon _trayIcon = null!;
     private readonly List<Image> _ownedTrayImages = new();
     private Icon? _windowIcon;
     private Icon? _trayNotifyIcon;
-    private RuntimeLicenseMonitor? _runtimeLicenseMonitor;
-    private ActivationForm? _runtimeActivationForm;
     private readonly WindowsStartupService _windowsStartupService;
     private readonly bool _startHidden;
     private bool _suppressInitialShow;
-    private int _runtimeActivationInProgress;
     private bool _reallyExit = false;
 
     public MainForm()
@@ -37,7 +30,6 @@ public partial class MainForm : Form
         SetupWindow();
         SetupTray();
         SetupWebView();
-        SetupRuntimeLicenseMonitor();
     }
 
     // ── Window chrome ──────────────────────────────────────────
@@ -187,16 +179,6 @@ public partial class MainForm : Form
             return;
         }
 
-        if (_runtimeActivationForm is { IsDisposed: false, Visible: true })
-        {
-            _runtimeActivationForm.WindowState = FormWindowState.Normal;
-            _runtimeActivationForm.Show();
-            _runtimeActivationForm.Activate();
-            _runtimeActivationForm.BringToFront();
-            SetForegroundWindow(_runtimeActivationForm.Handle);
-            return;
-        }
-
         ShowWindow();
         SetForegroundWindow(Handle);
     }
@@ -210,63 +192,9 @@ public partial class MainForm : Form
     private void ExitApp()
     {
         _reallyExit = true;
-        _runtimeLicenseMonitor?.Stop();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         Application.Exit();
-    }
-
-    private void SetupRuntimeLicenseMonitor()
-    {
-        _runtimeLicenseMonitor = new RuntimeLicenseMonitor(
-            () => LicenseGuard.IsActivated(),
-            RuntimeLicenseCheckInterval,
-            () =>
-            {
-                if (IsDisposed)
-                    return;
-
-                if (InvokeRequired)
-                    BeginInvoke(new Action(HandleRuntimeLicenseInvalidAsync));
-                else
-                    HandleRuntimeLicenseInvalidAsync();
-            });
-
-        _runtimeLicenseMonitor.Start();
-    }
-
-    private void HandleRuntimeLicenseInvalidAsync()
-    {
-        if (IsDisposed)
-            return;
-        if (Interlocked.Exchange(ref _runtimeActivationInProgress, 1) == 1)
-            return;
-
-        try
-        {
-            _runtimeLicenseMonitor?.Stop();
-            HideWindow();
-
-            using var activationForm = new ActivationForm();
-            _runtimeActivationForm = activationForm;
-            var dialogResult = activationForm.ShowDialog(this);
-
-            if (dialogResult == DialogResult.OK && activationForm.Activated && LicenseGuard.IsActivated())
-            {
-                _runtimeActivationForm = null;
-                _runtimeLicenseMonitor?.Restart();
-                ShowFromExternalActivation();
-                return;
-            }
-
-            _runtimeActivationForm = null;
-            ExitApp();
-        }
-        finally
-        {
-            _runtimeActivationForm = null;
-            Interlocked.Exchange(ref _runtimeActivationInProgress, 0);
-        }
     }
 
     // ── Intercept X button → hide instead of close ─────────────
