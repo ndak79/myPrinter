@@ -1,5 +1,7 @@
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Threading;
 
 namespace PrinterApp.Services.WordConversion;
 
@@ -25,7 +27,7 @@ public static class WordConversionWorkerCommand
         {
             var inputPath = RequireOption(args, "--input");
             var outputPath = RequireOption(args, "--output");
-            var result = WordAutomationConverter.ConvertToPdf(inputPath, outputPath);
+            var result = ConvertOnSta(inputPath, outputPath);
             WriteResult(resultPath, result);
             return 0;
         }
@@ -39,6 +41,35 @@ public static class WordConversionWorkerCommand
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static WordConversionWorkerResult ConvertOnSta(string inputPath, string outputPath)
+    {
+        if (!OperatingSystem.IsWindows())
+            return WordAutomationConverter.ConvertToPdf(inputPath, outputPath);
+
+        WordConversionWorkerResult? result = null;
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                result = WordAutomationConverter.ConvertToPdf(inputPath, outputPath);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (failure != null)
+            ExceptionDispatchInfo.Capture(failure).Throw();
+
+        return result ?? throw new InvalidOperationException("Word conversion worker completed without a result.");
     }
 
     private static string RequireOption(string[] args, string name)
@@ -77,6 +108,7 @@ internal static class WordAutomationConverter
             throw new FileNotFoundException("Word input file was not found.", inputPath);
 
         dynamic? word = null;
+        dynamic? documents = null;
         dynamic? document = null;
 
         try
@@ -91,16 +123,27 @@ internal static class WordAutomationConverter
             word.DisplayAlerts = 0;
             TrySetAutomationSecurity(word);
 
-            document = word.Documents.Open(
+            documents = word.Documents;
+            document = documents.Open(
                 FileName: inputPath,
                 ConfirmConversions: false,
                 ReadOnly: true,
                 AddToRecentFiles: false,
                 Visible: false,
                 OpenAndRepair: false);
-            document.Repaginate();
 
-            var result = InspectSourcePageSizes(document);
+            var result = new WordConversionWorkerResult();
+            try
+            {
+                document.Repaginate();
+            }
+            catch (Exception ex)
+            {
+                AppendSourcePageInspectionWarning(
+                    result,
+                    $"Word pagination was unavailable: {ex.GetType().Name}: {ex.Message}");
+            }
+
             document.ExportAsFixedFormat(
                 OutputFileName: outputPath,
                 ExportFormat: 17,
@@ -109,13 +152,38 @@ internal static class WordAutomationConverter
                 Range: 0);
 
             result.Success = true;
+
+            try
+            {
+                var inspection = InspectSourcePageSizes(document);
+                result.SourcePageCount = inspection.SourcePageCount;
+                result.SectionPageSizes = inspection.SectionPageSizes;
+                result.SourcePageSizes = inspection.SourcePageSizes;
+                result.HasExactPageSizes = inspection.HasExactPageSizes;
+            }
+            catch (Exception ex)
+            {
+                AppendSourcePageInspectionWarning(
+                    result,
+                    $"Word source inspection failed: {ex.GetType().Name}: {ex.Message}");
+            }
+
             return result;
         }
         finally
         {
             CloseDocument(document);
+            ReleaseComObject(documents);
             QuitWord(word);
         }
+    }
+
+    private static void AppendSourcePageInspectionWarning(WordConversionWorkerResult result, string warning)
+    {
+        result.SourcePageInspectionWarning = string.IsNullOrWhiteSpace(result.SourcePageInspectionWarning)
+            ? warning
+            : $"{result.SourcePageInspectionWarning} {warning}";
+        Console.Error.WriteLine($"[WordConversion] WARNING: {warning}");
     }
 
     private static WordConversionWorkerResult InspectSourcePageSizes(dynamic document)
@@ -136,25 +204,47 @@ internal static class WordAutomationConverter
     private static List<WordSectionPageSize> ReadSectionPageSizes(dynamic document)
     {
         var sections = new List<WordSectionPageSize>();
-        var sectionCount = Convert.ToInt32(document.Sections.Count);
+        dynamic? sectionCollection = null;
 
-        for (var i = 1; i <= sectionCount; i++)
+        try
         {
-            dynamic section = document.Sections[i];
-            dynamic pageSetup = section.PageSetup;
-            var width = Convert.ToDouble(pageSetup.PageWidth);
-            var height = Convert.ToDouble(pageSetup.PageHeight);
-            var pages = Convert.ToInt32(section.Range.ComputeStatistics(2));
+            sectionCollection = document.Sections;
+            var sectionCount = Convert.ToInt32(sectionCollection.Count);
 
-            sections.Add(new WordSectionPageSize(
-                i,
-                pages,
-                width,
-                height,
-                PaperSizeClassifier.Classify(width, height)));
+            for (var i = 1; i <= sectionCount; i++)
+            {
+                dynamic? section = null;
+                dynamic? pageSetup = null;
+                dynamic? range = null;
 
-            ReleaseComObject(pageSetup);
-            ReleaseComObject(section);
+                try
+                {
+                    section = sectionCollection[i];
+                    pageSetup = section.PageSetup;
+                    range = section.Range;
+
+                    var width = Convert.ToDouble(pageSetup.PageWidth);
+                    var height = Convert.ToDouble(pageSetup.PageHeight);
+                    var pages = Convert.ToInt32(range.ComputeStatistics(2));
+
+                    sections.Add(new WordSectionPageSize(
+                        i,
+                        pages,
+                        width,
+                        height,
+                        PaperSizeClassifier.Classify(width, height)));
+                }
+                finally
+                {
+                    ReleaseComObject(range);
+                    ReleaseComObject(pageSetup);
+                    ReleaseComObject(section);
+                }
+            }
+        }
+        finally
+        {
+            ReleaseComObject(sectionCollection);
         }
 
         return sections;

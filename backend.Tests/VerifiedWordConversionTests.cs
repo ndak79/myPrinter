@@ -135,6 +135,69 @@ public sealed class VerifiedWordConversionTests : IDisposable
     }
 
     [Fact]
+    public void ConvertToPdf_AllowsValidPdf_WhenWorkerSourceInspectionIsUnavailable()
+    {
+        var inputPath = CreateTempPath(".doc");
+        File.WriteAllText(inputPath, "fake source");
+        var outputPath = CreatePdf(595.08, 842.04);
+        var worker = new FakeWorkerClient(new WordConversionWorkerResult
+        {
+            Success = true,
+            SourcePageCount = 0,
+            HasExactPageSizes = false,
+            SourcePageInspectionWarning = "Word source inspection failed: COMException: The remote procedure call failed."
+        });
+        var converter = new VerifiedWordConverter(worker, TimeSpan.FromSeconds(10));
+
+        var act = () => converter.ConvertToPdf(inputPath, outputPath);
+
+        act.Should().NotThrow("a transient Word page-inspection failure must not reject a valid exported PDF");
+        File.Exists(outputPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ConvertToPdf_UsesPdfPageCountForRawDocx_WhenWorkerPageInspectionIsUnavailable()
+    {
+        var inputPath = CreateDocxWithPageSize(widthTwips: 11907, heightTwips: 16840);
+        var outputPath = CreatePdf(612.00, 792.00);
+        var worker = new FakeWorkerClient(new WordConversionWorkerResult
+        {
+            Success = true,
+            SourcePageCount = 0,
+            HasExactPageSizes = false,
+            SourcePageInspectionWarning = "Word source inspection failed: COMException: The remote procedure call failed."
+        });
+        var converter = new VerifiedWordConverter(worker, TimeSpan.FromSeconds(10));
+
+        var act = () => converter.ConvertToPdf(inputPath, outputPath);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*A4 portrait*Letter portrait*");
+        File.Exists(outputPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public void ConvertToPdf_RejectsAmbiguousSource_WhenInspectionCompletedWithoutExactSizes()
+    {
+        var inputPath = CreateTempPath(".doc");
+        File.WriteAllText(inputPath, "fake source");
+        var outputPath = CreatePdf(595.08, 842.04);
+        var worker = new FakeWorkerClient(new WordConversionWorkerResult
+        {
+            Success = true,
+            SourcePageCount = 1,
+            HasExactPageSizes = false
+        });
+        var converter = new VerifiedWordConverter(worker, TimeSpan.FromSeconds(10));
+
+        var act = () => converter.ConvertToPdf(inputPath, outputPath);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*mixed or ambiguous section page sizes*");
+        File.Exists(outputPath).Should().BeFalse();
+    }
+
+    [Fact]
     public void BuildStartInfo_PassesWorkerArgumentsAsSeparateItems()
     {
         const string inputPath = @"C:\Temp\source doc.docx";

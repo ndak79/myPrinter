@@ -26,6 +26,7 @@ internal sealed class WordConversionWorkerResult
 {
     public bool Success { get; set; }
     public string? Error { get; set; }
+    public string? SourcePageInspectionWarning { get; set; }
     public int SourcePageCount { get; set; }
     public bool HasExactPageSizes { get; set; }
     public List<WordSourcePageSize> SourcePageSizes { get; set; } = new();

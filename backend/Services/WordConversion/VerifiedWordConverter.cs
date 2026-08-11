@@ -30,15 +30,32 @@ internal sealed class VerifiedWordConverter
         try
         {
             var result = _workerClient.Convert(inputPath, outputPath, _timeout);
+            if (!result.Success)
+                throw new InvalidOperationException(result.Error ?? "Word conversion failed.");
+
+            var actualPages = PdfPageSizeVerifier.InspectPdf(outputPath);
+            if (actualPages.Count == 0)
+                throw new InvalidOperationException("Converted PDF contains no pages.");
+
+            var sourcePageCount = result.SourcePageCount > 0
+                ? result.SourcePageCount
+                : actualPages.Count;
             var hasRawDocxPages = DocxPageSizeInspector.TryGetUniformSourcePages(
                 inputPath,
-                result.SourcePageCount,
+                sourcePageCount,
                 out var rawDocxPages);
             var expectedPages = hasRawDocxPages ? rawDocxPages : result.SourcePageSizes;
 
-            ValidateWorkerResult(result, hasIndependentExpectedPages: hasRawDocxPages);
-            var actualPages = PdfPageSizeVerifier.InspectPdf(outputPath);
-            PdfPageSizeVerifier.ThrowIfMismatch(expectedPages, actualPages, inputPath, outputPath);
+            ValidateWorkerResult(result, actualPages.Count, hasIndependentExpectedPages: hasRawDocxPages);
+            if (expectedPages.Count > 0)
+                PdfPageSizeVerifier.ThrowIfMismatch(expectedPages, actualPages, inputPath, outputPath);
+
+            if (!string.IsNullOrWhiteSpace(result.SourcePageInspectionWarning))
+            {
+                Console.Error.WriteLine(
+                    $"[WordConversion] Source page metadata was unavailable; accepted the validated PDF: " +
+                    result.SourcePageInspectionWarning);
+            }
         }
         catch
         {
@@ -47,13 +64,28 @@ internal sealed class VerifiedWordConverter
         }
     }
 
-    private static void ValidateWorkerResult(WordConversionWorkerResult result, bool hasIndependentExpectedPages)
+    private static void ValidateWorkerResult(
+        WordConversionWorkerResult result,
+        int actualPageCount,
+        bool hasIndependentExpectedPages)
     {
         if (!result.Success)
             throw new InvalidOperationException(result.Error ?? "Word conversion failed.");
 
+        if (actualPageCount <= 0)
+            throw new InvalidOperationException("Converted PDF contains no pages.");
+
+        if (result.SourcePageCount > 0 && result.SourcePageCount != actualPageCount)
+        {
+            throw new InvalidOperationException(
+                $"Word conversion reported {result.SourcePageCount} source page(s), but the converted PDF contains " +
+                $"{actualPageCount} page(s).");
+        }
+
+        // Word can export a valid PDF even when COM page metadata inspection fails.
+        // In that case the PDF itself is the only reliable page-count evidence.
         if (result.SourcePageCount <= 0)
-            throw new InvalidOperationException("Word conversion reported a document with no pages.");
+            return;
 
         if (hasIndependentExpectedPages)
             return;
