@@ -4,6 +4,10 @@ Smart Printer is a Windows desktop application for practical, reliable document 
 
 The community build does not require an account, product key, activation server, or machine registration. Printing is handled locally through the installed Windows printer and document tools.
 
+[**Download Smart Printer v1.0.3 → Releases**](https://github.com/ndak79/myPrinter/releases/tag/v1.0.3)
+
+The Windows installer on the release page contains a self-contained `win-x64` desktop build, so end users do not need to install the .NET SDK.
+
 ## Highlights
 
 - Detects installed Windows printers and reports availability and duplex capability.
@@ -32,19 +36,23 @@ The community build does not require an account, product key, activation server,
 
 *Print Preview showing a two-sided print layout.*
 
-## Requirements
+## Requirements for users
 
 - Windows 10 or Windows 11.
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
 - Microsoft Edge WebView2 Runtime.
 - A Windows printer with its driver installed. The desktop host requests administrator privileges because printer and WMI access are part of the current runtime.
 - Microsoft Word desktop for converting `.doc` and `.docx` files.
-- Inno Setup 6 only when building the Windows installer.
-- Node.js is optional and is used to run the frontend test files.
+- The downloaded installer is self-contained for `win-x64`; the .NET SDK is not required to run the installed application.
 
-## Quick start
+## Development requirements
 
-From the repository root:
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+- Node.js, optional and used to run the frontend test files.
+- Inno Setup 6, only when building the Windows installer.
+
+## Build from source
+
+To run the application from source, use the following commands from the repository root:
 
 ```powershell
 dotnet restore MyPrinter.slnx
@@ -81,7 +89,7 @@ node --test $tests
 
 ## Build the installer
 
-Install Inno Setup 6 and a .NET 10 SDK, then run:
+With the development requirements installed, run:
 
 ```powershell
 .\build-installer.ps1 -Version 1.0.0
