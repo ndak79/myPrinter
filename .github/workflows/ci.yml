@@ -2,9 +2,9 @@ name: Build and Test
 
 on:
   push:
-    branches: [ "manual-duplex" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "manual-duplex" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:
