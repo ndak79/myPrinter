@@ -1,0 +1,48 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "manual-duplex" ]
+  pull_request:
+    branches: [ "manual-duplex" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Restore
+        run: dotnet restore MyPrinter.slnx
+
+      - name: Build
+        run: dotnet build MyPrinter.slnx --configuration Release --no-restore
+
+      - name: Test backend
+        run: dotnet test backend.Tests/backend.Tests.csproj --configuration Release
+
+      - name: Test desktop
+        run: dotnet test desktop.Tests/desktop.Tests.csproj --configuration Release
+
+      - name: Test frontend
+        shell: pwsh
+        run: |
+          $tests = Get-ChildItem frontend/tests -Filter *.test.mjs -File |
+            Select-Object -ExpandProperty FullName
+          node --test $tests
