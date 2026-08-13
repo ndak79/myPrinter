@@ -40,3 +40,17 @@ dist/
 # OpenCode / dev tooling
 fix-*.bat
 .gitnexus
+
+# Local-only metadata and generated test artefacts
+.9router-data/
+.agents/
+.claude/
+docs/
+AGENTS.md
+CLAUDE.md
+fix.py
+QD.pdf
+conversion-bakeoff-output/
+dogfood-output/
+t1.doc
+tmp/

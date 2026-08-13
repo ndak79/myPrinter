@@ -18,6 +18,20 @@ The community build does not require an account, product key, activation server,
 - Includes print history, printer settings access, Vietnamese/English localization, a system tray, and optional Windows auto-start.
 - Provides visual paper-flip guidance and recovery flows for jammed, missing, or damaged sheets during manual duplex printing.
 
+## Screenshots
+
+![Empty print queue](screenshots/empty-print-queue.jpg)
+
+*Empty print queue before adding a document.*
+
+![Booklet print preview](screenshots/booklet-print-preview.jpg)
+
+*Print Preview showing a booklet layout.*
+
+![Document print preview](screenshots/document-print-preview.jpg)
+
+*Print Preview showing a multi-page document.*
+
 ## Requirements
 
 - Windows 10 or Windows 11.
@@ -164,6 +178,10 @@ Install Microsoft Word desktop and make sure it can open the source document nor
 ### The app window does not render
 
 Install or repair the Microsoft Edge WebView2 Runtime, then start Smart Printer again.
+
+### `Undefined` appears when printing
+
+If Smart Printer shows `Undefined` after you click **Print**, download and install [Sumatra PDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), restart the app, and try printing again.
 
 ### Manual duplex output is misaligned
 
