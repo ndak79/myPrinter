@@ -28,9 +28,9 @@ The community build does not require an account, product key, activation server,
 
 *Print Preview showing a booklet layout.*
 
-![Document print preview](screenshots/document-print-preview.jpg)
+![Two-sided print preview](screenshots/document-print-preview.jpg)
 
-*Print Preview showing a multi-page document.*
+*Print Preview showing a two-sided print layout.*
 
 ## Requirements
 
