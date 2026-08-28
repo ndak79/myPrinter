@@ -6,7 +6,7 @@ namespace desktop.Tests;
 public class SingleInstanceCoordinatorTests
 {
     [Fact]
-    public void Program_exits_secondary_launches_without_window_activation()
+    public void Program_routes_secondary_launches_to_primary_window_activation()
     {
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
         var program = File.ReadAllText(Path.Combine(repoRoot, "desktop", "Program.cs"));
@@ -14,15 +14,29 @@ public class SingleInstanceCoordinatorTests
         program.Should().Contain("var startHidden = args.Contains(WindowsStartupService.StartHiddenArgument, StringComparer.OrdinalIgnoreCase);");
         program.Should().Contain("using var singleInstance = SingleInstanceCoordinator.Create();");
         program.Should().Contain("if (!singleInstance.IsPrimary)");
-        program.Should().NotContain("singleInstance.SignalExistingInstance();");
+        program.Should().Contain("singleInstance.SignalExistingInstance();");
         program.Should().Contain("WindowsStartupService.Default.EnsureEnabledByDefault();");
         program.Should().Contain("_ = mainForm.Handle;");
-        program.Should().NotContain("singleInstance.StartActivationListener");
-        program.Should().NotContain("ShowFromExternalActivation");
+        program.Should().Contain("singleInstance.StartActivationListener");
+        program.Should().Contain("ShowFromExternalActivation");
         program.Should().Contain("using var mainForm = new MainForm(startHidden);");
 
         program.IndexOf("WindowsStartupService.Default.EnsureEnabledByDefault();", StringComparison.Ordinal)
             .Should().BeLessThan(program.IndexOf("using var mainForm = new MainForm(startHidden);", StringComparison.Ordinal));
+        var secondaryBranchStart = program.IndexOf("if (!singleInstance.IsPrimary)", StringComparison.Ordinal);
+        var primaryStartupStart = program.IndexOf(
+            "WindowsStartupService.Default.EnsureEnabledByDefault();",
+            secondaryBranchStart,
+            StringComparison.Ordinal);
+        var secondaryBranch = program.Substring(
+            secondaryBranchStart,
+            primaryStartupStart - secondaryBranchStart);
+
+        secondaryBranch.IndexOf("singleInstance.SignalExistingInstance();", StringComparison.Ordinal)
+            .Should().BeGreaterThanOrEqualTo(0)
+            .And.BeLessThan(secondaryBranch.IndexOf("return;", StringComparison.Ordinal));
+        program.IndexOf("_ = mainForm.Handle;", StringComparison.Ordinal)
+            .Should().BeLessThan(program.IndexOf("singleInstance.StartActivationListener", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -45,15 +59,22 @@ public class SingleInstanceCoordinatorTests
     }
 
     [Fact]
-    public void Single_instance_coordinator_exposes_no_window_activation_channel()
+    public void Secondary_instance_signal_invokes_primary_activation_callback()
     {
-        var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        var source = File.ReadAllText(Path.Combine(repoRoot, "desktop", "SingleInstanceCoordinator.cs"));
+        var instanceName = $"MyPrinter.Tests.{Guid.NewGuid():N}";
+        using var activationRequested = new ManualResetEventSlim();
+        using var first = SingleInstanceCoordinator.Create(instanceName);
+        using var listener = first.StartActivationListener(() => activationRequested.Set());
 
-        typeof(SingleInstanceCoordinator).GetMethod("StartActivationListener").Should().BeNull();
-        typeof(SingleInstanceCoordinator).GetMethod("SignalExistingInstance").Should().BeNull();
-        source.Should().NotContain("EventWaitHandle")
-            .And.NotContain("RegisteredWaitHandle")
-            .And.NotContain("Activation");
+        var thread = new Thread(() =>
+        {
+            using var second = SingleInstanceCoordinator.Create(instanceName);
+            second.IsPrimary.Should().BeFalse();
+            second.SignalExistingInstance();
+        });
+        thread.Start();
+        thread.Join();
+
+        activationRequested.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue();
     }
 }

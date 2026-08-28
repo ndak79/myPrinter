@@ -183,7 +183,11 @@ Confirm the printer is installed in Windows, powered on, and visible to the curr
 
 Install Microsoft Word desktop and make sure it can open the source document normally. Word conversion uses Office Interop and therefore requires a Windows Word installation.
 
-### The app window does not render
+### The app window does not open
+
+Smart Printer runs as a single desktop instance. When Windows auto-start is enabled, it may already be running in the notification area with its main window hidden. Opening the Smart Printer shortcut activates that existing instance. If an older build is still running after an upgrade, exit it from the notification area or Task Manager once, then start the new version.
+
+### The app window is blank or does not render
 
 Install or repair the Microsoft Edge WebView2 Runtime, then start Smart Printer again.
 

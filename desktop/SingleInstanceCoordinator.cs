@@ -5,6 +5,8 @@ public sealed class SingleInstanceCoordinator : IDisposable
     private const string DefaultInstanceName = "MyPrinter.Desktop.SingleInstance";
 
     private readonly Mutex _mutex;
+    private readonly EventWaitHandle _activationEvent;
+    private RegisteredWaitHandle? _activationWait;
     private bool _ownsMutex;
     private bool _disposed;
 
@@ -21,6 +23,11 @@ public sealed class SingleInstanceCoordinator : IDisposable
         {
             _ownsMutex = true;
         }
+
+        _activationEvent = new EventWaitHandle(
+            initialState: false,
+            mode: EventResetMode.AutoReset,
+            name: BuildObjectName(instanceName, "Activation"));
     }
 
     public bool IsPrimary => _ownsMutex;
@@ -31,12 +38,42 @@ public sealed class SingleInstanceCoordinator : IDisposable
     public static SingleInstanceCoordinator Create(string instanceName)
         => new(instanceName);
 
+    public IDisposable StartActivationListener(Action activationRequested)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(activationRequested);
+
+        if (!IsPrimary)
+            throw new InvalidOperationException("Only the primary instance can listen for activation requests.");
+
+        _activationWait ??= ThreadPool.RegisterWaitForSingleObject(
+            _activationEvent,
+            (_, timedOut) =>
+            {
+                if (!timedOut)
+                    activationRequested();
+            },
+            state: null,
+            millisecondsTimeOutInterval: Timeout.Infinite,
+            executeOnlyOnce: false);
+
+        return new ListenerRegistration(this);
+    }
+
+    public void SignalExistingInstance()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _activationEvent.Set();
+    }
+
     public void Dispose()
     {
         if (_disposed)
             return;
 
         _disposed = true;
+        _activationWait?.Unregister(null);
+        _activationWait = null;
 
         if (_ownsMutex)
         {
@@ -44,9 +81,24 @@ public sealed class SingleInstanceCoordinator : IDisposable
             _ownsMutex = false;
         }
 
+        _activationEvent.Dispose();
         _mutex.Dispose();
     }
 
     private static string BuildObjectName(string instanceName, string suffix)
         => $@"Local\{instanceName}.{suffix}";
+
+    private sealed class ListenerRegistration(SingleInstanceCoordinator owner) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                owner._activationWait?.Unregister(null);
+                owner._activationWait = null;
+            }
+        }
+    }
 }
