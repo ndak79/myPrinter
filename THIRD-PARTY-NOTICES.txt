@@ -1,0 +1,18 @@
+Third-Party Notices for Smart Printer
+=====================================
+
+SumatraPDF 3.6.1
+----------------
+
+Smart Printer's installer redistributes the unmodified official 64-bit
+SumatraPDF 3.6.1 installer so that PDF printing works on a clean machine.
+
+Project: https://www.sumatrapdfreader.org/
+Source: https://github.com/sumatrapdfreader/sumatrapdf/tree/3.6.1rel
+License: GNU General Public License v3.0, with some components under BSD terms.
+GPL license: https://github.com/sumatrapdfreader/sumatrapdf/blob/3.6.1rel/COPYING
+BSD license: https://github.com/sumatrapdfreader/sumatrapdf/blob/3.6.1rel/COPYING.BSD
+SHA-256: 1EEE71CCCD2EA6E94D5BCEA54EE2F759844DA3E1A0EE2F6045035B1D17B94381
+
+SumatraPDF is a separate program. Smart Printer invokes its documented
+command-line printing interface and does not modify SumatraPDF.

@@ -87,7 +87,18 @@ public sealed class WindowsStartupService
 
     public WindowsStartupOperationResult Enable()
     {
-        var executablePath = _executablePathProvider();
+        string executablePath;
+        try
+        {
+            executablePath = _executablePathProvider();
+        }
+        catch (Exception ex)
+        {
+            return new WindowsStartupOperationResult(
+                false,
+                $"Could not determine the Smart Printer executable path. {ex.Message}");
+        }
+
         if (string.IsNullOrWhiteSpace(executablePath))
         {
             return new WindowsStartupOperationResult(
@@ -125,7 +136,19 @@ public sealed class WindowsStartupService
     }
 
     private WindowsStartupCommandResult RunSchtasks(params string[] arguments)
-        => _commandRunner("schtasks.exe", arguments);
+    {
+        try
+        {
+            return _commandRunner("schtasks.exe", arguments);
+        }
+        catch (Exception ex)
+        {
+            return new WindowsStartupCommandResult(
+                -1,
+                "",
+                $"Could not run schtasks.exe. {ex.Message}");
+        }
+    }
 
     private bool UserDisabledStartup()
     {

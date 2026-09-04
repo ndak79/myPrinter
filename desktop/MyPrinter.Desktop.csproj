@@ -19,12 +19,9 @@
     <NoWarn>MSB3277</NoWarn>
   </PropertyGroup>
 
-  <!-- Publish-only: single self-contained exe (run: dotnet publish -c Release) -->
-  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
-    <SelfContained>true</SelfContained>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <PublishReadyToRun>true</PublishReadyToRun>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  <!-- Keep native runtime files beside the app; the installer build supplies the win-x64 RID. -->
+  <PropertyGroup>
+    <PublishSingleFile>false</PublishSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -42,6 +39,10 @@
     <None Include="..\frontend\**\*" Exclude="..\frontend\**\*.backup;..\frontend\**\_fix_guide.js;..\frontend\tests\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>frontend\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
+    <None Include="..\THIRD-PARTY-NOTICES.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>THIRD-PARTY-NOTICES.txt</Link>
     </None>
   </ItemGroup>
 

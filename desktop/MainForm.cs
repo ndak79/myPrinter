@@ -15,6 +15,7 @@ public partial class MainForm : Form
     private readonly bool _startHidden;
     private bool _suppressInitialShow;
     private bool _reallyExit = false;
+    private int _webViewFailureHandled;
 
     public MainForm()
         : this(startHidden: false)
@@ -164,23 +165,34 @@ public partial class MainForm : Form
 
     private void ShowWindow()
     {
-        Show();
-        WindowState   = FormWindowState.Maximized;
+        if (IsDisposed)
+            return;
+
+        _suppressInitialShow = false;
         ShowInTaskbar = true;
+        if (!Visible)
+            Show();
+
+        WindowState = FormWindowState.Maximized;
+        ShowWindowAsyncNative(Handle, ShowMaximized);
         Activate();
         BringToFront();
+        SetForegroundWindow(Handle);
+
+        var previousTopMost = TopMost;
+        TopMost = true;
+        TopMost = previousTopMost;
     }
 
-    internal void ShowFromExternalActivation()
+    internal void ShowFromExternalRequest()
     {
         if (InvokeRequired)
         {
-            BeginInvoke(ShowFromExternalActivation);
+            BeginInvoke(ShowFromExternalRequest);
             return;
         }
 
         ShowWindow();
-        SetForegroundWindow(Handle);
     }
 
     private void HideWindow()
@@ -192,8 +204,11 @@ public partial class MainForm : Form
     private void ExitApp()
     {
         _reallyExit = true;
-        _trayIcon.Visible = false;
-        _trayIcon.Dispose();
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+        }
         Application.Exit();
     }
 
@@ -310,6 +325,12 @@ public partial class MainForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    private const int ShowMaximized = 3;
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("user32.dll", EntryPoint = "ShowWindowAsync")]
+    private static extern bool ShowWindowAsyncNative(IntPtr hWnd, int command);
+
     // ── GDI+ helper: rounded rectangle path ─────────────────────
     private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(float x, float y, float w, float h, float r)
     {
@@ -348,15 +369,7 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
-                $"Không thể khởi tạo WebView2.\n\n" +
-                $"Hãy đảm bảo Microsoft Edge WebView2 Runtime đã được cài đặt.\n\n" +
-                $"Tải tại: https://developer.microsoft.com/microsoft-edge/webview2/\n\n" +
-                $"Chi tiết lỗi: {ex.Message}",
-                "Lỗi WebView2",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-            ExitApp();
+            HandleWebViewFailure(ex);
         }
     }
 
@@ -364,42 +377,72 @@ public partial class MainForm : Form
     {
         if (!e.IsSuccess)
         {
-            MessageBox.Show(
-                $"WebView2 initialization failed: {e.InitializationException?.Message}",
-                "Lỗi",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            HandleWebViewFailure(
+                e.InitializationException
+                ?? new InvalidOperationException("WebView2 initialization failed without an error detail."));
             return;
         }
 
-        var wv = _webView.CoreWebView2;
+        try
+        {
+            var wv = _webView.CoreWebView2;
 
-        var settings = wv.Settings;
-        settings.IsStatusBarEnabled               = false;
-        settings.AreDefaultContextMenusEnabled    = false;
-        settings.IsZoomControlEnabled             = false;
-        settings.AreBrowserAcceleratorKeysEnabled = true; // re-enabled so F12 opens DevTools
-        settings.IsSwipeNavigationEnabled         = false;
-        settings.AreDevToolsEnabled               = true; // set false for release
+            var settings = wv.Settings;
+            settings.IsStatusBarEnabled               = false;
+            settings.AreDefaultContextMenusEnabled    = false;
+            settings.IsZoomControlEnabled             = false;
+            settings.AreBrowserAcceleratorKeysEnabled = true; // re-enabled so F12 opens DevTools
+            settings.IsSwipeNavigationEnabled         = false;
+            settings.AreDevToolsEnabled               = true; // set false for release
 
-        var frontendPath = GetFrontendPath();
-        wv.SetVirtualHostNameToFolderMapping(
-            "app.local",
-            frontendPath,
-            CoreWebView2HostResourceAccessKind.Allow);
+            var frontendPath = GetFrontendPath();
+            wv.SetVirtualHostNameToFolderMapping(
+                "app.local",
+                frontendPath,
+                CoreWebView2HostResourceAccessKind.Allow);
 
-        _webView.CoreWebView2.Navigate($"https://app.local/index.html?port={Program.BackendPort}");
-        _webView.ZoomFactor = 1.1;  // slightly larger for readability
+            _webView.CoreWebView2.Navigate($"https://app.local/index.html?port={Program.BackendPort}");
+            _webView.ZoomFactor = 1.1;  // slightly larger for readability
 
-        // Sync WinForms title bar when JS changes document.title (e.g. language switch)
-        wv.DocumentTitleChanged += (s, _) => {
-            if (InvokeRequired) Invoke(() => Text = wv.DocumentTitle);
-            else Text = wv.DocumentTitle;
-        };
+            // Sync WinForms title bar when JS changes document.title (e.g. language switch)
+            wv.DocumentTitleChanged += (s, _) => {
+                if (InvokeRequired) Invoke(() => Text = wv.DocumentTitle);
+                else Text = wv.DocumentTitle;
+            };
 
 
-        wv.NewWindowRequested += (s, args) => args.Handled = true;
+            wv.NewWindowRequested += (s, args) => args.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            HandleWebViewFailure(ex);
+        }
 
+    }
+
+    private void HandleWebViewFailure(Exception exception)
+    {
+        if (Interlocked.Exchange(ref _webViewFailureHandled, 1) != 0)
+            return;
+
+        var diagnostics = StartupDiagnostics.Default;
+        diagnostics.RecordException("WebView2 initialization failed", exception);
+
+        try
+        {
+            MessageBox.Show(
+                $"Không thể khởi tạo giao diện Smart Printer.\n\n" +
+                $"Microsoft Edge WebView2 Runtime có thể bị thiếu hoặc hỏng.\n\n" +
+                $"Chi tiết: {exception.Message}\n\n" +
+                $"Nhật ký chẩn đoán:\n{diagnostics.LogPath}",
+                "Smart Printer - Lỗi WebView2",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            ExitApp();
+        }
     }
 
     // ── Frontend path resolution ───────────────────────────────

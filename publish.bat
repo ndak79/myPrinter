@@ -7,8 +7,11 @@ echo   Smart Printer - Community Build
 echo ============================================
 echo.
 
-powershell.exe -NoProfile -File "%~dp0build-installer.ps1" ^
-    -Version "1.0.0"
+if "%~1"=="" (
+    powershell.exe -NoProfile -File "%~dp0build-installer.ps1"
+) else (
+    powershell.exe -NoProfile -File "%~dp0build-installer.ps1" -Version "%~1"
+)
 
 if %ERRORLEVEL% neq 0 (
     echo.
@@ -21,7 +24,7 @@ echo.
 echo ============================================
 echo   Community build completed.
 echo   Publish : %~dp0publish\MyPrinter.exe
-echo   Setup   : %~dp0dist\smartPrinter-setup-1.0.0.exe
+echo   Setup   : %~dp0dist\smartPrinter-setup-*.exe
 echo ============================================
 echo.
 pause

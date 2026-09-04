@@ -136,6 +136,51 @@ public class WindowsStartupServiceTests
             WindowsStartupService.TaskName);
     }
 
+    [Fact]
+    public void IsEnabled_returns_false_when_schtasks_cannot_be_started()
+    {
+        var service = CreateService(
+            commandRunner: (_, _) => throw new InvalidOperationException("schtasks unavailable"));
+        bool? result = null;
+
+        var action = () => result = service.IsEnabled();
+
+        action.Should().NotThrow();
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public void EnsureEnabledByDefault_returns_a_failure_when_schtasks_cannot_be_started()
+    {
+        var service = CreateService(
+            commandRunner: (_, _) => throw new InvalidOperationException("schtasks unavailable"));
+        WindowsStartupOperationResult? result = null;
+
+        var action = () => result = service.EnsureEnabledByDefault();
+
+        action.Should().NotThrow();
+        result.Should().NotBeNull();
+        result!.Succeeded.Should().BeFalse();
+        result.Error.Should().Contain("schtasks unavailable");
+    }
+
+    [Fact]
+    public void EnsureEnabledByDefault_returns_a_failure_when_executable_path_lookup_fails()
+    {
+        var service = new WindowsStartupService(
+            () => throw new InvalidOperationException("process path unavailable"),
+            Path.Combine(Path.GetTempPath(), $"myprinter-startup-tests-{Guid.NewGuid():N}", "preference.txt"),
+            (_, _) => new WindowsStartupCommandResult(0, "", ""));
+        WindowsStartupOperationResult? result = null;
+
+        var action = () => result = service.EnsureEnabledByDefault();
+
+        action.Should().NotThrow();
+        result.Should().NotBeNull();
+        result!.Succeeded.Should().BeFalse();
+        result.Error.Should().Contain("process path unavailable");
+    }
+
     private static WindowsStartupService CreateService(
         string executablePath = @"C:\Apps\MyPrinter.exe",
         string? preferencePath = null,

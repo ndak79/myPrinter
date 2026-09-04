@@ -39,7 +39,7 @@ The Windows installer on the release page contains a self-contained `win-x64` de
 ## Requirements for users
 
 - Windows 10 or Windows 11.
-- Microsoft Edge WebView2 Runtime.
+- Microsoft Edge WebView2 Runtime. The Windows installer installs it automatically when it is missing; source and portable runs require it to be present.
 - A Windows printer with its driver installed. The desktop host requests administrator privileges because printer and WMI access are part of the current runtime.
 - Microsoft Word desktop for converting `.doc` and `.docx` files.
 - The downloaded installer is self-contained for `win-x64`; the .NET SDK is not required to run the installed application.
@@ -185,7 +185,7 @@ Install Microsoft Word desktop and make sure it can open the source document nor
 
 ### The app window does not open
 
-Smart Printer runs as a single desktop instance. When Windows auto-start is enabled, it may already be running in the notification area with its main window hidden. Opening the Smart Printer shortcut activates that existing instance. If an older build is still running after an upgrade, exit it from the notification area or Task Manager once, then start the new version.
+Smart Printer runs as a single desktop instance. When Windows auto-start is enabled, it may already be running in the notification area with its main window hidden. Opening the Smart Printer shortcut asks that existing instance to show its window. If an older build is still running after an upgrade, exit it from the notification area or Task Manager once, then start the new version. Current builds record startup failures in `%LOCALAPPDATA%\SmartPrinter\Logs\startup.log` so a failure before the tray icon appears is diagnosable.
 
 ### The app window is blank or does not render
 
@@ -193,7 +193,7 @@ Install or repair the Microsoft Edge WebView2 Runtime, then start Smart Printer 
 
 ### `Undefined` appears when printing
 
-If Smart Printer shows `Undefined` after you click **Print**, download and install [Sumatra PDF](https://www.sumatrapdfreader.org/download-free-pdf-viewer), restart the app, and try printing again.
+The Smart Printer installer includes the stable 64-bit SumatraPDF prerequisite and installs it silently when it is missing. If an older installation still shows `Undefined` after you click **Print**, rerun the latest Smart Printer installer, restart the app, and try printing again.
 
 ### Manual duplex output is misaligned
 
